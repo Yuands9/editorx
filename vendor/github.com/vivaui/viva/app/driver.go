@@ -1,5 +1,6 @@
 //go:build darwin || windows || linux || (js && wasm)
 
+// Modified for EditorX. See patches/ in the project root.
 package app
 
 import (

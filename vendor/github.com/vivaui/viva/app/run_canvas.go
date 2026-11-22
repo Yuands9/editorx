@@ -1,5 +1,6 @@
 //go:build darwin || windows || linux
 
+// Modified for EditorX. See patches/ in the project root.
 package app
 
 import (

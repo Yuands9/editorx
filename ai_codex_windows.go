@@ -76,7 +76,7 @@ func (settings aiSettings) openCodex(ctx context.Context) (*codexRPC, error) {
 	attempt.scanner = bufio.NewScanner(stdout)
 	attempt.scanner.Buffer(make([]byte, 8192), aiResponseLimit*4)
 	if err := attempt.call("initialize", map[string]any{
-		"clientInfo":   map[string]string{"name": "viva_editor", "title": "Viva Editor", "version": "0.31.0"},
+		"clientInfo":   map[string]string{"name": "viva_editor", "title": applicationName, "version": "0.31.0"},
 		"capabilities": map[string]bool{"experimentalApi": true},
 	}, nil); err != nil {
 		attempt.close()
@@ -109,7 +109,7 @@ func (client *codexRPC) next() (codexRPCMessage, error) {
 		if message.Method != "" && len(message.ID) != 0 && !bytes.Equal(message.ID, []byte("null")) {
 			// Viva only consumes text and never grants a server request for a tool or approval.
 			err := client.encoder.Encode(map[string]any{
-				"id": message.ID, "error": map[string]any{"code": -32601, "message": "Viva Editor does not provide this action"},
+				"id": message.ID, "error": map[string]any{"code": -32601, "message": applicationName + " does not provide this action"},
 			})
 			if err != nil {
 				return codexRPCMessage{}, err

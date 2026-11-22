@@ -23,7 +23,7 @@ func lockSessionDirectory(directory string) (func(), error) {
 	}
 	if err == syscall.ERROR_ALREADY_EXISTS {
 		syscall.CloseHandle(syscall.Handle(handle))
-		return nil, fmt.Errorf("此数据目录已由另一个 Viva Editor 窗口使用，请从已打开的编辑器打开文件。")
+		return nil, fmt.Errorf("此数据目录已由另一个 %s 窗口使用，请从已打开的编辑器打开文件。", applicationName)
 	}
 	return func() { syscall.CloseHandle(syscall.Handle(handle)) }, nil
 }

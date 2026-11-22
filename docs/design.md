@@ -1,6 +1,6 @@
-# Viva Editor 设计与发布说明
+# EditorX 设计与发布说明
 
-Viva Editor 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。文本编辑走原生控件，文档预览和富文档编辑在同一窗口内使用 WebView2。
+EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。文本编辑走原生控件，文档预览和富文档编辑在同一窗口内使用 WebView2。
 
 ## 模块划分
 
@@ -40,16 +40,17 @@ Office 和 PDF 使用独立的回环地址，并通过文档会话限制请求�
 .\tools\large-open.ps1 -Runs 3
 ```
 
-预览截图写入 `.dev/previews`，EXE 默认写入 `dist`。构建时会带上 Office/PDF、终端及服务商图标的第三方声明。Go 依赖使用 `-mod=vendor`，`vendor` 中保留了项目使用的 Viva 补丁。升级 Viva 时应同时检查 `patches` 并跑原生测试。
+预览截图写入 `.dev/previews`，EXE 默认写入 `dist`。构建时会带上 Office/PDF、终端及服务商图标的第三方声明。Go 依赖使用 `-mod=vendor`，`vendor` 中保留了项目使用的 Viva 补丁。升级 Viva 时应同时检查 `patches`，保留修改声明，并跑原生测试。
 
-## 准备发布
+## 发布范围
 
-GitHub 源码仓库包括 Go 文件、前端源文件、依赖锁、vendored Go 源码、补丁、文档和示例。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。将 `.dev` 或 `dist` 整个目录上传会把旧程序和本机数据一并带入发布内容。
+EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
 
 | 依赖或资源 | 许可位置 |
 | --- | --- |
-| Viva 与 Go 依赖 | `vendor` 各模块的 LICENSE 和 NOTICE |
+| Viva | `vendor/github.com/vivaui/viva` 中的 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES.md` |
+| 其他 Go 依赖 | `vendor` 各模块的许可证和版权声明 |
 | Univer、SuperDoc、DOCX Engine 与 PDF.js | 构建生成的 `THIRD-PARTY-NOTICES.txt` 及 npm 包内声明 |
 | 终端和助手服务商标识 | `assets/terminal` 与 `assets/ai-providers` 的许可文件 |
 
-项目所有者决定源码仓库的发布许可证。若要分发带 Word 功能的 EXE，应核对 SuperDoc 与其独立 DOCX Engine 的适用许可或书面授权。[DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/) · [GitHub 仓库许可说明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)
+Word 功能使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。分发包含 Word 功能的 EXE 时，需要同时满足 SuperDoc 的适用许可与 DOCX Engine 的分发授权。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)

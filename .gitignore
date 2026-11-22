@@ -7,6 +7,7 @@
 /assets/icon.ico
 /assets/icon-[0-9]*.png
 /Viva Editor.lnk
+/EditorX.lnk
 
 # Local editor state and generated binaries
 *.exe

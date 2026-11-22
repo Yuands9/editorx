@@ -1,5 +1,6 @@
 //go:build windows
 
+// Modified for EditorX. See patches/ in the project root.
 package app
 
 import (

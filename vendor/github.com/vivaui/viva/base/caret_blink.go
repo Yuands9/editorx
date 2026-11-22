@@ -1,3 +1,4 @@
+// Modified for EditorX. See patches/ in the project root.
 package base
 
 import (

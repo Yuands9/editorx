@@ -2,7 +2,7 @@
 
 ## 实测结果
 
-Viva Editor v0.32.1 在 Windows Build 26300、Intel Core Ultra 9 285H 的本机环境运行。样例位于本地 D 盘，每次用新的 Viva 进程和 WebView2 数据目录打开。以下包括一次初测与三次复测，容量以 MiB 计。
+测试使用改名前的 Viva Editor v0.32.1，环境为 Windows Build 26300、Intel Core Ultra 9 285H。样例位于本地 D 盘，每次用新的 Viva 进程和 WebView2 数据目录打开。以下包括一次初测与三次复测，容量以 MiB 计。
 
 | 文件 | 样例规模 | 计时终点 | 四次耗时（秒） | 中位数（秒） |
 | --- | --- | --- | --- | ---: |

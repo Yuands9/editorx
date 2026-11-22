@@ -127,7 +127,7 @@ func TestRenderPreview(t *testing.T) {
 				m.showFiles = false
 			}
 			page := ui.NewPage(ui.PageConfig{View: m.page, Theme: &m.theme})
-			session, err := headless.Open(ui.Configure(page, app.Config{Title: "Viva Editor", Width: sample.width, Height: sample.height}), nil, headless.Options{Scale: 1})
+			session, err := headless.Open(ui.Configure(page, app.Config{Title: applicationName, Width: sample.width, Height: sample.height}), nil, headless.Options{Scale: 1})
 			if err != nil {
 				t.Fatal(err)
 			}

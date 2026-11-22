@@ -15,6 +15,8 @@ import (
 	uimarkdown "github.com/vivaui/viva/ui/markdown"
 )
 
+const applicationName = "EditorX"
+
 type editorTab struct {
 	id                int
 	name              string
@@ -587,7 +589,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		origin = &gfx.Point{X: m.windowFrame.X, Y: m.windowFrame.Y}
 	}
 	return app.Config{
-		Title: "Viva Editor", Icon: applicationIcon, Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
+		Title: applicationName, Icon: applicationIcon, Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
 		Invalidator:    &m.invalidator,
 		OnShortcut:     m.aiPromptShortcut,
 		OnCloseRequest: m.requestClose,
@@ -600,18 +602,18 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 func main() {
 	directory, err := editorDataDirectory()
 	if err != nil {
-		app.ShowFatalError("Viva Editor", err.Error())
+		app.ShowFatalError(applicationName, err.Error())
 		return
 	}
 	release, err := lockSessionDirectory(directory)
 	if err != nil {
-		app.ShowFatalError("Viva Editor", err.Error())
+		app.ShowFatalError(applicationName, err.Error())
 		return
 	}
 	defer release()
 	store, err := openSessionStore(directory)
 	if err != nil {
-		app.ShowFatalError("Viva Editor", err.Error())
+		app.ShowFatalError(applicationName, err.Error())
 		return
 	}
 	os.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
@@ -668,7 +670,7 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		app.ShowFatalError("Viva Editor", err.Error())
+		app.ShowFatalError(applicationName, err.Error())
 	}
 }
 

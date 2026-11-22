@@ -1,3 +1,4 @@
+// Added for EditorX to verify its local Viva changes.
 package components
 
 import (

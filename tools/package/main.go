@@ -20,7 +20,7 @@ func packageExecutable() error {
 	if err != nil {
 		return err
 	}
-	path := "dist/VivaEditor.exe"
+	path := "dist/EditorX.exe"
 	if len(os.Args) == 2 {
 		path = os.Args[1]
 	}
@@ -28,7 +28,7 @@ func packageExecutable() error {
 	if err != nil {
 		return err
 	}
-	executable, err = winres.Patch(executable, icon, winres.Info{Name: "Viva Editor", Description: "Viva Editor", Version: "0.32.1", File: "VivaEditor.exe"})
+	executable, err = winres.Patch(executable, icon, winres.Info{Name: "EditorX", Description: "EditorX", Version: "0.32.1", File: "EditorX.exe"})
 	if err != nil {
 		return err
 	}

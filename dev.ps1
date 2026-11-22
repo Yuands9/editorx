@@ -24,7 +24,7 @@ try {
         }
         default {
             New-Item -ItemType Directory -Path $output -Force | Out-Null
-            $exe = Join-Path $output 'VivaEditor.exe'
+            $exe = Join-Path $output 'EditorX.exe'
             & $go build -mod=vendor -trimpath -ldflags '-s -w -H windowsgui' -o $exe .
             if ($LASTEXITCODE -ne 0) { throw 'Go build failed.' }
             & $go run -mod=vendor ./tools/package $exe

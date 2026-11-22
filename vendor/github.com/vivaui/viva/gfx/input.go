@@ -1,3 +1,4 @@
+// Modified for EditorX. See patches/ in the project root.
 package gfx
 
 // Key is one normalized, platform-independent keyboard identity.

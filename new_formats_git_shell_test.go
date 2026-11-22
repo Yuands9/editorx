@@ -113,6 +113,8 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Second)
 	defer cancel()
 	root := t.TempDir()
+	// 在项目目录下生成临时文件时，Git 也只发现本次测试创建的仓库。
+	t.Setenv("GIT_CEILING_DIRECTORIES", root)
 	work := filepath.Join(root, "工作区")
 	remote := filepath.Join(root, "remote.git")
 	peer := filepath.Join(root, "peer")

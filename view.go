@@ -254,7 +254,7 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 	ui.Menu(c, button, &m.fileMenu, func(menu *ui.MenuItems) {
 		menu.WidthRange(264, 300)
 		menu.RowHeight(32)
-		menu.Label("Viva Editor")
+		menu.Label(applicationName)
 		if menu.Item("新建").Icon(plusIcon).Keys(ui.Ctrl, "n").Clicked() {
 			c.After(m.newDocument)
 		}

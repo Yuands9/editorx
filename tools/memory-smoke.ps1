@@ -73,7 +73,10 @@ public sealed class VivaMemoryProcess : IDisposable {
         EnumWindowsCallback closeOwnWindow=(window,parameter)=>{
             int owner;GetWindowThreadProcessId(window,out owner);
             var title=new StringBuilder(256);GetWindowText(window,title,256);
-            if(owner==process.processId&&title.ToString()=="Viva Editor")PostMessage(window,0x10,IntPtr.Zero,IntPtr.Zero);
+            string caption=title.ToString();
+            if(owner==process.processId&&(caption=="EditorX"||caption=="Viva Editor")) {
+                PostMessage(window,0x10,IntPtr.Zero,IntPtr.Zero);
+            }
             return true;
         };
         EnumDesktopWindows(desktop,closeOwnWindow,IntPtr.Zero);

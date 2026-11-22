@@ -14,7 +14,7 @@ func (m *editorApp) toggleFiles() {
 func (m *editorApp) sidebar(c ui.C, t *editorTab, blocked bool) {
 	ui.Row(c).FillWidth().Height(60).PadX(8).Gap(8).Items(ui.Center).Children(func() {
 		m.mainMenu(c, t, blocked)
-		ui.Text(c, "Viva Editor").FontSize(15).Bold().Grow(1)
+		ui.Text(c, applicationName).FontSize(15).Bold().Grow(1)
 		if ui.Button(c, "收起文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip("关闭左侧主菜单 · Ctrl+B").Disabled(blocked).Clicked() {
 			c.After(m.toggleFiles)
 		}
