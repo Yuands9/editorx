@@ -1,0 +1,38 @@
+diff --git a/vendor/github.com/vivaui/viva/app/driver.go b/vendor/github.com/vivaui/viva/app/driver.go
+index c258196..072fee0 100644
+--- a/vendor/github.com/vivaui/viva/app/driver.go
++++ b/vendor/github.com/vivaui/viva/app/driver.go
+@@ -652,11 +652,12 @@ func (driver *Driver) Key(key gfx.Key, modifiers gfx.Modifiers) error {
+ 			return err
+ 		}
+ 	}
+-	if key == gfx.KeyEnter && modifiers&(gfx.ModifierControl|gfx.ModifierMeta) != 0 {
+-		// As on a window: Control+Enter is offered to the application before the
+-		// text system, which would make a line break of it.
++	textEnter := modifiers == 0 && driver.editing() && driver.painter.nativeText.Placed &&
++		driver.painter.nativeText.Multiline && !driver.terminal() && !driver.painter.nativeText.State.Composing
++	if key == gfx.KeyEnter && (textEnter || modifiers&(gfx.ModifierControl|gfx.ModifierMeta) != 0) {
++		// As on a window: offer Return before it inserts a line break.
+ 		event := platform.KeyEvent{Key: input.KeyEnter, Modifiers: input.Modifiers(modifiers)}
+-		if platform.ShortcutCandidate(event) {
++		if textEnter || platform.ShortcutCandidate(event) {
+ 			if _, handled, err := driver.painter.shortcut(event); err != nil || handled {
+ 				return err
+ 			}
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
+index 76cf552..7b8663c 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
+@@ -77,7 +77,11 @@ func (state *windowState) offerShortcut(first, second uintptr, mods input.Modifi
+ 			return false
+ 		}
+ 	}
+-	if !platform.ShortcutCandidate(event) {
++	// A multiline field may use plain Return to send. If the application leaves
++	// it alone, the native editor still inserts a line break.
++	textEnter := event.Key == input.KeyEnter && mods == 0 && state.textEnabled &&
++		state.textInput.Placed && state.textInput.Multiline && !state.textInput.Terminal && !state.textState.Composing
++	if !textEnter && !platform.ShortcutCandidate(event) {
+ 		return false
+ 	}
+ 	frame, handled, err := state.config.OnShortcut(event)

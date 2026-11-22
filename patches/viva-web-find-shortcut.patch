@@ -1,0 +1,99 @@
+diff --git a/vendor/github.com/vivaui/viva/app/web.go b/vendor/github.com/vivaui/viva/app/web.go
+index f428b43..b215577 100644
+--- a/vendor/github.com/vivaui/viva/app/web.go
++++ b/vendor/github.com/vivaui/viva/app/web.go
+@@ -100,6 +100,9 @@ type WebViewConfig struct {
+ 	Proxy string
+ 	// OnMessage receives what the page posts with window.viva.postMessage(text).
+ 	OnMessage func(text string)
++	// LetterShortcut selects an action for a modified A–Z key in a focused Windows WebView.
++	// Return nil to leave the chord to the page. The action runs after the host takes focus.
++	LetterShortcut func(letter rune, modifiers gfx.Modifiers) func()
+ 	// TopCornerRadius rounds the top two corners in logical pixels; zero keeps a rectangular view.
+ 	// macOS and Windows clip natively; GTK returns ErrUnsupported for nonzero radii.
+ 	TopCornerRadius float32
+@@ -220,6 +223,7 @@ func (host *WebHost) Open(config WebViewConfig) (*WebView, error) {
+ 		ID: uint32(id), URL: config.URL, HTML: config.HTML, BaseURL: config.BaseURL, Proxy: config.Proxy,
+ 		TopCornerRadius: config.TopCornerRadius,
+ 		Ephemeral:       config.Ephemeral,
++		LetterShortcut:  config.LetterShortcut,
+ 	}
+ 	// What a page tells the application usually changes what it shows, so a callback is followed
+ 	// by a paint.
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/web_host.go b/vendor/github.com/vivaui/viva/internal/platform/web_host.go
+index 9385652..6469d5a 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/web_host.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/web_host.go
+@@ -62,6 +62,9 @@ type WebViewConfig struct {
+ 	Proxy string
+ 	// OnMessage receives what the page posts with window.viva.postMessage(text).
+ 	OnMessage func(text string)
++	// LetterShortcut selects an action for a modified A–Z key in a focused Windows WebView.
++	// Return nil to leave the chord to the page. The action runs after the host takes focus.
++	LetterShortcut func(letter rune, modifiers gfx.Modifiers) func()
+ 	// TopCornerRadius rounds the top two corners in logical pixels; zero keeps a rectangular view.
+ 	// macOS and Windows clip natively; GTK returns ErrUnsupported for nonzero radii.
+ 	TopCornerRadius float32
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+index 9ab7b51..6d0cd9c 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+@@ -289,6 +289,12 @@ func (page *windowsWeb) fail(err error) {
+ // attach wires the page's events and what it is given, and runs what was asked of it meanwhile.
+ func (page *windowsWeb) attach(environment uintptr) {
+ 	view := page.view
++	if page.config.LetterShortcut != nil {
++		addWebHandler(page.controller, controllerAddAccelerator, func(_, args uintptr) uintptr {
++			page.letterShortcut(args)
++			return 0
++		})
++	}
+ 	addWebHandler(view, viewAddMessageReceived, func(_, args uintptr) uintptr {
+ 		var text uintptr
+ 		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 && page.config.OnMessage != nil {
+@@ -347,6 +353,30 @@ func (page *windowsWeb) attach(environment uintptr) {
+ 	page.host.layout(page, true)
+ }
+ 
++func (page *windowsWeb) letterShortcut(args uintptr) {
++	if page.closed || !page.shown {
++		return
++	}
++	var kind, key uint32
++	if comCall(args, acceleratorGetKind, uintptr(unsafe.Pointer(&kind))) != 0 || kind != 0 ||
++		comCall(args, acceleratorGetVirtualKey, uintptr(unsafe.Pointer(&key))) != 0 || key < 'A' || key > 'Z' {
++		return
++	}
++	action := page.config.LetterShortcut(rune(key-'A'+'a'), gfx.Modifiers(modifiers()))
++	if action == nil {
++		return
++	}
++	comCall(args, acceleratorPutHandled, 1)
++	state := page.host.state
++	// The windowed WebView blocks during its accelerator event. Hand focus back after it returns.
++	state.application.Post(func() {
++		if !page.closed && page.shown && state.window != 0 {
++			setFocus.Call(state.window)
++			action()
++		}
++	})
++}
++
+ // do runs an action now, or when the page exists.
+ func (page *windowsWeb) do(action func()) {
+ 	switch {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+index 5e31800..6808be1 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+@@ -421,6 +421,10 @@ const (
+ 	controllerPutVisible      = 4
+ 	controllerPutBounds       = 6
+ 	controllerMoveFocus       = 12
++	controllerAddAccelerator  = 19
++	acceleratorGetKind        = 3
++	acceleratorGetVirtualKey  = 4
++	acceleratorPutHandled     = 8
+ 	controllerClose           = 24
+ 	controllerGetWebView      = 25
+ 	viewNavigate              = 5

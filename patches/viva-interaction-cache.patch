@@ -1,0 +1,69 @@
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor.go b/vendor/github.com/vivaui/viva/components/code_editor.go
+index 2f8b0e7..60540eb 100644
+--- a/vendor/github.com/vivaui/viva/components/code_editor.go
++++ b/vendor/github.com/vivaui/viva/components/code_editor.go
+@@ -258,6 +258,12 @@ type CodeEditor struct {
+ 	upstream      bool
+ 	upstreamCaret int
+ 
++	// Bracket matching depends on text and caret, not on hover or overlay motion.
++	bracketText                string
++	bracketCaret               int
++	bracketPair                [2]int
++	bracketReady, bracketFound bool
++
+ 	// Scratch kept between paints.
+ 	runs        []gfx.TextRun
+ 	lineRuns    []CodeEditorRun
+@@ -492,9 +498,12 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 	}
+ 	paint.lastColumn = paint.firstColumn + cols + 8
+ 	if snapshot.MatchBrackets && selectionStart == selectionEnd && len(selectionRanges) == 0 && !placeholder {
+-		if open, closer, ok := text.MatchBracket(value, caret); ok {
+-			paint.brackets, paint.bracketsOK = [2]int{open, closer}, true
++		if !editor.bracketReady || editor.bracketText != value || editor.bracketCaret != caret {
++			open, closer, found := text.MatchBracket(value, caret)
++			editor.bracketText, editor.bracketCaret, editor.bracketReady = value, caret, true
++			editor.bracketPair, editor.bracketFound = [2]int{open, closer}, found
+ 		}
++		paint.brackets, paint.bracketsOK = editor.bracketPair, editor.bracketFound
+ 	}
+ 	editor.runLine = -1
+ 
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor_cache_test.go b/vendor/github.com/vivaui/viva/components/code_editor_cache_test.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/vivaui/viva/components/code_editor_cache_test.go
+@@ -0,0 +1,32 @@
++package components
++
++import (
++	"github.com/vivaui/viva/gfx"
++	"testing"
++)
++
++func TestBracketCacheFollowsTextAndCaret(t *testing.T) {
++	var editor CodeEditor
++	var canvas gfx.Canvas
++	for _, sample := range []struct {
++		value string
++		caret int
++		pair  [2]int
++		found bool
++	}{
++		{"[1]", 0, [2]int{0, 2}, true},
++		{"[1]", 0, [2]int{0, 2}, true},
++		{"[中文]", 0, [2]int{0, 7}, true},
++		{"[中文", 0, [2]int{}, false},
++		{"[中文", 0, [2]int{}, false},
++		{"[{}]", 2, [2]int{1, 2}, true},
++		{"[{}]", 4, [2]int{0, 3}, true},
++		{"abc", 1, [2]int{}, false},
++	} {
++		canvas.Reset()
++		editor.Paint(&canvas, gfx.DarkTheme(), gfx.Rect{Width: 600, Height: 400}, CodeEditorSnapshot{Value: sample.value, Caret: sample.caret, MatchBrackets: true})
++		if editor.bracketFound != sample.found || editor.bracketPair != sample.pair {
++			t.Fatalf("%q caret %d: %v %v", sample.value, sample.caret, editor.bracketPair, editor.bracketFound)
++		}
++	}
++}

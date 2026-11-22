@@ -1,0 +1,65 @@
+diff --git a/vendor/github.com/vivaui/viva/base/caret_blink.go b/vendor/github.com/vivaui/viva/base/caret_blink.go
+index d45b640..3b501c0 100644
+--- a/vendor/github.com/vivaui/viva/base/caret_blink.go
++++ b/vendor/github.com/vivaui/viva/base/caret_blink.go
+@@ -38,6 +38,16 @@ type CaretBlink struct {
+ // without a frame clock, a reduced-motion session, and a caret left alone for
+ // CaretBlinkSpan all stay lit and ask for nothing.
+ func (blink *CaretBlink) Lit(canvas *gfx.Canvas, anchor int) bool {
++	return blink.lit(canvas, anchor, false)
++}
++
++// LitContinuous keeps the insertion caret blinking while it is focused.
++// Applications opt in for editors where caret motion is an explicit preference.
++func (blink *CaretBlink) LitContinuous(canvas *gfx.Canvas, anchor int) bool {
++	return blink.lit(canvas, anchor, true)
++}
++
++func (blink *CaretBlink) lit(canvas *gfx.Canvas, anchor int, continuous bool) bool {
+ 	if !canvas.HasClock() {
+ 		return true
+ 	}
+@@ -46,7 +56,7 @@ func (blink *CaretBlink) Lit(canvas *gfx.Canvas, anchor int) bool {
+ 		blink.since, blink.anchor, blink.seen = now, anchor, true
+ 	}
+ 	elapsed := max(now-blink.since, 0)
+-	if elapsed >= CaretBlinkSpan || canvas.ReduceMotion() {
++	if !continuous && (elapsed >= CaretBlinkSpan || canvas.ReduceMotion()) {
+ 		return true
+ 	}
+ 	phase := elapsed % (2 * CaretBlinkHalf)
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor.go b/vendor/github.com/vivaui/viva/components/code_editor.go
+index 60540eb..28f215b 100644
+--- a/vendor/github.com/vivaui/viva/components/code_editor.go
++++ b/vendor/github.com/vivaui/viva/components/code_editor.go
+@@ -117,6 +117,10 @@ type CodeEditorSnapshot struct {
+ 	Disabled    bool
+ 	ReadOnly    bool
+ 	Focused     bool
++	// Borderless uses the surrounding surface without a text-entry outline.
++	Borderless bool
++	// ContinuousCaretBlink keeps the insertion caret blinking even after idle.
++	ContinuousCaretBlink bool
+ 	// ShowCaret paints the caret of a focused editor. The editor blinks it
+ 	// automatically while an animation clock is available.
+ 	ShowCaret bool
+@@ -318,11 +322,17 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 	}
+ 	showCaret := focused && snapshot.ShowCaret && snapshot.SelectionStart == snapshot.SelectionEnd
+ 	if showCaret && !snapshot.ReadOnly {
+-		showCaret = editor.caretBlink.Lit(canvas, snapshot.Caret)
++		if snapshot.ContinuousCaretBlink {
++			showCaret = editor.caretBlink.LitContinuous(canvas, snapshot.Caret)
++		} else {
++			showCaret = editor.caretBlink.Lit(canvas, snapshot.Caret)
++		}
+ 	} else {
+ 		editor.caretBlink.Rest()
+ 	}
+-	paintTextEntrySurface(canvas, &theme, bounds, gfx.State{Focused: focused, Disabled: snapshot.Disabled})
++	if !snapshot.Borderless {
++		paintTextEntrySurface(canvas, &theme, bounds, gfx.State{Focused: focused, Disabled: snapshot.Disabled})
++	}
+ 
+ 	size := snapshot.FontSize
+ 	if size <= 0 {

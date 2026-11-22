@@ -1,0 +1,159 @@
+:root {
+  color-scheme: dark;
+  --viva-background: #181818;
+  --viva-card: #1d1e20;
+  --viva-surface: #262729;
+  --viva-hover: #2f3235;
+  --viva-selection: #3a434e;
+  --viva-border: #313439;
+  --viva-text: #e5e5e5;
+  --viva-muted: #9da2ac;
+  --viva-disabled: #777d88;
+  --viva-action: #97b6e6;
+  --viva-action-hover: #b0c9ee;
+  --viva-action-text: #172134;
+  --viva-notice-bg: #3b2d26;
+  --viva-notice-text: #f2b28f;
+  --viva-overlay: #181818bf;
+}
+:root.light {
+  color-scheme: light;
+  --viva-background: #fff;
+  --viva-card: #f5f6f8;
+  --viva-surface: #fff;
+  --viva-hover: #e6ebf2;
+  --viva-selection: #bed8fc;
+  --viva-border: #dadfe6;
+  --viva-text: #262c35;
+  --viva-muted: #606976;
+  --viva-disabled: #838c99;
+  --viva-action: #2c64b2;
+  --viva-action-hover: #245494;
+  --viva-action-text: #fff;
+  --viva-notice-bg: #fff1e6;
+  --viva-notice-text: #9d411e;
+  --viva-overlay: #ffffffbf;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family:
+    "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
+  background: var(--viva-background);
+  color: var(--viva-text);
+}
+body {
+  display: flex;
+  flex-direction: column;
+}
+body > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  padding: 7px 14px;
+  background: var(--viva-card);
+  border-bottom: 1px solid var(--viva-border);
+  flex-shrink: 0;
+}
+body > header > strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#state {
+  flex-shrink: 0;
+  color: var(--viva-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+body > header > button {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 6px 12px;
+  border: 1px solid var(--viva-border);
+  border-radius: 10px;
+  background: var(--viva-surface);
+  color: var(--viva-text);
+  cursor: pointer;
+}
+body > header > button:hover:not(:disabled) {
+  background: var(--viva-hover);
+}
+body > header > #save {
+  border-color: var(--viva-action);
+  background: var(--viva-action);
+  color: var(--viva-action-text);
+}
+body > header > #save:hover:not(:disabled) {
+  border-color: var(--viva-action-hover);
+  background: var(--viva-action-hover);
+}
+body > header > button:focus-visible {
+  outline: 2px solid var(--viva-action);
+  outline-offset: 2px;
+}
+body > header > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#editor {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+#toolbar {
+  flex-shrink: 0;
+  background: var(--viva-card);
+}
+#editor[data-kind="docx"] {
+  background: var(--viva-card);
+}
+/* The page compositor changes the display only; SuperDoc exports its original styles. */
+@media screen {
+  :root:not(.light) #editor[data-kind="docx"] .superdoc-page {
+    filter: invert(1) hue-rotate(180deg) contrast(.78);
+  }
+
+  :root:not(.light) #editor[data-kind="docx"] .superdoc-page img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+#toolbar:empty {
+  display: none;
+}
+#notice {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--viva-notice-text);
+  background: var(--viva-notice-bg);
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+#busy {
+  position: fixed;
+  inset: 0;
+  background: var(--viva-overlay);
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+}
+#busy[hidden],
+#notice[hidden] {
+  display: none;
+}

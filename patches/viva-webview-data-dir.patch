@@ -1,0 +1,15 @@
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+index 4f0f20a..197d8b7 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+@@ -129,6 +129,10 @@ func newWebHost(state *windowState, host *platform.WebHost, initial []platform.N
+ // userDataFolder is where the runtime keeps a page's profile: beside the other things the program
+ // caches for the user, under its own name.
+ func userDataFolder(class string) string {
++	if folder := os.Getenv("WEBVIEW2_USER_DATA_FOLDER"); folder != "" {
++		_ = os.MkdirAll(folder, 0o700)
++		return folder
++	}
+ 	base, err := os.UserCacheDir()
+ 	if err != nil {
+ 		base = os.TempDir()

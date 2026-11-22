@@ -1,0 +1,18 @@
+{
+    "name": "Viva Editor",
+    "description": "轻量的代码与配置编辑器",
+    "editor": {
+        "fontSize": 15,
+        "tabWidth": 4,
+        "wordWrap": false
+    },
+    "files": {
+        "encoding": "UTF-8",
+        "lineEnding": "CRLF",
+        "extensions": ["xml", "json", "md", ""]
+    },
+    "input": {
+        "language": "中文 / English",
+        "sample": "你好，世界！"
+    }
+}

@@ -1,0 +1,128 @@
+diff --git a/vendor/github.com/vivaui/viva/gfx/input.go b/vendor/github.com/vivaui/viva/gfx/input.go
+index ad5a308..88d5903 100644
+--- a/vendor/github.com/vivaui/viva/gfx/input.go
++++ b/vendor/github.com/vivaui/viva/gfx/input.go
+@@ -285,6 +285,9 @@ type EventResult struct {
+ 	Handled bool
+ 	Repaint bool
+ 	Blur    bool
++	// PreferLatestFrame lets a pointer drag replace queued visual positions.
++	// It applies only to the frame requested by this event.
++	PreferLatestFrame bool
+ 	// ContinueTraversal asks the runtime to settle the repaint this result
+ 	// requests and then carry the same key on to normal traversal. A menu closes
+ 	// on Tab this way: the popup is gone before the focus moves through the page.
+diff --git a/vendor/github.com/vivaui/viva/app/painter.go b/vendor/github.com/vivaui/viva/app/painter.go
+index 17ba139..dcb6876 100644
+--- a/vendor/github.com/vivaui/viva/app/painter.go
++++ b/vendor/github.com/vivaui/viva/app/painter.go
+@@ -120,11 +120,13 @@ type painter struct {
+ 	// coalesceInput asks the pointer and wheel paths to leave their repaint to
+ 	// the frame clock, so a burst of events becomes one frame. A window that
+ 	// presents immediately sets it; the headless driver does not.
+-	coalesceInput    bool
+-	setClipboardText func(string)
+-	clipboardText    func() string
+-	setCursor        func(Cursor) error
+-	setCursorImage   func(*gfx.CursorImage) error
++	coalesceInput     bool
++	wakePointerFrame  func()
++	preferLatestFrame bool
++	setClipboardText  func(string)
++	clipboardText     func() string
++	setCursor         func(Cursor) error
++	setCursorImage    func(*gfx.CursorImage) error
+ 	// cursorImage is the picture shown while cursor is CursorImage.
+ 	cursorImage *gfx.CursorImage
+ }
+@@ -308,6 +310,13 @@ func (painter *painter) pointerEvent(event platform.PointerEvent) (platform.Fram
+ 		}
+ 		return platform.Frame{}, nil
+ 	}
++	if result.Repaint && result.PreferLatestFrame {
++		painter.preferLatestFrame = true
++		if painter.wakePointerFrame != nil {
++			painter.wakePointerFrame()
++			return platform.Frame{}, nil
++		}
++	}
+ 	return painter.repaintAfterInput()
+ }
+ 
+@@ -942,6 +951,8 @@ func (painter *painter) publish() (platform.Frame, error) {
+ 		return platform.Frame{}, fmt.Errorf("app: render state is inconsistent: %w", err)
+ 	}
+ 
++	frame.PreferLatest = painter.preferLatestFrame
++	painter.preferLatestFrame = false
+ 	if views, changed := painter.syncNativeViews(); changed {
+ 		frame.NativeViews = views
+ 	}
+diff --git a/vendor/github.com/vivaui/viva/app/run_canvas.go b/vendor/github.com/vivaui/viva/app/run_canvas.go
+index 385c6e2..37b4a52 100644
+--- a/vendor/github.com/vivaui/viva/app/run_canvas.go
++++ b/vendor/github.com/vivaui/viva/app/run_canvas.go
+@@ -111,6 +111,7 @@ func nativeWindowConfig(normalized *Config, painter *painter) (platform.Config,
+ 		}
+ 		frames = newFrameTimer(waker.Wake)
+ 		painter.scheduleFrame = frames.request
++		painter.wakePointerFrame = waker.Wake
+ 		painter.noteFrameStart = frames.redrawing
+ 		painter.coalesceInput = true
+ 		painter.scheduleIfAnimating()
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/contract.go b/vendor/github.com/vivaui/viva/internal/platform/contract.go
+index d079970..2a0d416 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/contract.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/contract.go
+@@ -570,6 +570,8 @@ type Frame struct {
+ 	Update     render.Update
+ 	Rectangles []render.Rectangle
+ 	TextLabels []TextLabel
++	// PreferLatest allows the compositor to skip older positions during a pointer drag.
++	PreferLatest bool
+ 	// Accessibility, when non-nil, replaces the window's accessibility tree; an empty
+ 	// non-nil slice clears it. Nil leaves the current tree as it is.
+ 	Accessibility []AccessibilityNode
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
+index e2f6fda..60bb6df 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
+@@ -90,6 +90,7 @@ type windowState struct {
+ 	window                                       uintptr
+ 	ready, tracking, sizing, sizingMove          bool
+ 	redrawRequested, paintPending, resizePending bool
++	presentLatest                                bool
+ 	resizeTimerInterval                          uintptr
+ 	resizeMonitor, resizeMonitorInterval         uintptr // the monitor resizeMonitorInterval was queried for
+ 	minimized                                    bool
+@@ -738,7 +739,12 @@ func windowProc(window, kind, first, second uintptr) (result uintptr) {
+ 		}
+ 		var bounds rect
+ 		getClientRect.Call(window, uintptr(unsafe.Pointer(&bounds)))
+-		err := state.present(int(bounds.Right), int(bounds.Bottom))
++		present := state.present
++		if state.presentLatest {
++			present = state.presentImmediate
++		}
++		state.presentLatest = false
++		err := present(int(bounds.Right), int(bounds.Bottom))
+ 		if err == nil {
+ 			state.scheduleTrim()
+ 		}
+@@ -1226,7 +1232,7 @@ func (state *windowState) frameWithTextAndCancel(frame platform.Frame, err error
+ 	if err == nil && state.window == 0 {
+ 		return nil
+ 	}
+-	views := frame.NativeViews
++	views, preferLatest := frame.NativeViews, frame.PreferLatest
+ 	if err == nil {
+ 		state.applyBackdrop()
+ 		state.applyBorderColor()
+@@ -1248,6 +1254,7 @@ func (state *windowState) frameWithTextAndCancel(frame platform.Frame, err error
+ 		}
+ 		if err == nil {
+ 			if dirty {
++				state.presentLatest = preferLatest
+ 				state.paintPending = true
+ 				invalidateRect.Call(state.window, 0, 0)
+ 			} else if !state.paintPending && !state.sizing && !state.resizePending {

@@ -1,0 +1,56 @@
+diff --git a/vendor/github.com/vivaui/viva/app/system_windows.go b/vendor/github.com/vivaui/viva/app/system_windows.go
+index ccfb273..e5d8500 100644
+--- a/vendor/github.com/vivaui/viva/app/system_windows.go
++++ b/vendor/github.com/vivaui/viva/app/system_windows.go
+@@ -48,6 +48,18 @@ func nativeOpenFiles(options OpenFileOptions) ([]string, error) {
+ 	return paths, err
+ }
+ 
++// OpenDirectories presents the Windows folder picker with multiple selection.
++func OpenDirectories(options OpenDirectoryOptions) ([]string, error) {
++	if paths, err, handled := driverOpenFiles(OpenFileOptions{Title: options.Title, AllowMultiple: true}); handled {
++		return paths, err
++	}
++	paths, canceled, err := windowsplatform.OpenDirectories(windowsplatform.OpenDirectoryOptions{Title: options.Title})
++	if canceled {
++		return nil, ErrCanceled
++	}
++	return paths, err
++}
++
+ func nativeOpenDirectory(options OpenDirectoryOptions) (string, error) {
+ 	path, canceled, err := windowsplatform.OpenDirectory(windowsplatform.OpenDirectoryOptions{Title: options.Title})
+ 	if canceled {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/system_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/system_windows.go
+index 007cecb..ee4d0fd 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/system_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/system_windows.go
+@@ -482,6 +482,14 @@ func SetCursorShape(shape uint8) error {
+ }
+ 
+ func OpenFiles(options OpenFileOptions) ([]string, bool, error) {
++	return openItems(options, false)
++}
++
++func OpenDirectories(options OpenDirectoryOptions) ([]string, bool, error) {
++	return openItems(OpenFileOptions{Title: options.Title, AllowMultiple: true}, true)
++}
++
++func openItems(options OpenFileOptions, folders bool) ([]string, bool, error) {
+ 	var paths []string
+ 	canceled := false
+ 	err := withSTA(func() error {
+@@ -490,7 +498,12 @@ func OpenFiles(options OpenFileOptions) ([]string, bool, error) {
+ 			return err
+ 		}
+ 		defer release(&dialog)
+-		flags := uint32(forceFileSystem | fileMustExist | pathMustExist | noChangeDirectory)
++		flags := uint32(forceFileSystem | pathMustExist | noChangeDirectory)
++		if folders {
++			flags |= pickFolders
++		} else {
++			flags |= fileMustExist
++		}
+ 		if options.AllowMultiple {
+ 			flags |= allowMultiSelect
+ 		}

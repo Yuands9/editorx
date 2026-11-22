@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>XMind</title>
+<style>
+:root{color-scheme:light dark;--bg:#18191b;--bar:#202226;--fg:#edf0f5;--muted:#a4acb9;--line:#515b6e;--node:#2b2f37;--root:#344f77;--root-border:#678ac1}
+html.light{color-scheme:light;--bg:#f3f5f8;--bar:#fff;--fg:#242a34;--muted:#526174;--line:#a2adbd;--node:#fff;--root:#d7e7ff;--root-border:#9ab6dd}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px "Segoe UI","Microsoft YaHei UI",sans-serif}
+header{position:sticky;top:0;left:0;z-index:2;display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--bar)}
+select,button{color:inherit;background:var(--node);border:1px solid var(--line);border-radius:8px;font:inherit;padding:6px 10px}
+select{max-width:55vw} button{cursor:pointer}output{color:var(--muted);text-align:center;min-width:60px}
+main{padding:26px 36px;overflow:auto;height:calc(100vh - 49px)}section{width:max-content;min-width:100%;min-height:100%;align-items:center;display:flex} section[hidden]{display:none}
+ul{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;justify-content:center;position:relative}
+li{display:flex;align-items:center;position:relative;padding:6px 0 6px 22px;min-height:46px}
+li:before{content:"";position:absolute;left:0;width:22px;top:50%;border-top:1px solid var(--line)}
+li:after{content:"";position:absolute;left:0;top:0;bottom:0;border-left:1px solid var(--line)}
+li:first-child:after{top:50%}li:last-child:after{bottom:50%}li:only-child:after{display:none}
+.node{display:flex;align-items:center;flex:none;gap:8px;min-height:34px;max-width:340px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--node);white-space:pre-wrap;overflow-wrap:anywhere}
+.root>.node{background:var(--root);border-color:var(--root-border);font-weight:600;font-size:16px}
+.root{padding-left:0}.root:before,.root:after{display:none}
+.node button{border:0;background:transparent;color:var(--muted);font-size:15px;line-height:18px;padding:0 2px;align-self:center}
+li>ul{margin-left:24px}li>ul:before{content:"";position:absolute;left:-24px;top:50%;width:24px;border-top:1px solid var(--line)}
+li.collapsed>ul{display:none}
+</style>
+<header>
+<label for="sheet">画布</label><select id="sheet">{{range $i,$sheet := .Sheets}}<option value="{{$i}}">{{$sheet.Title}}</option>{{end}}</select>
+<button type="button" id="smaller" aria-label="缩小">−</button><output id="zoom">100%</output><button type="button" id="larger" aria-label="放大">+</button>
+<button type="button" id="reset">重置</button>
+</header>
+<main id="view">
+{{range $i,$sheet := .Sheets}}
+<section data-sheet="{{$i}}" {{if $i}}hidden{{end}}><ul><li class="root">{{template "topic" $sheet.Root}}</li></ul></section>
+{{end}}
+</main>
+<script>
+const list = document.querySelector('main')
+const sheets = [...list.querySelectorAll('section')]
+let scale = 100
+function applyZoom(){
+  for(const sheet of sheets) sheet.style.zoom = scale + '%'
+  document.querySelector('output').value = scale + '%'
+}
+document.querySelector('#sheet').onchange = event => {
+  for(const sheet of sheets) sheet.hidden = sheet.dataset.sheet !== event.target.value
+  list.scrollTo(0,0)
+}
+document.querySelector('#smaller').onclick = () => { scale = Math.max(40, scale-10); applyZoom() }
+document.querySelector('#larger').onclick = () => { scale = Math.min(200, scale+10); applyZoom() }
+document.querySelector('#reset').onclick = () => { scale = 100; applyZoom(); list.scrollTo(0,0) }
+list.onclick = event => {
+  const button = event.target.closest('button[data-topic]')
+  if(!button) return
+  const collapsed = button.closest('li').classList.toggle('collapsed')
+  button.textContent = collapsed ? '+' : '−'
+  button.setAttribute('aria-expanded', String(!collapsed))
+}
+</script>
+</html>
+{{define "topic"}}
+<div class="node" {{if .Note}}title="{{.Note}}"{{end}}><span>{{.Title}}</span>{{if .Children}}<button type="button" aria-expanded="true" aria-label="展开或收起分支" data-topic>−</button>{{end}}</div>
+{{if .Children}}<ul>{{range .Children}}<li>{{template "topic" .}}</li>{{end}}</ul>{{end}}
+{{end}}

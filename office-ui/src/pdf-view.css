@@ -1,0 +1,75 @@
+@import "pdfjs-dist/web/pdf_viewer.css";
+
+:root {
+  color-scheme: dark;
+  --surface: #1d1e20;
+  --paper: #202124;
+  --hover: #2f3235;
+  --edge: #313439;
+  --text: #e5e5e5;
+  --muted: #9da2ac;
+  --focus: #97b6e6;
+}
+:root.light {
+  color-scheme: light;
+  --surface: #f5f6f8;
+  --paper: #fff;
+  --hover: #e6ebf2;
+  --edge: #dadfe6;
+  --text: #262c35;
+  --muted: #606976;
+  --focus: #2c64b2;
+}
+html, body {
+  height: 100%;
+  margin: 0;
+  color: var(--text);
+  background: var(--surface);
+  font: 13px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+body { display: flex; flex-direction: column; overflow: hidden; }
+.pdf-toolbar, .pdf-group, #find, #password-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pdf-toolbar {
+  min-height: 36px;
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--edge);
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.pdf-group { flex-shrink: 0; }
+button, input {
+  min-height: 25px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+button:not(:disabled) { cursor: pointer; }
+button:not(:disabled):hover { background: var(--hover); }
+button:disabled { opacity: .45; }
+button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+#page { width: 42px; text-align: center; }
+#total, #find-count { color: var(--muted); min-width: 38px; }
+#find, #password-form {
+  justify-content: flex-end;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+#find[hidden], #password-form[hidden], #message[hidden] { display: none; }
+#find-query { min-width: 70px; width: min(280px, 48%); }
+#message { padding: 8px 12px; color: var(--muted); }
+.pdf-workspace { flex: 1; min-height: 0; position: relative; }
+#viewer-container { position: absolute; inset: 0; overflow: auto; outline: none; }
+#viewer { padding-top: 12px; }
+#viewer .page { background-color: var(--paper); margin-bottom: 14px; }
+@media screen {
+  :root:not(.light) #viewer .canvasWrapper canvas {
+    filter: invert(1) hue-rotate(180deg) contrast(.78);
+  }
+}

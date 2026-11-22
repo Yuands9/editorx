@@ -1,0 +1,258 @@
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+index 8f18889..5e31800 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+@@ -9,6 +9,7 @@ import (
+ 	"strconv"
+ 	"strings"
+ 	"sync"
++	"sync/atomic"
+ 	"syscall"
+ 	"unsafe"
+ 
+@@ -21,8 +22,8 @@ import (
+ // Edge); an application that opens no page never looks for it.
+ //
+ // Everything is COM. The runtime's objects are called through their vtables (comCall); the few
+-// objects it calls back are handlers made here (newHandler), which are never freed: one per
+-// event registration and one per request, a handful for the life of a page.
++// objects it calls back are handlers made here (newHandler). Their COM reference counts keep
++// the Go callbacks alive only while the caller or the runtime owns the handler.
+ 
+ var (
+ 	regOpenKey        = advapi.NewProc("RegOpenKeyExW")
+@@ -112,12 +113,14 @@ func webViewInstall() (library, version string, err error) {
+ type comHandler struct {
+ 	vtbl   *[4]uintptr
+ 	invoke func(first, second uintptr) uintptr
++	refs   atomic.Int32
+ }
+ 
+ var (
+ 	handlerTable [4]uintptr
+ 	handlerOnce  sync.Once
+-	handlerLive  []*comHandler // handlers are never freed
++	handlerMu    sync.Mutex
++	handlerLive  = map[uintptr]*comHandler{}
+ )
+ 
+ func newHandler(invoke func(first, second uintptr) uintptr) uintptr {
+@@ -133,17 +136,43 @@ func newHandler(invoke func(first, second uintptr) uintptr) uintptr {
+ 				return hresultNoInterface
+ 			}
+ 			*(*uintptr)(pointer(object)) = this
++			(*comHandler)(pointer(this)).refs.Add(1)
+ 			return 0
+ 		})
+-		handlerTable[1] = syscall.NewCallback(func(this uintptr) uintptr { return 1 })
+-		handlerTable[2] = syscall.NewCallback(func(this uintptr) uintptr { return 1 })
++		handlerTable[1] = syscall.NewCallback(func(this uintptr) uintptr {
++			return uintptr((*comHandler)(pointer(this)).refs.Add(1))
++		})
++		handlerTable[2] = syscall.NewCallback(func(this uintptr) uintptr {
++			handler := (*comHandler)(pointer(this))
++			remaining := handler.refs.Add(-1)
++			if remaining == 0 {
++				handlerMu.Lock()
++				delete(handlerLive, this)
++				handlerMu.Unlock()
++				handler.invoke = nil
++			}
++			return uintptr(remaining)
++		})
+ 		handlerTable[3] = syscall.NewCallback(func(this, first, second uintptr) uintptr {
+ 			return (*comHandler)(pointer(this)).invoke(first, second)
+ 		})
+ 	})
+ 	h := &comHandler{vtbl: &handlerTable, invoke: invoke}
+-	handlerLive = append(handlerLive, h)
+-	return uintptr(unsafe.Pointer(h))
++	h.refs.Store(1)
++	address := uintptr(unsafe.Pointer(h))
++	handlerMu.Lock()
++	handlerLive[address] = h
++	handlerMu.Unlock()
++	return address
++}
++
++// addWebHandler transfers an event registration to the runtime. Failed registrations also
++// release the caller's reference; successful ones stay alive through the runtime's AddRef.
++func addWebHandler(object uintptr, slot int, invoke func(first, second uintptr) uintptr) {
++	handler := newHandler(invoke)
++	defer comCall(handler, 2)
++	var token int64
++	comCall(object, slot, handler, uintptr(unsafe.Pointer(&token)))
+ }
+ 
+ // webEnvironment is one environment: a browser process of the runtime and its settings. Pages without
+@@ -293,6 +322,7 @@ func (env *webEnvironment) join(userData string, then func(object uintptr, err e
+ 		finish(object, nil)
+ 		return 0
+ 	})
++	defer comCall(handler, 2)
+ 	// (checkRunningInstance, runtimeType installed, user data folder, no options, completion)
+ 	status, _, _ := create.Call(1, 0, uintptr(unsafe.Pointer(folder)), 0, handler)
+ 	if int32(uint32(status)) < 0 {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+index 197d8b7..9ab7b51 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+@@ -226,6 +226,7 @@ func (page *windowsWeb) createController(environment uintptr) {
+ 		page.attach(environment)
+ 		return 0
+ 	})
++	defer comCall(handler, 2)
+ 	if !page.config.Ephemeral {
+ 		comCall(environment, envCreateController, page.window, handler)
+ 		return
+@@ -288,38 +289,37 @@ func (page *windowsWeb) fail(err error) {
+ // attach wires the page's events and what it is given, and runs what was asked of it meanwhile.
+ func (page *windowsWeb) attach(environment uintptr) {
+ 	view := page.view
+-	var token int64
+-	comCall(view, viewAddMessageReceived, newHandler(func(_, args uintptr) uintptr {
++	addWebHandler(view, viewAddMessageReceived, func(_, args uintptr) uintptr {
+ 		var text uintptr
+ 		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 && page.config.OnMessage != nil {
+ 			page.config.OnMessage(wideString(text))
+ 		}
+ 		return 0
+-	}), uintptr(unsafe.Pointer(&token)))
+-	comCall(view, viewAddNavStarting, newHandler(func(_, args uintptr) uintptr {
++	})
++	addWebHandler(view, viewAddNavStarting, func(_, args uintptr) uintptr {
+ 		page.navigationStarting(args, true)
+ 		return 0
+-	}), uintptr(unsafe.Pointer(&token)))
+-	comCall(view, viewAddFrameNavStarting, newHandler(func(_, args uintptr) uintptr {
++	})
++	addWebHandler(view, viewAddFrameNavStarting, func(_, args uintptr) uintptr {
+ 		page.navigationStarting(args, false)
+ 		return 0
+-	}), uintptr(unsafe.Pointer(&token)))
+-	comCall(view, viewAddNewWindowRequested, newHandler(func(_, args uintptr) uintptr {
++	})
++	addWebHandler(view, viewAddNewWindowRequested, func(_, args uintptr) uintptr {
+ 		page.newWindowRequested(args)
+ 		return 0
+-	}), uintptr(unsafe.Pointer(&token)))
++	})
+ 	page.addDownloadHandler()
+ 	for _, event := range []struct {
+ 		slot  int
+ 		phase platform.WebLoadPhase
+ 	}{{viewAddContentLoading, platform.WebLoadCommitted}, {viewAddNavCompleted, platform.WebLoadFinished}} {
+ 		phase := event.phase
+-		comCall(view, event.slot, newHandler(func(_, _ uintptr) uintptr {
++		addWebHandler(view, event.slot, func(_, _ uintptr) uintptr {
+ 			var address uintptr
+ 			comCall(view, viewGetSource, uintptr(unsafe.Pointer(&address)))
+ 			page.loaded(phase, wideString(address))
+ 			return 0
+-		}), uintptr(unsafe.Pointer(&token)))
++		})
+ 	}
+ 	script := platform.WebBridgeScript
+ 	if page.config.BridgeMainFrameOnly {
+@@ -327,10 +327,10 @@ func (page *windowsWeb) attach(environment uintptr) {
+ 	}
+ 	comCall(view, viewAddScriptOnCreate, uintptr(unsafe.Pointer(wide(script))), 0)
+ 	if scheme := page.config.Scheme; scheme != nil && scheme.Name != "" {
+-		comCall(view, viewAddWebResourceReq, newHandler(func(_, args uintptr) uintptr {
++		addWebHandler(view, viewAddWebResourceReq, func(_, args uintptr) uintptr {
+ 			page.serve(environment, args)
+ 			return 0
+-		}), uintptr(unsafe.Pointer(&token)))
++		})
+ 		comCall(view, viewAddResourceFilter, uintptr(unsafe.Pointer(wide("https://"+scheme.Name+webSchemeTLD+"/*"))), resourceContextAll)
+ 	}
+ 	switch {
+@@ -434,11 +434,10 @@ func (page *windowsWeb) addDownloadHandler() {
+ 		return
+ 	}
+ 	defer comCall(extended, 2)
+-	var token int64
+-	comCall(extended, viewAddDownloadStarting, newHandler(func(_, args uintptr) uintptr {
++	addWebHandler(extended, viewAddDownloadStarting, func(_, args uintptr) uintptr {
+ 		page.downloadStarting(args)
+ 		return 0
+-	}), uintptr(unsafe.Pointer(&token)))
++	})
+ }
+ 
+ // downloadStarting asks the application about a download before the runtime writes it. The result
+@@ -655,6 +654,7 @@ func (page *windowsWeb) Close() {
+ 
+ // release lets go of the runtime's objects and the page's window.
+ func (page *windowsWeb) release() {
++	page.queued = nil
+ 	page.releaseAnswers()
+ 	if page.controller != 0 {
+ 		comCall(page.controller, controllerClose)
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/webview_lifetime_windows_test.go b/vendor/github.com/vivaui/viva/internal/platform/windows/webview_lifetime_windows_test.go
+new file mode 100644
+index 0000000..7335dff
+--- /dev/null
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/webview_lifetime_windows_test.go
+@@ -0,0 +1,61 @@
++package windows
++
++import (
++	"runtime"
++	"testing"
++	"unsafe"
++)
++
++func liveWebHandlers() int {
++	handlerMu.Lock()
++	defer handlerMu.Unlock()
++	return len(handlerLive)
++}
++
++func TestWebHandlerReferenceLifetime(t *testing.T) {
++	before := liveWebHandlers()
++	calls := 0
++	handler := newHandler(func(first, second uintptr) uintptr { calls++; return first + second })
++	unknown := guid{}
++	var queried uintptr
++	if status := comCall(handler, 0, uintptr(unsafe.Pointer(&unknown)), uintptr(unsafe.Pointer(&queried))); status != 0 || queried != handler {
++		t.Fatalf("QueryInterface status=%x handler=%x", status, queried)
++	}
++	if remaining := comCall(queried, 2); remaining != 1 {
++		t.Fatalf("QueryInterface reference count=%d", remaining)
++	}
++	agile := guid{Data1: 0x94ea2b94}
++	if status := comCall(handler, 0, uintptr(unsafe.Pointer(&agile)), uintptr(unsafe.Pointer(&queried))); status != hresultNoInterface || queried != 0 {
++		t.Fatal("unsupported interface retained a reference")
++	}
++	// The runtime retains the callback before an asynchronous create call returns.
++	if remaining := comCall(handler, 1); remaining != 2 {
++		t.Fatalf("AddRef=%d", remaining)
++	}
++	if remaining := comCall(handler, 2); remaining != 1 {
++		t.Fatalf("caller Release=%d", remaining)
++	}
++	runtime.GC()
++	if value := comCall(handler, 3, 4, 7); value != 11 || calls != 1 {
++		t.Fatal("asynchronous callback was lost")
++	}
++	if remaining := comCall(handler, 2); remaining != 0 {
++		t.Fatalf("runtime Release=%d", remaining)
++	}
++	if actual := liveWebHandlers(); actual != before {
++		t.Fatalf("handlers=%d want %d", actual, before)
++	}
++}
++
++func TestWebHandlerRepeatedRelease(t *testing.T) {
++	before := liveWebHandlers()
++	for range 1000 {
++		handler := newHandler(func(_, _ uintptr) uintptr { return 0 })
++		// A failed creation/registration never obtains a runtime reference.
++		comCall(handler, 2)
++	}
++	runtime.GC()
++	if actual := liveWebHandlers(); actual != before {
++		t.Fatalf("failed registrations retained %d handlers", actual-before)
++	}
++}

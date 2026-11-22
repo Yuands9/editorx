@@ -1,0 +1,212 @@
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor.go b/vendor/github.com/vivaui/viva/components/code_editor.go
+index d4ed045..2f8b0e7 100644
+--- a/vendor/github.com/vivaui/viva/components/code_editor.go
++++ b/vendor/github.com/vivaui/viva/components/code_editor.go
+@@ -53,6 +53,10 @@ type CodeEditorGutterMarker struct {
+ // inclusive. Ranges are sorted by Header and do not overlap; the header stays visible.
+ type CodeEditorFoldRange struct {
+ 	Header, LastLine int
++	// Display replaces only the folded header's painted text, never Value.
++	// SummaryStart is the byte offset of the clickable summary within Display.
++	Display      string
++	SummaryStart int
+ }
+ 
+ // CodeEditorFoldMarker adds a disclosure button to a visible logical line.
+@@ -61,6 +65,7 @@ type CodeEditorFoldMarker struct {
+ 	Line      int
+ 	ID        gfx.ID
+ 	Collapsed bool
++	Boxed     bool
+ 	Label     string
+ }
+ 
+@@ -212,19 +217,20 @@ type CodeEditorSnapshot struct {
+ // serves one editor.
+ type CodeEditor struct {
+ 	// The rows of text, for the geometry they were laid out at.
+-	text      string
+-	cols      int
+-	wrap      bool
+-	tabWidth  int
+-	fitted    bool
+-	rows      []codeRow
+-	indents   []int
+-	reps      []CodeRepresentation
+-	foldInput []CodeEditorFoldRange
+-	folds     []CodeEditorFoldRange
+-	shown     []string
+-	widest    int
+-	lineCount int
++	text             string
++	cols             int
++	wrap             bool
++	tabWidth         int
++	fitted           bool
++	rows             []codeRow
++	indents          []int
++	reps             []CodeRepresentation
++	foldInput        []CodeEditorFoldRange
++	folds            []CodeEditorFoldRange
++	shown            []string
++	widest           int
++	lineCount        int
++	hasFoldSummaries bool
+ 
+ 	// What the last paint showed.
+ 	painted    bool
+@@ -392,7 +398,14 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 	if !snapshot.ScrollbarID.IsZero() {
+ 		barWidth = codeEditorBarSize
+ 	}
+-	if !snapshot.Wrap && !snapshot.HorizontalScrollbarID.IsZero() {
++	horizontal := !snapshot.Wrap
++	for _, fold := range snapshot.FoldedLines {
++		if fold.Display != "" {
++			horizontal = true
++			break
++		}
++	}
++	if horizontal && !snapshot.HorizontalScrollbarID.IsZero() {
+ 		barHeight = codeEditorBarSize
+ 	}
+ 	content := gfx.Rect{
+@@ -597,7 +610,7 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 		}
+ 	}
+ 	if foldLane > 0 && len(snapshot.FoldMarkers) != 0 {
+-		canvas.Clip(gfx.Rect{X: foldX, Y: content.Y, Width: foldLane, Height: content.Height})
++		canvas.Clip(gfx.Rect{X: foldX, Y: content.Y, Width: content.X + content.Width - foldX, Height: content.Height})
+ 		markerIndex := 0
+ 		if firstRow < len(editor.rows) {
+ 			firstLine := int(editor.rows[firstRow].line)
+@@ -631,9 +644,27 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 			}
+ 			size := min(float32(16), foldLane)
+ 			button := gfx.Rect{X: foldX + (foldLane-size)/2, Y: y + (lineHeight-size)/2, Width: size, Height: size}
+-			canvas.DrawIcon(icon, button.Inset(gfx.All(1)), theme.MutedForeground)
++			if marker.Boxed {
++				box := button.Inset(gfx.All(3))
++				canvas.RoundedBorder(box, 2, 1, theme.MutedForeground, gfx.Color{})
++				canvas.Fill(gfx.Rect{X: box.X + 2, Y: box.Y + box.Height/2, Width: box.Width - 4, Height: 1}, theme.MutedForeground)
++				if marker.Collapsed {
++					canvas.Fill(gfx.Rect{X: box.X + box.Width/2, Y: box.Y + 2, Width: 1, Height: box.Height - 4}, theme.MutedForeground)
++				}
++			} else {
++				canvas.DrawIcon(icon, button.Inset(gfx.All(1)), theme.MutedForeground)
++			}
+ 			if !marker.ID.IsZero() {
+ 				canvas.HitWithOptions(marker.ID, button, label, gfx.HitOptions{Role: gfx.RoleButton, Disabled: snapshot.Disabled})
++				if fold, ok := editor.foldSummary(int(row.line)); ok {
++					column := editor.columnBetween(fold.Display, 0, fold.SummaryStart)
++					x := content.X - editor.scrollX + float32(column)*cellWidth
++					right := content.X - editor.scrollX + float32(row.cells)*cellWidth
++					left, right := max(x, content.X), min(right, content.X+content.Width)
++					if right > left {
++						canvas.HitWithOptions(marker.ID, gfx.Rect{X: left, Y: y, Width: right - left, Height: lineHeight}, "展开 "+fold.Display[fold.SummaryStart:], gfx.HitOptions{Role: gfx.RoleButton, Disabled: snapshot.Disabled})
++					}
++				}
+ 			}
+ 		}
+ 		canvas.Unclip()
+@@ -940,7 +971,17 @@ func (paint *codePaint) row(index int, y float32) {
+ 	}
+ 
+ 	shown := editor.rowText(row)
++	rendered := paint.value[rowStart:rowEnd]
+ 	highlight := paint.lineRuns(row)
++	fold, folded := editor.foldSummary(int(row.line))
++	if folded {
++		rendered = fold.Display
++		if paint.highlight != nil {
++			highlight = paint.highlight(paint.language, rendered, nil)
++		} else {
++			highlight = nil
++		}
++	}
+ 	paint.representationBlobs(row, y, left, highlight)
+ 	spec := gridRunSpec{
+ 		tabWidth: editor.tabWidth, firstColumn: paint.firstColumn, lastColumn: paint.lastColumn,
+@@ -951,7 +992,13 @@ func (paint *codePaint) row(index int, y float32) {
+ 		selectionRanges: paint.selectionRanges, selectionBase: rowStart,
+ 		selectionForeground: paint.selectionForeground, selectionBackground: paint.selectionBackground,
+ 	}
+-	runs, from, to, startColumn, endColumn := gridRuns(editor.runs[:0], paint.value[rowStart:rowEnd], &spec)
++	if folded {
++		spec.highlightBase = 0
++		if paint.selectionStart <= rowStart+fold.SummaryStart && paint.selectionEnd > rowStart+fold.SummaryStart {
++			spec.selectionEnd = len(rendered)
++		}
++	}
++	runs, from, to, startColumn, endColumn := gridRuns(editor.runs[:0], rendered, &spec)
+ 	editor.runs = runs
+ 	if len(runs) > 0 {
+ 		bounds := gfx.Rect{
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor_layout.go b/vendor/github.com/vivaui/viva/components/code_editor_layout.go
+index b633fe3..61e247c 100644
+--- a/vendor/github.com/vivaui/viva/components/code_editor_layout.go
++++ b/vendor/github.com/vivaui/viva/components/code_editor_layout.go
+@@ -138,6 +138,7 @@ func (editor *CodeEditor) fitWithRepresentations(value string, cols int, wrap bo
+ 	editor.indents = nil
+ 	editor.shown = editor.shown[:0]
+ 	editor.widest = 0
++	editor.hasFoldSummaries = false
+ 	if len(value) > 1<<30 {
+ 		// Rows are indexed with 32 bits; a text this long is not an editor's.
+ 		value = ""
+@@ -150,6 +151,9 @@ func (editor *CodeEditor) fitWithRepresentations(value string, cols int, wrap bo
+ 			continue
+ 		}
+ 		editor.folds = append(editor.folds, fold)
++		if fold.Display != "" {
++			editor.hasFoldSummaries = true
++		}
+ 		lastFoldEnd = fold.LastLine
+ 	}
+ 	line, foldIndex := 0, 0
+@@ -171,7 +175,19 @@ func (editor *CodeEditor) fitWithRepresentations(value string, cols int, wrap bo
+ 			hidden = fold.Header >= 0 && fold.LastLine > fold.Header && fold.Header < line && line <= fold.LastLine
+ 		}
+ 		if !hidden {
+-			editor.appendLine(value, start, rowEnd, line)
++			if fold, ok := editor.foldSummary(line); ok {
++				// Keep source offsets for editing/IME, but size and paint the summary.
++				cells := editor.columnBetween(fold.Display, 0, len(fold.Display))
++				editor.addRow(fold.Display, 0, len(fold.Display), 0, line, cells)
++				row := &editor.rows[len(editor.rows)-1]
++				if row.shown < 0 {
++					row.shown = int32(len(editor.shown))
++					editor.shown = append(editor.shown, fold.Display)
++				}
++				row.start, row.end, row.lineStart = int32(start), int32(rowEnd), int32(start)
++			} else {
++				editor.appendLine(value, start, rowEnd, line)
++			}
+ 		}
+ 		if end >= len(value) {
+ 			break
+@@ -535,7 +551,7 @@ func (editor *CodeEditor) maxScrollY() float32 {
+ // maxScrollX is how far the text is wider than the box. Wrapped text has no
+ // horizontal scrolling: every row fits the box by construction.
+ func (editor *CodeEditor) maxScrollX() float32 {
+-	if editor.wrap {
++	if editor.wrap && !editor.hasFoldSummaries {
+ 		return 0
+ 	}
+ 	return max(0, float32(editor.widest+1)*editor.cellWidth-editor.content.Width)
+@@ -920,3 +936,15 @@ func cleanHighlight(line string, runs []CodeEditorRun) []CodeEditorRun {
+ 	}
+ 	return kept
+ }
++
++// foldSummary finds the display-only text for a visible collapsed header.
++func (editor *CodeEditor) foldSummary(line int) (CodeEditorFoldRange, bool) {
++	index := sort.Search(len(editor.folds), func(i int) bool { return editor.folds[i].Header >= line })
++	if index < len(editor.folds) {
++		fold := editor.folds[index]
++		if fold.Header == line && fold.Display != "" && fold.SummaryStart >= 0 && fold.SummaryStart <= len(fold.Display) {
++			return fold, true
++		}
++	}
++	return CodeEditorFoldRange{}, false
++}

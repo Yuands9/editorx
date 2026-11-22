@@ -1,0 +1,242 @@
+package main
+
+import (
+	"strings"
+
+	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
+	"github.com/vivaui/viva/text/find"
+	"github.com/vivaui/viva/ui"
+)
+
+type documentSearch struct {
+	open, focus           bool
+	centerOnOpen          bool
+	query                 *text.Editor
+	field                 ui.Field
+	key                   func(gfx.KeyEvent) gfx.EventResult
+	header                ui.Handlers
+	bounds                gfx.Rect
+	dragStart, dragOrigin gfx.Point
+	dragging              bool
+	wrap                  bool
+	message               string
+	target                *editorPane
+	options               find.Options
+	matches               []text.Span
+	current               int
+	truncated             bool
+	errorText             string
+	ready                 bool
+	source, pattern       string
+	lastOptions           find.Options
+}
+
+func (t *editorTab) initSearch() {
+	s := &t.search
+	s.query = text.NewEditor("")
+	s.field.Bind(s.query)
+	s.target = t.source
+	s.current = -1
+	s.wrap = true
+	s.key = func(event gfx.KeyEvent) gfx.EventResult { return t.searchKey(event, nil) }
+	s.header.Pointer = func(event gfx.PointerEvent) gfx.EventResult {
+		switch event.Kind {
+		case gfx.PointerDown:
+			if event.Button != gfx.PointerButtonPrimary {
+				return gfx.EventResult{}
+			}
+			s.dragging = true
+			s.dragStart = gfx.Point{X: event.X, Y: event.Y}
+			s.dragOrigin = gfx.Point{X: s.bounds.X, Y: s.bounds.Y}
+		case gfx.PointerMove, gfx.PointerUp:
+			if !s.dragging || (event.Kind == gfx.PointerUp && event.Button != gfx.PointerButtonPrimary) {
+				return gfx.EventResult{}
+			}
+			x := max(12, min(s.dragOrigin.X+event.X-s.dragStart.X, event.Viewport.Width-s.bounds.Width-12))
+			y := max(12, min(s.dragOrigin.Y+event.Y-s.dragStart.Y, event.Viewport.Height-s.bounds.Height-12))
+			moved := x != s.bounds.X || y != s.bounds.Y
+			s.bounds.X, s.bounds.Y = x, y
+			if event.Kind == gfx.PointerUp {
+				s.dragging = false
+			}
+			return gfx.EventResult{Handled: true, Repaint: moved, PreferLatestFrame: moved}
+		case gfx.PointerExit:
+			s.dragging = false
+		default:
+			return gfx.EventResult{}
+		}
+		return gfx.EventResult{Handled: true, Repaint: true}
+	}
+	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
+		pane.searchKey = func(event gfx.KeyEvent) gfx.EventResult { return t.searchKey(event, pane) }
+	}
+}
+
+func (t *editorTab) openSearch() {
+	if t.office != nil {
+		return
+	}
+	if t.readOnlyPreview() {
+		return
+	}
+	s := &t.search
+	target := t.source
+	if s.open {
+		target = s.target
+	}
+	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
+		if pane.focused && t.searchPaneVisible(pane) {
+			target = pane
+			break
+		}
+	}
+	target.text.CancelComposition()
+	s.query.CancelComposition()
+	selection := target.text.Selection()
+	selected := target.text.String()[target.text.ByteOffset(selection.Start):target.text.ByteOffset(selection.End)]
+	if selected != "" && !strings.ContainsAny(selected, "\r\n") {
+		s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
+		s.query.Insert(selected)
+	}
+	s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
+	s.centerOnOpen = !s.open
+	s.target, s.open, s.focus, s.ready = target, true, true, false
+	if t.format() == "HTML" && t.htmlMode == "预览" {
+		t.htmlMode = "分屏"
+	}
+	if t.format() == "Markdown" && t.markdownMode == "预览" {
+		t.markdownMode = "分屏"
+	}
+	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
+		pane.focus = false
+	}
+}
+
+func (t *editorTab) searchPaneVisible(p *editorPane) bool {
+	return t.picture == nil && (p == t.source || t.format() == "JSON" && (p == t.comparison && t.jsonCompare || p == t.result && !t.jsonCompare && t.resultError == ""))
+}
+
+func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventResult {
+	s := &t.search
+	if !s.open && s.query.String() == "" {
+		return gfx.EventResult{}
+	}
+	if _, composing := s.query.Composition(); composing {
+		return gfx.EventResult{}
+	}
+	command, ok := components.FindBarCommandForKey(event, pane == nil)
+	if !event.Release && event.Key == gfx.KeyEscape {
+		command, ok = components.FindBarCloseCommand, true
+	}
+	if !ok || command == components.FindBarOpen || command == components.FindBarOpenReplace {
+		return gfx.EventResult{}
+	}
+	if pane != nil && s.target != pane {
+		s.target, s.ready = pane, false
+	}
+	switch command {
+	case components.FindBarNext:
+		s.step(1)
+	case components.FindBarPrevious:
+		s.step(-1)
+	case components.FindBarCloseCommand:
+		s.close()
+	}
+	return gfx.EventResult{Handled: true, Repaint: true}
+}
+
+func (s *documentSearch) close() {
+	s.query.CancelComposition()
+	s.open, s.focus, s.dragging = false, false, false
+	s.target.view.Snapshot.Marks = nil
+	s.target.view.Snapshot.CurrentMark = text.Span{}
+	s.target.focus = true
+}
+
+func (s *documentSearch) refresh() {
+	if _, composing := s.query.Composition(); composing {
+		return
+	}
+	if _, composing := s.target.text.Composition(); composing {
+		return
+	}
+	source, pattern := s.target.text.String(), s.query.String()
+	if s.ready && s.source == source && s.pattern == pattern && s.lastOptions == s.options {
+		return
+	}
+	queryChanged := !s.ready || s.pattern != pattern || s.lastOptions != s.options
+	if queryChanged {
+		s.message = ""
+	}
+	s.source, s.pattern, s.lastOptions, s.ready = source, pattern, s.options, true
+	s.matches, s.errorText, s.truncated, s.current = s.matches[:0], "", false, -1
+	query, err := find.Compile(pattern, s.options)
+	if err != nil {
+		s.errorText = "正则表达式无效：" + err.Error()
+	} else {
+		s.matches, s.truncated = query.Matches(s.matches, source, find.DefaultLimit)
+		selection := s.target.text.Selection()
+		s.current = find.Next(s.matches, s.target.text.ByteOffset(selection.Start))
+	}
+	s.target.view.Snapshot.Marks = s.matches
+	s.target.view.Snapshot.CurrentMark = text.Span{}
+	if s.current >= 0 {
+		// 查询变化时选中当前项；正文继续编辑时保留原选区。
+		s.target.view.Snapshot.CurrentMark = s.matches[s.current]
+		if queryChanged {
+			s.reveal()
+		}
+	}
+}
+
+func (s *documentSearch) step(direction int) {
+	s.refresh()
+	if len(s.matches) == 0 {
+		return
+	}
+	next := s.current + direction
+	if !s.wrap && (next < 0 || next >= len(s.matches)) {
+		s.message = "已到达文档边界"
+		return
+	}
+	s.message = ""
+	s.current = (next + len(s.matches)) % len(s.matches)
+	s.reveal()
+}
+
+func (s *documentSearch) reveal() {
+	match := s.matches[s.current]
+	p := s.target
+	p.updateFolds()
+	line := strings.Count(p.text.String()[:match.Start], "\n")
+	for _, fold := range p.folds {
+		if line >= fold.Header && line <= fold.LastLine {
+			delete(p.collapsed, fold.Header)
+		}
+	}
+	p.view.Snapshot.CurrentMark = match
+	p.text.SetSelection(text.Range{Start: p.text.RuneIndex(match.Start), End: p.text.RuneIndex(match.End)})
+	p.view.Code.Reveal(match.Start)
+}
+
+func (m *editorApp) searchView(c ui.C, t *editorTab, blocked bool) {
+	s := &t.search
+	for _, p := range []*editorPane{t.source, t.result, t.comparison} {
+		if !s.open || p != s.target {
+			p.view.Snapshot.Marks = nil
+			p.view.Snapshot.CurrentMark = text.Span{}
+		}
+	}
+	if !s.open {
+		return
+	}
+	if t.format() == "JSON" && !t.jsonCompare {
+		t.updateResult()
+	}
+	if !t.searchPaneVisible(s.target) {
+		s.target, s.ready = t.source, false
+	}
+	s.refresh()
+}

@@ -1,0 +1,23 @@
+# Local toolchains, build outputs, profiles, and generated web bundles
+/.dev/
+/dist/
+/data/
+/office-ui/node_modules/
+/assets/office/
+/assets/icon.ico
+/assets/icon-[0-9]*.png
+/Viva Editor.lnk
+
+# Local editor state and generated binaries
+*.exe
+*.test
+ai-settings.json
+session.json
+session.json.bak
+.env
+.env.*
+!.env.example
+
+# Platform metadata
+Thumbs.db
+.DS_Store
