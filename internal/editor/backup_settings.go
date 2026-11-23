@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/vivaui/viva/app"
@@ -58,7 +59,7 @@ func (m *editorApp) backupSettings(c ui.C) {
 			}
 		})
 	m.applicationSetting(c.Part("restore"), "恢复会话备份",
-		"打开 ZIP 或旧版 JSON 备份，在新窗口恢复所选文件。", func() {
+		"打开 EditorX 导出的 ZIP 备份，在新窗口恢复所选文件。", func() {
 			if ui.Button(c, "选择备份…").Outline().Height(32).Disabled(working || m.desktop == nil).Clicked() {
 				c.After(m.importBackup)
 			}
@@ -213,28 +214,22 @@ func writeEditorBackup(ctx context.Context, path string, saved savedSession) err
 }
 
 func readEditorBackup(path string) (savedSession, error) {
-	file, err := os.Open(path)
+	if !strings.EqualFold(filepath.Ext(path), ".zip") {
+		return savedSession{}, errors.New("请选择 EditorX 导出的 ZIP 备份")
+	}
+	archive, err := zip.OpenReader(path)
+	if archive != nil {
+		defer archive.Close()
+	}
 	if err != nil {
-		return savedSession{}, err
+		return savedSession{}, fmt.Errorf("无法打开 ZIP 备份：%w", err)
 	}
-	defer file.Close()
-	info, err := file.Stat()
+	entry, err := archive.Open(backupSessionEntry)
 	if err != nil {
-		return savedSession{}, err
+		return savedSession{}, fmt.Errorf("ZIP 备份中缺少会话数据：%w", err)
 	}
-	archive, err := zip.NewReader(file, info.Size())
-	var source io.Reader = file
-	if err == nil {
-		entry, err := archive.Open(backupSessionEntry)
-		if err != nil {
-			return savedSession{}, fmt.Errorf("压缩包中缺少会话数据：%w", err)
-		}
-		defer entry.Close()
-		source = entry
-	} else if !errors.Is(err, zip.ErrFormat) {
-		return savedSession{}, err
-	}
-	decoder := json.NewDecoder(source)
+	defer entry.Close()
+	decoder := json.NewDecoder(entry)
 	var saved savedSession
 	if err := decoder.Decode(&saved); err != nil {
 		return savedSession{}, err
@@ -255,7 +250,7 @@ func readEditorBackup(path string) (savedSession, error) {
 
 func (m *editorApp) importBackup() {
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "打开 EditorX 会话备份", Filters: []app.FileFilter{
-		{Name: "EditorX 会话备份", Pattern: "*.zip;*.json"},
+		{Name: "EditorX 压缩备份", Pattern: "*.zip"},
 	}})
 	if errors.Is(err, app.ErrCanceled) {
 		return
@@ -290,12 +285,13 @@ func (m *editorApp) backupProgress(c ui.C) {
 	if !ready {
 		return
 	}
-	state.request = nil
 	if err != nil {
+		state.request = nil
 		state.problem = "会话备份操作失败：" + err.Error()
 		return
 	}
 	if result.path != "" {
+		state.request = nil
 		size := fmt.Sprintf("%.1f KB", float64(result.size)/1024)
 		if result.size >= 1<<20 {
 			size = fmt.Sprintf("%.1f MB", float64(result.size)/(1<<20))
@@ -303,7 +299,12 @@ func (m *editorApp) backupProgress(c ui.C) {
 		state.message = "备份已保存 · " + size + " · " + result.path
 		return
 	}
-	c.After(func() {
+	// ZIP 读取在后台完成。将窗口创建投递给事件循环，普通重绘也能触发恢复。
+	m.post(func() {
+		defer func() {
+			state.request = nil
+			m.invalidator.Invalidate()
+		}()
 		if m.desktop.exiting {
 			state.problem = "EditorX 正在退出，请稍后恢复备份。"
 			return

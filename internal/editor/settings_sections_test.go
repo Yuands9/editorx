@@ -99,9 +99,41 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 	if err := os.WriteFile(legacyPath, legacy, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if version1, err := readEditorBackup(legacyPath); err != nil || len(version1.Windows) != 1 {
-		t.Fatalf("legacy backup could not be read: %v", err)
+	if _, err := readEditorBackup(legacyPath); err == nil {
+		t.Fatal("a legacy JSON backup was accepted")
 	}
+	mislabeled := filepath.Join(store.directory, "legacy.zip")
+	if err := os.WriteFile(mislabeled, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readEditorBackup(mislabeled); err == nil {
+		t.Fatal("JSON renamed to ZIP was accepted")
+	}
+
+	var restoreOnUI func()
+	m.desktop = &editorDesktop{exiting: true}
+	m.post = func(callback func()) { restoreOnUI = callback }
+	if err := s.Frame(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Driver().QueueOpenFiles([]string{destination}, nil); err != nil {
+		t.Fatal(err)
+	}
+	click("选择备份…")
+	if request, ok := s.Driver().LastOpenFilesRequest(); !ok || len(request.Filters) != 1 || request.Filters[0].Pattern != "*.zip" {
+		t.Fatalf("backup picker must offer only ZIP files: %+v", request)
+	}
+	if err := s.WaitFor(func(app.Snapshot) bool { return restoreOnUI != nil || m.backup.problem != "" }, 3*time.Second); err != nil {
+		t.Fatal("ZIP import did not schedule window restoration after reading: ", err)
+	}
+	if restoreOnUI == nil {
+		t.Fatal(m.backup.problem)
+	}
+	restoreOnUI()
+	if m.backup.request != nil {
+		t.Fatal("backup import is still pending after the restore callback")
+	}
+	m.desktop, m.post = nil, nil
 
 	click("关于")
 	if !s.HasText("版本 " + version.Number) {
