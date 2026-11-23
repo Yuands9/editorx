@@ -222,7 +222,8 @@ func TestSearchMarkdownPreviewAndSelectedQuery(t *testing.T) {
 	if tab.markdownMode != "分屏" || len(tab.search.matches) != 2 {
 		t.Fatal("preview search did not reveal source")
 	}
-	if _, err := s.Locate("代码编辑区"); err != nil {
+	// The centered search dialog can cover the source editor's click point.
+	if err := s.Expect("state", "textfield:代码编辑区", "editable"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ClickLabel("关闭搜索"); err != nil {

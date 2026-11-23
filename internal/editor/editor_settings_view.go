@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/vivaui/viva/app"
@@ -45,6 +46,10 @@ func (m *editorApp) editorSettings(c ui.C) {
 	if !slices.Contains(fonts, draft.FontFamily) {
 		fonts = append(slices.Clone(fonts), draft.FontFamily)
 	}
+	previewBelow := c.Bounds().Height < 660
+	if !previewBelow {
+		m.editorSettingsPreview(c.Part("preview"), *draft)
+	}
 	m.applicationSetting(c.Part("font"), "编辑区字体", "使用系统已安装的等宽字体。", func() {
 		ui.Select(c, &draft.FontFamily, fonts, func(font string) string {
 			if font == "" {
@@ -85,7 +90,29 @@ func (m *editorApp) editorSettings(c ui.C) {
 		ui.Select(c, &draft.JSONIndent, []int{2, 4}, func(indent int) string { return fmt.Sprintf("%d 个空格", indent) }).
 			Label("JSON 默认缩进").Width(144).Height(34)
 	})
+	if previewBelow {
+		m.editorSettingsPreview(c.Part("preview"), *draft)
+	}
 	if *draft != before {
 		c.After(m.saveApplicationSettings)
 	}
+}
+
+func (m *editorApp) editorSettingsPreview(c ui.C, preferences editorPreferences) {
+	settings := &m.appSettings
+	indent := strings.Repeat(" ", preferences.JSONIndent)
+	sample := "{\n" + indent + "\"name\": \"EditorX\",\n" + indent + "\"preview\": true\n}"
+	pane := settings.editorPreview
+	if pane == nil {
+		pane = newEditorPane(sample, true)
+		settings.editorPreview = pane
+	} else if pane.text.String() != sample {
+		pane.replace(sample)
+	}
+	pane.light = m.light
+	pane.applyEditorPreferences(preferences)
+	pane.view.Snapshot.Language = "JSON"
+	pane.view.Snapshot.Wrap = preferences.Wrap != wrapDisabled
+	ui.Text(c, "实时预览").Muted().FontSize(12)
+	pane.declare(c, "编辑器设置预览", false).FillWidth().Height(max(110, float32(preferences.FontSize)*6)).Radius(10).Clip()
 }

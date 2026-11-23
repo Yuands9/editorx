@@ -31,6 +31,7 @@ func TestSessionRestartKeepsDraftsAndLayout(t *testing.T) {
 	m.setLightMode(true)
 	m.showFiles = true
 	m.showOutline = false
+	m.outlineSplit.Ratio = 0.25
 	m.filesSplit.Pos = 290
 	m.windowFrame = gfx.Rect{X: 72, Y: 55, Width: 1200, Height: 780}
 	m.maximized = true
@@ -73,6 +74,9 @@ func TestSessionRestartKeepsDraftsAndLayout(t *testing.T) {
 	again := restored.windows[0]
 	if len(again.tabs) != 3 || again.active != again.tabs[0] || !again.tabs[0].pinned || !again.light || !again.showFiles || again.showOutline || again.filesSplit.Pos != 290 || again.windowFrame != m.windowFrame || !again.maximized {
 		t.Fatal("window or tab layout not restored")
+	}
+	if again.outlineSplit.Ratio != 0.25 || again.snapshotSession().OutlineRatio != 0.75 {
+		t.Fatal("outline width did not round trip with the legacy editor ratio")
 	}
 	if again.tabs[0].source.text.String() != fileTab.source.text.String() || !again.tabs[0].modified() || again.tabs[1].source.text.String() != draft.source.text.String() || again.tabs[1].source.text.Caret() != 2 || !again.tabs[1].source.view.Snapshot.Wrap {
 		t.Fatal("draft or selection missing")

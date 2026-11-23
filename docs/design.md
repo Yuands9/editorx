@@ -50,7 +50,7 @@ Office 和 PDF 使用独立的回环地址，并通过文档会话限制请求�
 
 EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。公开发行文件位于 [GitHub Releases](https://github.com/Yuands9/editorx/releases/latest)，提供 Windows x64 免安装 EXE 和第三方许可声明。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
 
-使用 `./dev.ps1 build -PublicRelease -RebuildAssets` 生成公开版。此模式将 Excel 和 PDF 资源生成到独立目录，通过 `editorx_public` 构建标签只嵌入该目录。发布前可运行 `./dev.ps1 test -PublicRelease` 验证，并用 `./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeOfficeEditing` 和 `-TestName TestNativeDocumentOutline` 检查 Excel 编辑与 PDF 大纲。发布后，GitHub Actions 会将最新公开版 EXE 和许可文件同步到 [GitHub Packages](https://github.com/Yuands9/editorx/pkgs/container/editorx)。
+使用 `./dev.ps1 build -PublicRelease -RebuildAssets` 生成公开版。此模式将 Excel 和 PDF 资源生成到独立目录，通过 `editorx_public` 构建标签只嵌入该目录。发布前可运行 `./dev.ps1 test -PublicRelease` 验证，并用 `./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeOfficeEditing` 和 `-TestName TestNativeDocumentOutline` 检查 Excel 编辑与 PDF 大纲。在 GitHub Releases 中保留公开安装文件名 EditorX.exe。应用内更新读取最新稳定版的 EXE 和 SHA-256，校验完成后才应用更新。
 
 | 依赖或资源 | 许可位置 |
 | --- | --- |

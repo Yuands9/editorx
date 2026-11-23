@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -14,18 +15,8 @@ type editorDesktop struct {
 	tray        *app.StatusItem
 	lastActive  *editorApp
 	exiting     bool
-}
-
-func (d *editorDesktop) systemAppearanceChanged() {
-	if d.preferences.Theme != themeSystem {
-		return
-	}
-	theme := d.preferences.resolvedTheme()
-	for _, window := range d.store.windows {
-		if !window.windowClosed && window.applyThemePreference(theme) {
-			window.invalidator.Invalidate()
-		}
-	}
+	updateFile  string
+	updated     installedEditorUpdate
 }
 
 func (d *editorDesktop) syncTray() error {
@@ -118,6 +109,14 @@ func (d *editorDesktop) close(window *editorApp) {
 	}
 }
 
+func (d *editorDesktop) restartForUpdate(path string) {
+	if d.exiting || hasWordEditor {
+		return
+	}
+	d.updateFile = path
+	d.quit()
+}
+
 func (d *editorDesktop) quit() {
 	if d.exiting {
 		return
@@ -149,6 +148,16 @@ func (d *editorDesktop) flushForExit(index int) {
 		d.cancelExit(d.lastActive, fmt.Errorf("无法保存本次会话：%w", err))
 		return
 	}
+	if d.updateFile != "" {
+		executable, err := os.Executable()
+		if err == nil {
+			d.updated, err = replaceEditorExecutable(executable, d.updateFile)
+		}
+		if err != nil {
+			d.cancelExit(d.lastActive, fmt.Errorf("无法替换 EditorX 程序：%w", err))
+			return
+		}
+	}
 	if d.tray != nil {
 		d.tray.Remove()
 		d.tray = nil
@@ -157,7 +166,7 @@ func (d *editorDesktop) flushForExit(index int) {
 }
 
 func (d *editorDesktop) cancelExit(window *editorApp, err error) {
-	d.exiting = false
+	d.exiting, d.updateFile = false, ""
 	if window != nil && !window.nativeWindow.Closed() {
 		d.lastActive = window
 	}

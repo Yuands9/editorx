@@ -51,8 +51,19 @@ var menuIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound,
 var leftPanelIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{gfx.MoveTo(4, 4), gfx.LineTo(20, 4), gfx.LineTo(20, 20), gfx.LineTo(4, 20), gfx.LineTo(4, 4), gfx.MoveTo(10, 4), gfx.LineTo(10, 20), gfx.MoveTo(7, 8), gfx.LineTo(7, 16)},
 }
-var rightPanelIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{gfx.MoveTo(4, 4), gfx.LineTo(20, 4), gfx.LineTo(20, 20), gfx.LineTo(4, 20), gfx.LineTo(4, 4), gfx.MoveTo(14, 4), gfx.LineTo(14, 20), gfx.MoveTo(17, 8), gfx.LineTo(17, 16)},
+var keyboardIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Join: gfx.JoinRound, Cap: gfx.CapRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(3, 6), gfx.LineTo(21, 6), gfx.LineTo(21, 18), gfx.LineTo(3, 18), gfx.LineTo(3, 6),
+		gfx.MoveTo(7, 10), gfx.LineTo(8, 10), gfx.MoveTo(11, 10), gfx.LineTo(12, 10),
+		gfx.MoveTo(16, 10), gfx.LineTo(17, 10), gfx.MoveTo(8, 14), gfx.LineTo(16, 14),
+	},
+}
+var infoIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(12, 3), gfx.LineTo(18, 5), gfx.LineTo(21, 12), gfx.LineTo(18, 19),
+		gfx.LineTo(12, 21), gfx.LineTo(6, 19), gfx.LineTo(3, 12), gfx.LineTo(6, 5), gfx.LineTo(12, 3),
+		gfx.MoveTo(12, 8), gfx.LineTo(12, 8.4), gfx.MoveTo(12, 11.5), gfx.LineTo(12, 16),
+	},
 }
 var folderIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{gfx.MoveTo(3, 6), gfx.LineTo(10, 6), gfx.LineTo(12, 8), gfx.LineTo(21, 8), gfx.LineTo(21, 19), gfx.LineTo(3, 19), gfx.LineTo(3, 6)},

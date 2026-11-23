@@ -75,20 +75,24 @@ type projectSession struct {
 }
 
 type windowSession struct {
-	Tabs                                 []tabSession
-	TabGroups                            []tabGroup `json:",omitempty"`
-	Active                               int
-	Light, ShowFiles, ShowOutline        bool
-	FilesWidth, OutlinePos, OutlineRatio float32
-	AIEditorRatio                        float32          `json:",omitempty"`
-	AIPromptRatio                        float32          `json:",omitempty"`
-	AI                                   *aiWindowSession `json:",omitempty"`
-	Projects                             []projectSession `json:",omitempty"`
-	Workspace                            string           `json:",omitempty"` // 旧版单文件夹会话
-	ExpandedFolders                      []string         `json:",omitempty"`
-	Frame                                gfx.Rect
-	Maximized                            bool
+	Tabs                          []tabSession
+	TabGroups                     []tabGroup `json:",omitempty"`
+	Active                        int
+	Light, ShowFiles, ShowOutline bool
+	FilesWidth                    float32
+	OutlineRatio                  float32          // 保存编辑区所占比例，兼容右侧大纲的旧版会话。
+	AIEditorRatio                 float32          `json:",omitempty"`
+	AIPromptRatio                 float32          `json:",omitempty"`
+	AI                            *aiWindowSession `json:",omitempty"`
+	Projects                      []projectSession `json:",omitempty"`
+	Workspace                     string           `json:",omitempty"` // 旧版单文件夹会话
+	ExpandedFolders               []string         `json:",omitempty"`
+	Frame                         gfx.Rect
+	Maximized                     bool
 }
+
+const editorSessionVersion = 1
+
 type savedSession struct {
 	Version int
 	Windows []windowSession
@@ -131,21 +135,14 @@ func openSessionStore(directory string) (*sessionStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	var saved savedSession
-	decode := func(data []byte) error {
-		saved = savedSession{}
-		if err := json.Unmarshal(data, &saved); err != nil {
-			return err
-		}
-		if saved.Version != 1 {
-			return fmt.Errorf("不支持的会话版本：%d", saved.Version)
-		}
-		return nil
-	}
+	saved, err := decodeEditorSession(data)
 	recovered := false
-	if err = decode(data); err != nil {
+	if err != nil {
 		backup, backupErr := os.ReadFile(path + ".bak")
-		if backupErr != nil || decode(backup) != nil {
+		if backupErr == nil {
+			saved, backupErr = decodeEditorSession(backup)
+		}
+		if backupErr != nil {
 			return nil, fmt.Errorf("会话记录无法读取，原文件已保留：%s：%w", path, err)
 		}
 		data, recovered = backup, true
@@ -170,6 +167,17 @@ func openSessionStore(directory string) (*sessionStore, error) {
 	return store, nil
 }
 
+func decodeEditorSession(data []byte) (savedSession, error) {
+	var saved savedSession
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return savedSession{}, err
+	}
+	if saved.Version != editorSessionVersion {
+		return savedSession{}, fmt.Errorf("不支持的会话版本：%d", saved.Version)
+	}
+	return saved, nil
+}
+
 func (store *sessionStore) attach(m *editorApp) {
 	m.store, m.dataDirectory = store, store.directory
 	store.windows = append(store.windows, m)
@@ -189,7 +197,7 @@ func (m *editorApp) snapshotSession() windowSession {
 		return *m.closedSession
 	}
 	state := windowSession{Active: slices.Index(m.tabs, m.active), Light: m.light, ShowFiles: m.showFiles, ShowOutline: m.showOutline,
-		FilesWidth: m.filesSplit.Pos, OutlinePos: m.outlineSplit.Pos, OutlineRatio: m.outlineSplit.Ratio,
+		FilesWidth: m.filesSplit.Pos, OutlineRatio: 1 - m.outlineSplit.Ratio,
 		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, AI: m.snapshotAI(), Frame: m.windowFrame, Maximized: m.maximized}
 	if m.workspace != nil {
 		for _, root := range m.workspace.roots {
@@ -265,7 +273,9 @@ func (m *editorApp) restoreSession(state windowSession) {
 	if m.filesSplit.Pos < 210 {
 		m.filesSplit.Pos = 252
 	}
-	m.outlineSplit = ui.SplitterState{Pos: state.OutlinePos, Ratio: state.OutlineRatio}
+	if state.OutlineRatio > 0 && state.OutlineRatio < 1 {
+		m.outlineSplit.Ratio = 1 - state.OutlineRatio
+	}
 	if state.AIEditorRatio > 0 && state.AIEditorRatio < 1 {
 		m.aiEditorSplit.Ratio = state.AIEditorRatio
 	}
@@ -456,7 +466,7 @@ func (m *editorApp) restoreProjects(state windowSession) int {
 
 func (store *sessionStore) capture() (savedSession, uint64) {
 	store.generation++
-	saved := savedSession{Version: 1, History: append([]recentPath(nil), store.history...)}
+	saved := savedSession{Version: editorSessionVersion, History: append([]recentPath(nil), store.history...)}
 	for _, m := range store.windows {
 		saved.Windows = append(saved.Windows, m.snapshotSession())
 	}

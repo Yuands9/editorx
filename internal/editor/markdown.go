@@ -48,12 +48,24 @@ func (t *editorTab) jumpHeading(h heading) {
 	t.previewJump = h.offset
 }
 
+func (m *editorApp) toggleMarkdownOutline() {
+	m.showOutline = !m.showOutline
+	m.focusActiveSource()
+}
+
 func (m *editorApp) outlinePanel(c ui.C, t *editorTab) {
 	t.updateOutline()
 	ui.Row(c).FillWidth().Height(48).PadX(18).Items(ui.Center).Children(func() {
 		ui.Text(c, "文档大纲").FontSize(14).Grow(1)
 		if ui.Button(c, "全部展开").Icon(expandIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip("展开全部标题").Clicked() {
-			t.outlineCollapsed = map[int]bool{}
+			clear(t.outlineCollapsed)
+		}
+		if ui.Button(c, "全部折叠").Icon(collapseIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip("折叠全部标题").Clicked() {
+			for _, h := range t.headings {
+				if h.children {
+					t.outlineCollapsed[h.offset] = true
+				}
+			}
 		}
 	})
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)

@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/vivaui/viva/app"
 )
 
 const (
 	applicationSettingsFile = "application-settings.json"
 	themeDark               = "dark"
 	themeLight              = "light"
-	themeSystem             = "system"
 )
 
 type applicationPreferences struct {
@@ -25,7 +22,7 @@ type applicationPreferences struct {
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
-	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, Editor: defaultEditorPreferences()}
+	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeDark, Editor: defaultEditorPreferences()}
 	data, err := os.ReadFile(filepath.Join(directory, applicationSettingsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return defaults, nil
@@ -37,25 +34,11 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 	if err := json.Unmarshal(data, &preferences); err != nil {
 		return defaults, err
 	}
-	if preferences.Theme != themeDark && preferences.Theme != themeLight && preferences.Theme != themeSystem {
-		preferences.Theme = themeSystem
+	if preferences.Theme != themeDark && preferences.Theme != themeLight {
+		preferences.Theme = themeDark
 	}
 	preferences.Editor = preferences.Editor.normalized()
 	return preferences, nil
-}
-
-func (preferences applicationPreferences) resolvedTheme() string {
-	if preferences.Theme != themeSystem {
-		return preferences.Theme
-	}
-	switch app.SystemAppearance() {
-	case app.AppearanceLight:
-		return themeLight
-	case app.AppearanceDark:
-		return themeDark
-	default:
-		return ""
-	}
 }
 
 func (preferences applicationPreferences) save(directory string) error {
@@ -146,14 +129,13 @@ func (m *editorApp) cycleTheme() {
 }
 
 func (m *editorApp) applyApplicationPreferences(preferences applicationPreferences) error {
-	theme := preferences.resolvedTheme()
 	if m.desktop != nil {
 		desktop := m.desktop
 		trayChanged := desktop.preferences.ShowTrayIcon != preferences.ShowTrayIcon
 		desktop.preferences = preferences
 		for _, window := range desktop.store.windows {
 			if !window.windowClosed {
-				window.applyThemePreference(theme)
+				window.applyThemePreference(preferences.Theme)
 				window.applyEditorPreferences(preferences.Editor)
 				if window.appSettings.open {
 					window.appSettings.original, window.appSettings.draft = preferences, preferences
@@ -166,7 +148,7 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 		}
 		return nil
 	}
-	m.applyThemePreference(theme)
+	m.applyThemePreference(preferences.Theme)
 	m.applyEditorPreferences(preferences.Editor)
 	m.invalidator.Invalidate()
 	return nil

@@ -18,6 +18,8 @@ func (m *editorApp) workspacePanel(c ui.C) ui.Box {
 }
 
 func (m *editorApp) page(c ui.C) {
+	m.backupProgress(c.Part("backup"))
+	m.updateProgress(c.Part("update"))
 	m.browserUpdate(c)
 	m.aiUpdate(c)
 	m.updateProjectGit(c)
@@ -43,6 +45,7 @@ func (m *editorApp) page(c ui.C) {
 		m.aiConversationDialog(c)
 		m.aiReviewDialog(c)
 	}
+	m.updateDialog(c.Part("update-dialog"))
 	m.dialogs(c)
 }
 
@@ -84,14 +87,7 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 					workbench.Grow(1)
 				}
 				workbench.Children(func() {
-					outline := t != nil && t.format() == "Markdown" && m.showOutline && !m.ai.open
-					main := m.workspacePanel(c.Part("documents")).PadX(4).PadBottom(6)
-					if outline {
-						main.Width(m.outlineSplit.Pos)
-					} else {
-						main.Grow(1)
-					}
-					main.Children(func() {
+					m.workspacePanel(c.Part("documents")).Grow(1).PadX(4).PadBottom(6).Children(func() {
 						m.tabBar(c, blocked)
 						if t == nil {
 							ui.Stack(c.Part("opening")).FillWidth().Grow(1).MinHeight(0).Children(func() {
@@ -99,26 +95,10 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 							})
 							return
 						}
-						m.documentHeader(c, t)
+						m.documentHeader(c, t, blocked)
 						m.searchView(c, t, blocked)
-						ui.Column(c.Part("document-panes")).FillWidth().Grow(1).MinHeight(0).Children(func() {
-							body := ui.Column(c.Part("editor-body")).FillWidth().MinHeight(0)
-							if m.results.open {
-								body.Height(m.results.split.Pos)
-							} else {
-								body.Grow(1)
-							}
-							body.Children(func() { m.documentView(c, t, blocked) })
-							if m.results.open {
-								ui.Splitter(c, &m.results.split).Mins(120, 100).SplitterThickness(6)
-								m.searchResultsView(c)
-							}
-						})
+						m.documentPanes(c.Part("document-panes"), t, blocked)
 					})
-					if outline {
-						ui.Splitter(c, &m.outlineSplit).Mins(420, 160).SplitterThickness(workspaceInset)
-						m.workspacePanel(c.Part("outline")).Grow(1).PadBottom(6).Children(func() { m.outlinePanel(c, t) })
-					}
 				})
 				if m.ai.open {
 					ui.Splitter(c, &m.aiEditorSplit).Mins(232, 280).SplitterThickness(12).
@@ -136,6 +116,29 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 		if t != nil {
 			m.statusBar(c, t, blocked)
 		}
+	})
+}
+
+func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
+	ui.Row(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
+		if t.format() == "Markdown" && m.showOutline && !m.ai.open {
+			ui.Column(c.Part("outline")).Width(m.outlineSplit.Pos).Shrink(0).FillHeight().Clip().
+				Children(func() { m.outlinePanel(c, t) })
+			ui.Splitter(c, &m.outlineSplit).Mins(160, 420).SplitterThickness(workspaceInset).Label("调整大纲宽度")
+		}
+		ui.Column(c.Part("document-content")).Grow(1).MinWidth(0).FillHeight().Children(func() {
+			body := ui.Column(c.Part("editor-body")).FillWidth().MinHeight(0)
+			if m.results.open {
+				body.Height(m.results.split.Pos)
+			} else {
+				body.Grow(1)
+			}
+			body.Children(func() { m.documentView(c, t, blocked) })
+			if m.results.open {
+				ui.Splitter(c, &m.results.split).Mins(120, 100).SplitterThickness(6)
+				m.searchResultsView(c)
+			}
+		})
 	})
 }
 
@@ -171,17 +174,6 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			}
 			if assistant.Clicked() {
 				c.After(m.toggleAIPanel)
-			}
-			label := "展开大纲"
-			if m.showOutline {
-				label = "收起大纲"
-			}
-			toggle := ui.Button(c, label).Icon(rightPanelIcon).IconOnly().Ghost().Width(30).Height(34).Disabled(blocked || m.ai.open || t.format() != "Markdown").Tooltip(label + " · Ctrl+Alt+B（Markdown）")
-			if m.showOutline && t.format() == "Markdown" {
-				toggle.Secondary()
-			}
-			if toggle.Clicked() {
-				c.After(func() { m.showOutline = !m.showOutline; t.source.focus = t.markdownMode != "预览" })
 			}
 			for _, tool := range []struct {
 				name string
@@ -275,7 +267,7 @@ func (m *editorApp) shortcuts(c ui.C, t *editorTab) {
 		c.After(func() { m.stepTab(step) })
 	}
 	if ui.Shortcut(c, ui.Ctrl|ui.Alt, "b") {
-		c.After(func() { m.showOutline = !m.showOutline; m.focusActiveSource() })
+		c.After(m.toggleMarkdownOutline)
 	}
 	if ui.Shortcut(c, ui.Alt, "z") && !t.readOnlyPreview() && t.office == nil {
 		t.toggleWrap()
@@ -423,12 +415,26 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 	})
 }
 
-func (m *editorApp) documentHeader(c ui.C, t *editorTab) {
+func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 	format := t.format()
 	if format != "JSON" && format != "Markdown" && format != "HTML" {
 		return
 	}
 	ui.Row(c).FillWidth().Height(38).PadX(16).Gap(6).Items(ui.Center).Children(func() {
+		if format == "Markdown" {
+			label := "展开大纲"
+			if m.showOutline {
+				label = "收起大纲"
+			}
+			toggle := ui.Button(c.Part("outline-toggle"), label).Icon(leftPanelIcon).Ghost().Height(28).FontSize(12).
+				Disabled(blocked || m.ai.open).Tooltip(label + " · Ctrl+Alt+B")
+			if m.showOutline {
+				toggle.Secondary()
+			}
+			if toggle.Clicked() {
+				c.After(m.toggleMarkdownOutline)
+			}
+		}
 		ui.Slot(c).Grow(1)
 		if t.format() == "HTML" {
 			ui.Row(c).Pad(3).Gap(2).Radius(14).Background(m.theme.Card).Children(func() {

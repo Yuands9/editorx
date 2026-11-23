@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Yuands9/editorx/internal/version"
 	"github.com/vivaui/viva/tools/winpkg"
 	"github.com/vivaui/viva/tools/winres"
 )
@@ -28,7 +29,7 @@ func packageExecutable() error {
 	if err != nil {
 		return err
 	}
-	executable, err = winres.Patch(executable, icon, winres.Info{Name: "EditorX", Description: "EditorX 多格式文本编辑器", Version: "0.32.2", File: "EditorX.exe"})
+	executable, err = winres.Patch(executable, icon, winres.Info{Name: "EditorX", Description: "EditorX 多格式文本编辑器", Version: version.Number, File: "EditorX.exe"})
 	if err != nil {
 		return err
 	}

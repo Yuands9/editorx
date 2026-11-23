@@ -1,27 +1,45 @@
 package editor
 
 import (
+	"strings"
+
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 const (
-	settingsGeneral    = "常规"
 	settingsAppearance = "外观"
 	settingsEditor     = "编辑器"
-	settingsAI         = "AI 助手"
+	settingsBackup     = "备份"
+	settingsShortcuts  = "快捷键"
+	settingsAI         = "AI"
+	settingsAbout      = "关于"
 )
+
+var settingSections = []struct {
+	label, topics string
+	icon          gfx.Icon
+}{
+	{settingsAppearance, "颜色主题、深浅配色、托盘、关闭窗口", themeIcon},
+	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
+	{settingsBackup, "导出、恢复、会话草稿、数据目录", folderIcon},
+	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
+	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
+	{settingsAbout, "EditorX、版本、检查更新、GitHub", infoIcon},
+}
 
 type settingsPageState struct {
 	open, returnToAI bool
 	section, problem string
 	original, draft  applicationPreferences
+	query            ui.Field
+	editorPreview    *editorPane
 	fonts            []string
 	fontRequest      *ui.EffectState[[]string, int]
 }
 
 func (m *editorApp) openApplicationSettings() {
-	m.showSettings(settingsGeneral)
+	m.showSettings(settingsAppearance)
 }
 
 func (m *editorApp) toggleApplicationSettings() {
@@ -60,6 +78,7 @@ func (m *editorApp) showSettings(section string) {
 
 func (m *editorApp) closeSettings() {
 	returnToAI := m.appSettings.returnToAI
+	m.update.open = false
 	if m.applyAIProfileChanges() {
 		m.ai.settings, m.ai.settingsEditing = aiSettingsEditor{}, false
 	} else {
@@ -86,6 +105,10 @@ func (m *editorApp) settingsPage(c ui.C) {
 	settings, ai, editor := &m.appSettings, &m.ai, &m.ai.settings
 	title := settings.section
 	aiDetail := settings.section == settingsAI && (ai.settingsEditing || editor.removePending)
+	query := strings.ToLower(strings.TrimSpace(settings.query.Text()))
+	if query != "" && !aiDetail {
+		title = "搜索结果"
+	}
 	if aiDetail {
 		editor.updateProbe(c.Part("model-probe"))
 		title = "编辑模型配置"
@@ -96,7 +119,7 @@ func (m *editorApp) settingsPage(c ui.C) {
 			title = "删除模型配置？"
 		}
 	}
-	if ui.Shortcut(c, 0, "escape") {
+	if !m.update.open && ui.Shortcut(c, 0, "escape") {
 		c.After(m.closeSettings)
 	}
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Pad(10).Gap(8).Children(func() {
@@ -109,27 +132,36 @@ func (m *editorApp) settingsPage(c ui.C) {
 			}
 		})
 		ui.Row(c.Part("layout")).Grow(1).Basis(0).FillWidth().MinHeight(0).Gap(8).Children(func() {
-			m.workspacePanel(c.Part("navigation")).Width(170).Shrink(0).Pad(8).Gap(4).Children(func() {
-				for _, section := range []struct {
-					label string
-					icon  gfx.Icon
-				}{
-					{settingsGeneral, settingsIcon},
-					{settingsAppearance, themeIcon},
-					{settingsEditor, codeIcon},
-					{settingsAI, aiIcon},
-				} {
-					button := ui.Button(c.Part("category").Key(section.label), section.label).Icon(section.icon).
-						Ghost().FillWidth().Height(40).Radius(10).Disabled(aiDetail)
-					if section.label == settings.section {
-						button.Secondary()
+			m.workspacePanel(c.Part("navigation")).Width(164).Shrink(0).Pad(8).Gap(4).Children(func() {
+				for _, section := range settingSections {
+					row := ui.Row(c.Part("category").Key(section.label)).FillWidth().Height(38).
+						PadX(12).Gap(9).Items(ui.Center).Radius(10)
+					selected := section.label == settings.section
+					if selected {
+						row.Background(m.theme.Secondary)
 					}
-					if button.Clicked() {
-						c.After(func() { m.showSettings(section.label) })
+					row.HitWith(ui.ID(c), section.label, gfx.HitOptions{Role: gfx.RoleButton, Selected: selected, Disabled: aiDetail}).
+						Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Background(m.theme.Hover))
+					row.Children(func() {
+						ui.Icon(c, section.icon).Size(16, 16).Color(m.theme.MutedForeground)
+						ui.Text(c, section.label).FontSize(14).Grow(1)
+					})
+					if row.Clicked() && !aiDetail {
+						c.After(func() {
+							settings.query.SetText("")
+							m.showSettings(section.label)
+						})
 					}
 				}
 			})
-			m.workspacePanel(c.Part("content")).Grow(1).Pad(16).Gap(8).Children(func() {
+			m.workspacePanel(c.Part("content")).Grow(1).Pad(16).Gap(10).Children(func() {
+				if !aiDetail {
+					ui.Row(c.Part("search-bar")).FillWidth().MaxWidth(1020).Height(36).PadX(10).Gap(5).
+						Items(ui.Center).Radius(10).Background(m.theme.Card).Children(func() {
+						ui.Icon(c, searchIcon).Size(16, 16).Color(m.theme.MutedForeground)
+						ui.TextField(c.Part("search"), &settings.query, "搜索设置", "搜索设置").Grow(1).Height(32)
+					})
+				}
 				ui.Text(c, title).FontSize(21).Bold().Height(30)
 				body := ui.Scroll(c.Part("options").Key(title)).FillWidth().Grow(1).Basis(0).MinHeight(0).Scrollbars()
 				if settings.section == settingsAI && editor.scrollTop {
@@ -138,16 +170,25 @@ func (m *editorApp) settingsPage(c ui.C) {
 				}
 				submitted := false
 				body.Children(func() {
-					ui.Column(c.Part("settings-options")).FillWidth().MaxWidth(850).PadRight(8).Gap(12).Children(func() {
+					ui.Column(c.Part("settings-options")).FillWidth().MaxWidth(1020).PadRight(8).Gap(12).Children(func() {
+						if query != "" && !aiDetail {
+							m.settingsSearchResults(c, query)
+							return
+						}
 						switch settings.section {
-						case settingsGeneral:
-							m.generalSettings(c)
 						case settingsAppearance:
 							m.appearanceSettings(c)
+							m.windowSettings(c)
 						case settingsEditor:
 							m.editorSettings(c)
+						case settingsBackup:
+							m.backupSettings(c)
+						case settingsShortcuts:
+							m.shortcutSettings(c)
 						case settingsAI:
 							m.aiSettingsContent(c, &submitted)
+						case settingsAbout:
+							m.aboutSettings(c)
 						}
 					})
 				})
@@ -164,7 +205,28 @@ func (m *editorApp) settingsPage(c ui.C) {
 	})
 }
 
-func (m *editorApp) generalSettings(c ui.C) {
+func (m *editorApp) settingsSearchResults(c ui.C, query string) {
+	found := false
+	for _, section := range settingSections {
+		if !strings.Contains(strings.ToLower(section.label+" "+section.topics), query) {
+			continue
+		}
+		found = true
+		m.applicationSetting(c.Key(section.label), section.label, section.topics, func() {
+			if ui.Button(c, "打开 "+section.label).Ghost().Clicked() {
+				c.After(func() {
+					m.appSettings.query.SetText("")
+					m.showSettings(section.label)
+				})
+			}
+		})
+	}
+	if !found {
+		ui.Text(c, "没有匹配的设置").Muted().FontSize(13)
+	}
+}
+
+func (m *editorApp) windowSettings(c ui.C) {
 	draft := &m.appSettings.draft
 	m.applicationSetting(c.Part("show-tray"), "显示系统托盘图标",
 		"点击托盘图标恢复窗口，右键可打开设置或退出。", func() {

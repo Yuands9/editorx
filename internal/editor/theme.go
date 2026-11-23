@@ -9,12 +9,11 @@ import (
 var themeOptions = []struct{ id, label string }{
 	{themeDark, "深色"},
 	{themeLight, "浅色"},
-	{themeSystem, "跟随系统"},
 }
 
 func (m *editorApp) themeButton(c ui.C, blocked bool) {
 	if ui.Button(c, "切换颜色主题").Icon(themeIcon).IconOnly().Ghost().Size(32, 34).
-		Tooltip("轮换主题 · 深色 / 浅色 / 跟随系统").TooltipOn(ui.TooltipLeft).Disabled(blocked).Clicked() {
+		Tooltip("切换主题 · 深色 / 浅色").TooltipOn(ui.TooltipLeft).Disabled(blocked).Clicked() {
 		c.After(m.cycleTheme)
 	}
 }
@@ -82,13 +81,10 @@ func lightEditorTheme() gfx.Theme {
 	return theme
 }
 
-func (m *editorApp) applyThemePreference(theme string) bool {
-	light := theme == themeLight
-	if theme == "" || m.light == light {
-		return false
+func (m *editorApp) applyThemePreference(theme string) {
+	if light := theme == themeLight; light != m.light {
+		m.setLightMode(light)
 	}
-	m.setLightMode(light)
-	return true
 }
 
 func (m *editorApp) setLightMode(light bool) {

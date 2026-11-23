@@ -3,7 +3,7 @@
   <h1>EditorX</h1>
   <p>一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。</p>
   <p><a href="https://github.com/Yuands9/editorx/releases/latest/download/EditorX.exe"><strong>下载 EditorX.exe</strong></a> · Windows x64</p>
-  <p>下载后双击运行。把文件拖进窗口即可打开。</p>
+  <p>下载后双击运行，把文件拖进窗口即可打开。后续在「设置 → 关于」检查更新。</p>
 </div>
 
 ![EditorX 同时打开配置和文本文件，正在编辑一份备忘录](docs/images/editorx.png)

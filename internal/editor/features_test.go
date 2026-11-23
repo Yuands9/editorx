@@ -372,6 +372,30 @@ func TestFolderNavigationAndMarkdownOutline(t *testing.T) {
 	if _, err := s.Locate("Windows"); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.ClickLabel("全部折叠"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Locate("项目说明"); err != nil {
+		t.Fatal("folding all should keep the top-level heading visible")
+	}
+	if _, err := s.Locate("安装"); err == nil {
+		t.Fatal("folding all should hide child headings")
+	}
+	if err := s.ClickLabel("展开章节 项目说明"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Locate("安装"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Locate("Windows"); err == nil {
+		t.Fatal("the nested section should stay folded when its parent opens")
+	}
+	if err := s.ClickLabel("全部展开"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Locate("Windows"); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.ClickLabel("编辑"); err != nil {
 		t.Fatal(err)
 	}
@@ -586,18 +610,30 @@ func TestEdgePanelsAndCompositionAfterResize(t *testing.T) {
 	if err != nil || left.Bounds.X <= menu.Bounds.X+menu.Bounds.Width {
 		t.Fatalf("sidebar toggle not to the right of the title: %+v %v", left, err)
 	}
-	right, err := s.Locate("收起大纲")
-	if err != nil || right.Bounds.X < 860 {
-		t.Fatalf("right toggle not on window edge: %+v %v", right, err)
+	outlineToggle, err := s.Locate("收起大纲")
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncScroll, err := s.Locate("同步滚动")
+	if err != nil || outlineToggle.Bounds.Y != syncScroll.Bounds.Y || outlineToggle.Bounds.X+outlineToggle.Bounds.Width >= syncScroll.Bounds.X {
+		t.Fatalf("outline toggle should start the Markdown toolbar: outline=%+v sync=%+v %v", outlineToggle, syncScroll, err)
 	}
 	before, err := s.Locate("textfield:代码编辑区")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ClickLabel("收起文件栏"); err != nil {
-		t.Fatal(err)
+	foldHeadings, err := s.Locate("全部折叠")
+	if err != nil || foldHeadings.Bounds.X+foldHeadings.Bounds.Width >= before.Bounds.X {
+		t.Fatalf("outline panel should sit to the left of the source editor: %+v %v", foldHeadings, err)
 	}
 	if err := s.ClickLabel("收起大纲"); err != nil {
+		t.Fatal(err)
+	}
+	reopen, err := s.Locate("展开大纲")
+	if err != nil || reopen.Bounds != outlineToggle.Bounds {
+		t.Fatalf("closing the outline moved the toggle from %v to %v: %v", outlineToggle.Bounds, reopen.Bounds, err)
+	}
+	if err := s.ClickLabel("收起文件栏"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := s.Locate("textfield:代码编辑区")
@@ -635,6 +671,9 @@ func TestEdgePanelsAndCompositionAfterResize(t *testing.T) {
 	}
 	if len(m.tabs) != 2 || m.active == tab || m.active.source.text.String() != "" {
 		t.Fatal("double click did not create exactly one blank tab")
+	}
+	if _, err := s.Locate("展开大纲"); err == nil {
+		t.Fatal("outline toggle should be absent on a plain text tab")
 	}
 	if err := s.Type("新标签"); err != nil {
 		t.Fatal(err)

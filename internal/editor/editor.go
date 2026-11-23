@@ -202,6 +202,8 @@ type editorApp struct {
 	desktop       *editorDesktop
 	nativeWindow  *app.Window
 	appSettings   settingsPageState
+	backup        editorBackupState
+	update        editorUpdateState
 	editorPrefs   editorPreferences
 	store         *sessionStore
 	dataDirectory string
@@ -220,7 +222,7 @@ func newEditorApp() *editorApp {
 	return &editorApp{
 		theme: editorTheme(), status: "就绪", showOutline: true, editorPrefs: defaultEditorPreferences(),
 		filesSplit:    ui.SplitterState{Pos: 252},
-		outlineSplit:  ui.SplitterState{Ratio: 0.80},
+		outlineSplit:  ui.SplitterState{Ratio: 0.20},
 		aiEditorSplit: ui.SplitterState{Ratio: 0.66},
 		aiPromptSplit: ui.SplitterState{Ratio: 0.76},
 		tools:         projectTools{split: ui.SplitterState{Ratio: 0.70}},
@@ -671,25 +673,29 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 
 // Run starts EditorX or forwards the requested paths to the running instance.
 func Run(paths []string) {
-	if err := runEditor(paths); err != nil {
+	update, err := runEditor(paths)
+	if err == nil && update.path != "" {
+		err = update.restart()
+	}
+	if err != nil {
 		app.ShowFatalError(applicationName, err.Error())
 	}
 }
 
-func runEditor(paths []string) error {
+func runEditor(paths []string) (installedEditorUpdate, error) {
 	directory, err := editorDataDirectory()
 	if err != nil {
-		return err
+		return installedEditorUpdate{}, err
 	}
 	release, err := claimEditorInstance(directory, paths)
 	if err != nil || release == nil {
-		return err
+		return installedEditorUpdate{}, err
 	}
 	defer release()
 
 	store, err := openSessionStore(directory)
 	if err != nil {
-		return err
+		return installedEditorUpdate{}, err
 	}
 	os.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
 	if len(store.windows) == 0 {
@@ -709,18 +715,15 @@ func runEditor(paths []string) error {
 	// 激活窗口与 Viva 的窗口使用同一 Windows 消息线程。
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	var stopActivation, stopAppearance func()
+	var stopActivation func()
 	defer func() {
-		if stopAppearance != nil {
-			stopAppearance()
-		}
 		if stopActivation != nil {
 			stopActivation()
 		}
 	}()
 	stop := make(chan struct{})
 	defer close(stop)
-	return app.RunApplication(func(application *app.Application) error {
+	err = app.RunApplication(func(application *app.Application) error {
 		desktop.application = application
 		stopActivation, err = listenForEditorActivation(directory, func(paths []string) bool {
 			if desktop.exiting {
@@ -732,13 +735,9 @@ func runEditor(paths []string) error {
 		if err != nil {
 			return err
 		}
-		stopAppearance = app.WatchSystemAppearance(func() {
-			application.Post(desktop.systemAppearanceChanged)
-		})
-		theme := desktop.preferences.resolvedTheme()
 		for _, window := range store.windows {
 			window.desktop = desktop
-			window.applyThemePreference(theme)
+			window.applyThemePreference(desktop.preferences.Theme)
 			if err := openEditorWindow(application, window); err != nil {
 				return err
 			}
@@ -779,10 +778,11 @@ func runEditor(paths []string) error {
 		}()
 		return nil
 	})
+	return desktop.updated, err
 }
 
 func (m *editorApp) interactionBlocked() bool {
-	return m.windowClosed || m.confirm || m.showError || m.showHistory || m.rename.open ||
+	return m.windowClosed || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || (m.desktop != nil && m.desktop.exiting)
 }
 
@@ -845,6 +845,10 @@ func (m *editorApp) releaseWindowState() {
 	m.tabs, m.active, m.workspace = nil, nil, nil
 	m.results = searchResults{}
 	m.ai = aiAssistant{}
+	if m.update.staged != "" {
+		os.Remove(m.update.staged)
+	}
+	m.update, m.backup = editorUpdateState{}, editorBackupState{}
 	m.tabDrag = ui.DragState{}
 	m.tabGhost, m.groupGhost = nil, nil
 	m.rename = tabRenameState{}

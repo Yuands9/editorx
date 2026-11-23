@@ -39,7 +39,7 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	click("button:设置")
-	if !m.appSettings.open || m.appSettings.section != settingsGeneral || len(m.tabs) != 0 {
+	if !m.appSettings.open || m.appSettings.section != settingsAppearance || len(m.tabs) != 0 {
 		t.Fatal("the settings button must work with no tabs")
 	}
 	closeGear, err := session.Locate("button:关闭设置")
@@ -70,6 +70,9 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 	click("menuitem:设置")
 	another.openApplicationSettings()
 	click("外观")
+	if _, err := session.Locate("button:跟随系统"); err == nil {
+		t.Fatal("appearance settings should only offer dark and light")
+	}
 	click("浅色")
 	if !m.light || !another.light || !m.appSettings.open || another.appSettings.draft.Theme != themeLight {
 		t.Fatal("the auto-saved theme did not immediately apply to both windows")
@@ -87,7 +90,7 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 	if _, err := session.Driver().ShortcutChord(gfx.ModifierControl, ','); err != nil || !m.appSettings.open {
 		t.Fatalf("Ctrl+, did not reopen settings: %v", err)
 	}
-	click("AI 助手")
+	click("AI")
 	click("combobox:对话字号")
 	click("option:16 px")
 	click("combobox:新对话的默认模式")
@@ -106,7 +109,7 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 	}
 }
 
-func TestSystemThemeFollowsAppearance(t *testing.T) {
+func TestThemeSwitchAlternatesDarkAndLight(t *testing.T) {
 	store, err := openSessionStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +125,18 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 	session := openTestSession(t, m)
 	driver := session.Driver()
 	driver.SetSystemAppearance(app.AppearanceLight)
-	t.Cleanup(app.WatchSystemAppearance(desktop.systemAppearanceChanged))
+	initial, err := readApplicationPreferences(store.directory)
+	if err != nil || initial.Theme != themeDark {
+		t.Fatalf("a fresh profile should use dark even when Windows is light: %+v, %v", initial, err)
+	}
+	if err := os.WriteFile(filepath.Join(store.directory, applicationSettingsFile), []byte("{\"theme\":\"system\"}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := readApplicationPreferences(store.directory)
+	if err != nil || legacy.Theme != themeDark {
+		t.Fatalf("a legacy system preference should use dark: %+v, %v", legacy, err)
+	}
+	desktop.preferences = legacy
 
 	cycleTheme := func(theme string) {
 		t.Helper()
@@ -132,10 +146,10 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 		if desktop.preferences.Theme != theme {
 			t.Fatalf("one click selected %q, want %q", desktop.preferences.Theme, theme)
 		}
-	}
-	initial, err := readApplicationPreferences(store.directory)
-	if err != nil || initial.Theme != themeSystem || initial.resolvedTheme() != themeLight {
-		t.Fatalf("a fresh profile did not follow system appearance: %+v, %v", initial, err)
+		saved, err := readApplicationPreferences(store.directory)
+		if err != nil || saved.Theme != theme {
+			t.Fatalf("theme did not persist, want %q: %+v, %v", theme, saved, err)
+		}
 	}
 	checkTheme := func(light bool) {
 		t.Helper()
@@ -146,23 +160,13 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 		}
 	}
 
-	cycleTheme(themeLight)
-	checkTheme(true)
-	cycleTheme(themeSystem)
-	checkTheme(true)
-	preferences, err := readApplicationPreferences(store.directory)
-	if err != nil || preferences.Theme != themeSystem || preferences.resolvedTheme() != themeLight {
-		t.Fatalf("system theme did not persist and resolve: %+v, %v", preferences, err)
-	}
-
-	driver.SetSystemAppearance(app.AppearanceDark)
 	checkTheme(false)
-	driver.SetSystemAppearance(app.AppearanceLight)
+	cycleTheme(themeLight)
+	driver.SetSystemAppearance(app.AppearanceDark)
 	checkTheme(true)
-
 	cycleTheme(themeDark)
+	driver.SetSystemAppearance(app.AppearanceLight)
 	checkTheme(false)
 	cycleTheme(themeLight)
-	driver.SetSystemAppearance(app.AppearanceDark)
 	checkTheme(true)
 }
