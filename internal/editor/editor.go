@@ -195,6 +195,7 @@ type editorApp struct {
 	rename        tabRenameState
 	fileMenu      bool
 	languageMenu  bool
+	themeMenu     bool
 	results       searchResults
 	ai            aiAssistant
 	tools         projectTools
@@ -647,6 +648,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		Title: applicationName, Icon: applicationIcon, Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
 		Invalidator: &m.invalidator,
 		OnShortcut:  m.aiPromptShortcut,
+		OnFileDrop:  m.dropFiles,
 		OnActivate: func() {
 			if m.desktop != nil && !m.nativeWindow.Hidden() {
 				m.desktop.lastActive = m
@@ -778,6 +780,41 @@ func runEditor(paths []string) error {
 		}()
 		return nil
 	})
+}
+
+func (m *editorApp) interactionBlocked() bool {
+	return m.windowClosed || m.confirm || m.showError || m.showHistory || m.rename.open ||
+		m.ai.reviewOpen || m.ai.conversationEdit.open || (m.desktop != nil && m.desktop.exiting)
+}
+
+func (m *editorApp) dropFiles(event gfx.FileDropEvent) gfx.EventResult {
+	if m.interactionBlocked() {
+		return gfx.EventResult{}
+	}
+	if event.Phase == gfx.FileDropOver {
+		return gfx.EventResult{Handled: true}
+	}
+	if event.Phase != gfx.FileDropDrop || len(event.Paths) == 0 {
+		return gfx.EventResult{}
+	}
+
+	paths := slices.Clone(event.Paths)
+	open := func() {
+		if m.interactionBlocked() {
+			return
+		}
+		if m.appSettings.open {
+			m.closeSettings()
+		}
+		m.openLaunchPaths(paths)
+		m.invalidator.Invalidate()
+	}
+	if m.post != nil {
+		m.post(open)
+		return gfx.EventResult{Handled: true}
+	}
+	open()
+	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
 func (m *editorApp) openLaunchPaths(paths []string) {

@@ -157,13 +157,16 @@ func (target *dropTarget) point(packed uintptr) (x, y float32) {
 // step tells the application one step of the drag and records whether the point
 // takes files.
 func (target *dropTarget) step(phase platform.FileDropPhase, x, y float32, paths []string) {
-	state := target.state
+	target.accepts = target.state.reportFileDrop(platform.FileDropEvent{Phase: phase, X: x, Y: y, Paths: paths})
+}
+
+func (state *windowState) reportFileDrop(event platform.FileDropEvent) bool {
 	if state.config.OnFileDrop == nil {
-		return
+		return false
 	}
-	frame, accepted, err := state.config.OnFileDrop(platform.FileDropEvent{Phase: phase, X: x, Y: y, Paths: paths})
-	target.accepts = accepted
+	frame, accepted, err := state.config.OnFileDrop(event)
 	state.frame(frame, err)
+	return accepted
 }
 
 func (target *dropTarget) answer(effect uintptr) {
@@ -318,12 +321,11 @@ func (state *windowState) handleDropFiles(drop uintptr) {
 	if len(paths) == 0 {
 		return
 	}
-	frame, _, err := state.config.OnFileDrop(platform.FileDropEvent{
+	state.reportFileDrop(platform.FileDropEvent{
 		Phase: platform.FileDropDrop,
 		X:     float32(position.X) / state.scale, Y: float32(position.Y) / state.scale,
 		Paths: paths,
 	})
-	state.frame(frame, err)
 }
 
 // closeOLE ends the application's use of OLE, once every window has revoked its

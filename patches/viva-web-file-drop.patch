@@ -1,0 +1,175 @@
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
+index 5efcc13..c07349a 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
+@@ -157,13 +157,16 @@ func (target *dropTarget) point(packed uintptr) (x, y float32) {
+ // step tells the application one step of the drag and records whether the point
+ // takes files.
+ func (target *dropTarget) step(phase platform.FileDropPhase, x, y float32, paths []string) {
+-	state := target.state
++	target.accepts = target.state.reportFileDrop(platform.FileDropEvent{Phase: phase, X: x, Y: y, Paths: paths})
++}
++
++func (state *windowState) reportFileDrop(event platform.FileDropEvent) bool {
+ 	if state.config.OnFileDrop == nil {
+-		return
++		return false
+ 	}
+-	frame, accepted, err := state.config.OnFileDrop(platform.FileDropEvent{Phase: phase, X: x, Y: y, Paths: paths})
+-	target.accepts = accepted
++	frame, accepted, err := state.config.OnFileDrop(event)
+ 	state.frame(frame, err)
++	return accepted
+ }
+ 
+ func (target *dropTarget) answer(effect uintptr) {
+@@ -318,12 +321,11 @@ func (state *windowState) handleDropFiles(drop uintptr) {
+ 	if len(paths) == 0 {
+ 		return
+ 	}
+-	frame, _, err := state.config.OnFileDrop(platform.FileDropEvent{
++	state.reportFileDrop(platform.FileDropEvent{
+ 		Phase: platform.FileDropDrop,
+ 		X:     float32(position.X) / state.scale, Y: float32(position.Y) / state.scale,
+ 		Paths: paths,
+ 	})
+-	state.frame(frame, err)
+ }
+ 
+ // closeOLE ends the application's use of OLE, once every window has revoked its
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+index c23fcc0..9cc369a 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+@@ -298,8 +298,13 @@ func (page *windowsWeb) attach(environment uintptr) {
+ 	}
+ 	addWebHandler(view, viewAddMessageReceived, func(_, args uintptr) uintptr {
+ 		var text uintptr
+-		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 && page.config.OnMessage != nil {
+-			page.config.OnMessage(wideString(text))
++		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 {
++			message := wideString(text)
++			if page.host.state.config.OnFileDrop != nil && message == webFileDropMessage {
++				page.receiveFileDrop(args)
++			} else if page.config.OnMessage != nil {
++				page.config.OnMessage(message)
++			}
+ 		}
+ 		return 0
+ 	})
+@@ -332,6 +337,9 @@ func (page *windowsWeb) attach(environment uintptr) {
+ 	if page.config.BridgeMainFrameOnly {
+ 		script = platform.WebBridgeMainFrameOnlyScript
+ 	}
++	if page.host.state.config.OnFileDrop != nil {
++		script += "\n" + webFileDropScript
++	}
+ 	comCall(view, viewAddScriptOnCreate, uintptr(unsafe.Pointer(wide(script))), 0)
+ 	if scheme := page.config.Scheme; scheme != nil && scheme.Name != "" {
+ 		addWebHandler(view, viewAddWebResourceReq, func(_, args uintptr) uintptr {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go
+new file mode 100644
+index 0000000..b5cbb96
+--- /dev/null
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go
+@@ -0,0 +1,100 @@
++package windows
++
++import (
++	"path/filepath"
++	"unsafe"
++
++	"github.com/vivaui/viva/internal/platform"
++)
++
++const webFileDropMessage = "__viva_file_drop__"
++
++// WebView2 is a child window with its own drop target. Only forward files from a native
++// drop on its main frame, leaving text selection and internal dragging to the page.
++const webFileDropScript = `(() => {
++	if (window !== window.top || typeof chrome.webview.postMessageWithAdditionalObjects !== 'function') return;
++	const postFiles = chrome.webview.postMessageWithAdditionalObjects.bind(chrome.webview);
++	const isFileDrag = event => event.isTrusted && event.dataTransfer?.types.includes('Files');
++	window.addEventListener('dragover', event => {
++		if (!isFileDrag(event)) return;
++		event.preventDefault();
++		event.dataTransfer.dropEffect = 'copy';
++	}, true);
++	window.addEventListener('drop', event => {
++		if (!isFileDrag(event)) return;
++		event.preventDefault();
++		event.stopImmediatePropagation();
++		postFiles("` + webFileDropMessage + `", Array.from(event.dataTransfer.files));
++	}, true);
++})();`
++
++// AdditionalObjects and ICoreWebView2File were added in WebView2 SDK 1.0.1774.30.
++var iidWebMessageArgs2 = guid{0x06fc7ab7, 0xc90c, 0x4297, [8]byte{0x93, 0x89, 0x33, 0xca, 0x01, 0xcf, 0x6d, 0x5e}}
++var iidWebFile = guid{0xf2c19559, 0x6bc1, 0x4583, [8]byte{0xa7, 0x57, 0x90, 0x02, 0x1b, 0xe9, 0xaf, 0xec}}
++
++const (
++	messageGetAdditionalObjects = 6
++	webObjectsGetCount          = 3
++	webObjectsGetValueAtIndex   = 4
++	webFileGetPath              = 3
++)
++
++func (page *windowsWeb) receiveFileDrop(args uintptr) {
++	if page.closed || !page.shown {
++		return
++	}
++	var args2 uintptr
++	if comCall(args, 0, uintptr(unsafe.Pointer(&iidWebMessageArgs2)), uintptr(unsafe.Pointer(&args2))) != 0 || args2 == 0 {
++		return
++	}
++	defer comCall(args2, 2)
++	var objects uintptr
++	if comCall(args2, messageGetAdditionalObjects, uintptr(unsafe.Pointer(&objects))) != 0 || objects == 0 {
++		return
++	}
++	defer comCall(objects, 2)
++	var count uint32
++	if comCall(objects, webObjectsGetCount, uintptr(unsafe.Pointer(&count))) != 0 {
++		return
++	}
++	count = min(count, maxDroppedFile)
++	paths := make([]string, 0, count)
++	for index := uint32(0); index < count; index++ {
++		var object uintptr
++		if comCall(objects, webObjectsGetValueAtIndex, uintptr(index), uintptr(unsafe.Pointer(&object))) != 0 || object == 0 {
++			continue
++		}
++		path := webDroppedPath(object)
++		comCall(object, 2)
++		if filepath.IsAbs(path) {
++			paths = append(paths, path)
++		}
++	}
++	if len(paths) == 0 {
++		return
++	}
++
++	state := page.host.state
++	var position point
++	getCursorPos.Call(uintptr(unsafe.Pointer(&position)))
++	screenToClient.Call(state.window, uintptr(unsafe.Pointer(&position)))
++	state.reportFileDrop(platform.FileDropEvent{
++		Phase: platform.FileDropDrop,
++		X:     float32(position.X) / state.scale, Y: float32(position.Y) / state.scale,
++		Paths: paths,
++	})
++}
++
++// Read a path through the runtime's File object. Message text never supplies a path.
++func webDroppedPath(object uintptr) string {
++	var file uintptr
++	if comCall(object, 0, uintptr(unsafe.Pointer(&iidWebFile)), uintptr(unsafe.Pointer(&file))) != 0 || file == 0 {
++		return ""
++	}
++	defer comCall(file, 2)
++	var path uintptr
++	if comCall(file, webFileGetPath, uintptr(unsafe.Pointer(&path))) != 0 {
++		return ""
++	}
++	return wideString(path)
++}

@@ -1,6 +1,6 @@
 {
     "name": "EditorX",
-    "description": "轻量的代码与配置编辑器",
+    "description": "Windows 多格式文本编辑器",
     "editor": {
         "fontSize": 15,
         "tabWidth": 4,

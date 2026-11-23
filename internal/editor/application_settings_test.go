@@ -61,7 +61,11 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 	if err != nil || saved.ShowTrayIcon || !saved.ExitOnClose {
 		t.Fatalf("changing tray visibility should leave close behavior enabled: %+v, %v", saved, err)
 	}
-	click("关闭设置")
+	closeButton, err := session.Locate("button:关闭设置页")
+	if err != nil || closeButton.Bounds.X < 780 || closeButton.Bounds.Y >= 80 {
+		t.Fatalf("settings close button is not in the upper right: %v, %v", closeButton.Bounds, err)
+	}
+	click("关闭设置页")
 	click("主菜单")
 	click("menuitem:设置")
 	another.openApplicationSettings()
@@ -122,7 +126,7 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 
 	selectTheme := func(label string) {
 		t.Helper()
-		for _, control := range []string{"button:设置", "外观", label, "关闭设置"} {
+		for _, control := range []string{"button:切换颜色主题", "menuitem:" + label} {
 			if err := session.ClickLabel(control); err != nil {
 				t.Fatal(err)
 			}

@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,9 +20,6 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
 )
-
-//go:embed assets/office
-var officeAssets embed.FS
 
 type officeSession struct {
 	Kind     string
@@ -126,7 +122,7 @@ func (office *officeDocument) serve(name string) error {
 		Dirty    bool   `json:"dirty"`
 		Revision int    `json:"revision"`
 	}{Name: name, Kind: office.state.Kind, Dirty: office.state.Dirty}
-	assets, _ := fs.Sub(officeAssets, "assets/office")
+	assets, _ := fs.Sub(officeAssets, officeAssetDirectory)
 	server, address, err := serveLocalDocument(assets, func(w http.ResponseWriter, r *http.Request, route string) bool {
 		// All Office code and document resources stay on this loopback origin.
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'")
@@ -232,6 +228,9 @@ func (office *officeDocument) setLightMode(light bool) {
 func (m *editorApp) openOffice(t *editorTab) {
 	office := t.office
 	if !m.webReady || office == nil || office.view != nil {
+		return
+	}
+	if !hasWordEditor && office.state.Kind == "docx" {
 		return
 	}
 	if office.server == nil {
@@ -463,6 +462,17 @@ func (office *officeDocument) close() {
 }
 func (m *editorApp) officeView(c ui.C, t *editorTab, blocked bool) {
 	office := t.office
+	if !hasWordEditor && office.state.Kind == "docx" {
+		ui.Text(c, "Word 文档请用系统关联的办公软件打开。").FillWidth().Pad(24).Muted()
+		if ui.Button(c, "在系统中打开").MarginX(24).Disabled(blocked || t.doc.path == "").Clicked() {
+			c.After(func() {
+				if err := app.OpenPath(t.doc.path); err != nil {
+					m.fail(err)
+				}
+			})
+		}
+		return
+	}
 	if m.webReady && office.view == nil && office.errorText == "" {
 		c.After(func() { m.openOffice(t) })
 	}

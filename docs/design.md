@@ -48,13 +48,16 @@ Office 和 PDF 使用独立的回环地址，并通过文档会话限制请求�
 
 ## 发布范围
 
-EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
+EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。公开发行文件位于 [GitHub Releases](https://github.com/coderyds/editorx/releases/latest)，提供 Windows x64 免安装 EXE 和附带许可证的 ZIP。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
+
+使用 `./dev.ps1 build -PublicRelease -RebuildAssets` 生成公开版。此模式将 Excel 和 PDF 资源生成到独立目录，通过 `editorx_public` 构建标签只嵌入该目录。发布前可运行 `./dev.ps1 test -PublicRelease` 验证，并用 `./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeOfficeEditing` 和 `-TestName TestNativeDocumentOutline` 检查 Excel 编辑与 PDF 大纲。便携 ZIP 包含 EXE、使用说明和许可文本。
 
 | 依赖或资源 | 许可位置 |
 | --- | --- |
 | Viva | `vendor/github.com/vivaui/viva` 中的 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES.md` |
 | 其他 Go 依赖 | `vendor` 各模块的许可证和版权声明 |
-| Univer、SuperDoc、DOCX Engine 与 PDF.js | 构建生成的 `THIRD-PARTY-NOTICES.txt` 及 npm 包内声明 |
+| Univer、PDF.js 及相关资源 | 构建生成的 `THIRD-PARTY-NOTICES.txt` 及 npm 包内声明 |
+| 本地 Word 构建中的 SuperDoc 与 DOCX Engine | npm 包内声明及各自的许可文档 |
 | 终端和助手服务商标识 | `internal/editor/assets/terminal` 与 `internal/editor/assets/ai-providers` 的许可文件 |
 
-Word 功能使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。分发包含 Word 功能的 EXE 时，需要同时满足 SuperDoc 的适用许可与 DOCX Engine 的分发授权。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)
+Word 编辑使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。合规的本地构建可使用 `./dev.ps1 build` 加载此组件。分发包含 Word 编辑的 EXE 时，需要同时满足两项许可。公开版中，Word 标签提供交由系统关联程序打开的入口。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)

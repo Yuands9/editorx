@@ -77,6 +77,9 @@ body > header > strong {
   align-items: center;
   gap: 6px;
 }
+body > header > .header-actions:last-child {
+  flex-wrap: wrap;
+}
 .header-actions[hidden] {
   display: none;
 }
@@ -129,6 +132,7 @@ body > header > strong {
 }
 #editor {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   position: relative;
   overflow: hidden;

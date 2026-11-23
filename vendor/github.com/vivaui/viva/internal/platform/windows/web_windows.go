@@ -298,8 +298,13 @@ func (page *windowsWeb) attach(environment uintptr) {
 	}
 	addWebHandler(view, viewAddMessageReceived, func(_, args uintptr) uintptr {
 		var text uintptr
-		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 && page.config.OnMessage != nil {
-			page.config.OnMessage(wideString(text))
+		if comCall(args, messageTryGetString, uintptr(unsafe.Pointer(&text))) == 0 {
+			message := wideString(text)
+			if page.host.state.config.OnFileDrop != nil && message == webFileDropMessage {
+				page.receiveFileDrop(args)
+			} else if page.config.OnMessage != nil {
+				page.config.OnMessage(message)
+			}
 		}
 		return 0
 	})
@@ -331,6 +336,9 @@ func (page *windowsWeb) attach(environment uintptr) {
 	script := platform.WebBridgeScript
 	if page.config.BridgeMainFrameOnly {
 		script = platform.WebBridgeMainFrameOnlyScript
+	}
+	if page.host.state.config.OnFileDrop != nil {
+		script += "\n" + webFileDropScript
 	}
 	comCall(view, viewAddScriptOnCreate, uintptr(unsafe.Pointer(wide(script))), 0)
 	if scheme := page.config.Scheme; scheme != nil && scheme.Name != "" {

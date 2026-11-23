@@ -46,7 +46,7 @@ func (m *editorApp) showSettings(section string) {
 		if err != nil {
 			settings.problem = "无法读取设置：" + err.Error()
 		}
-		m.fileMenu, m.languageMenu = false, false
+		m.fileMenu, m.languageMenu, m.themeMenu = false, false, false
 	}
 	settings.section = section
 	if section == settingsAI && !m.ai.settingsEditing {
@@ -102,7 +102,11 @@ func (m *editorApp) settingsPage(c ui.C) {
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Pad(10).Gap(8).Children(func() {
 		ui.Row(c.Part("heading")).FillWidth().Height(48).PadX(12).Gap(10).Items(ui.Center).Children(func() {
 			ui.Icon(c, settingsIcon).Size(19, 19).Color(m.theme.MutedForeground)
-			ui.Text(c, "设置").FontSize(20).Bold()
+			ui.Text(c, "设置").FontSize(20).Bold().Grow(1)
+			if ui.Button(c.Part("close-settings-page"), "关闭设置页").Icon(closeIcon).IconOnly().
+				Ghost().Size(34, 34).Tooltip("关闭设置 · Esc").Clicked() {
+				c.After(m.closeSettings)
+			}
 		})
 		ui.Row(c.Part("layout")).Grow(1).Basis(0).FillWidth().MinHeight(0).Gap(8).Children(func() {
 			m.workspacePanel(c.Part("navigation")).Width(170).Shrink(0).Pad(8).Gap(4).Children(func() {
@@ -177,19 +181,11 @@ func (m *editorApp) generalSettings(c ui.C) {
 }
 
 func (m *editorApp) appearanceSettings(c ui.C) {
-	theme := m.appSettings.draft.Theme
-	if theme == "" {
-		theme = themeDark
-		if m.light {
-			theme = themeLight
-		}
-	}
+	theme := m.selectedTheme(m.appSettings.draft.Theme)
 	m.applicationSetting(c.Part("color-theme"), "颜色主题",
 		"编辑器和支持主题切换的预览会使用此配色。", func() {
 			ui.Row(c.Part("theme-options")).Gap(5).Items(ui.Center).Children(func() {
-				for _, option := range []struct{ id, label string }{
-					{themeDark, "深色"}, {themeLight, "浅色"}, {themeSystem, "跟随系统"},
-				} {
+				for _, option := range themeOptions {
 					button := ui.Button(c.Key(option.id), option.label).Ghost().MinWidth(58).Height(34)
 					if option.id == theme {
 						button.Secondary()

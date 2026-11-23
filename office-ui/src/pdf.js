@@ -1,5 +1,7 @@
 import * as pdfjs from "pdfjs-dist";
 import "./pdf-view.css";
+import { bindDocumentOutline } from "./document-outline.js";
+import { readPDFOutline } from "./pdf-outline.js";
 
 const element = (name) => document.getElementById(name);
 const send = (kind, text = "") => window.viva?.postMessage(JSON.stringify({kind, text}));
@@ -86,6 +88,9 @@ try {
       for (const control of ["smaller", "fit", "larger"]) {
         element(control).disabled = false;
       }
+      bindDocumentOutline(() => readPDFOutline(documentPDF),
+        (destination) => links.goToDestination(destination),
+        "这份 PDF 没有书签或已标记的标题。");
     });
     events.on("pagechanging", ({pageNumber}) => {
       page.value = pageNumber;

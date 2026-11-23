@@ -9,6 +9,7 @@
   --text: #e5e5e5;
   --muted: #9da2ac;
   --focus: #97b6e6;
+  --selection: #3a434e;
 }
 :root.light {
   color-scheme: light;
@@ -19,6 +20,7 @@
   --text: #262c35;
   --muted: #606976;
   --focus: #2c64b2;
+  --selection: #bed8fc;
 }
 html, body {
   height: 100%;
@@ -49,6 +51,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   white-space: nowrap;
 }
 .pdf-group { flex-shrink: 0; }
+.pdf-actions { flex-wrap: wrap; flex-shrink: 1; }
 button, input {
   min-height: 25px;
   border: 1px solid var(--edge);
@@ -72,7 +75,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); out
 #find[hidden], #password-form[hidden], #message[hidden] { display: none; }
 #find-query { min-width: 70px; width: min(280px, 48%); }
 #message { padding: 8px 12px; color: var(--muted); }
-.pdf-workspace { flex: 1; min-height: 0; position: relative; }
+.pdf-workspace { flex: 1; min-width: 0; min-height: 0; position: relative; }
 #viewer-container { position: absolute; inset: 0; overflow: auto; outline: none; }
 #viewer { padding-top: 12px; }
 #viewer .page { background-color: var(--paper); margin-bottom: 14px; }

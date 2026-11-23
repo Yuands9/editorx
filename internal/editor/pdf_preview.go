@@ -28,7 +28,7 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 		preview.issue = err.Error()
 		return
 	}
-	assets, _ := fs.Sub(officeAssets, "assets/office")
+	assets, _ := fs.Sub(officeAssets, officeAssetDirectory)
 	server, address, err := serveLocalDocument(assets, func(w http.ResponseWriter, r *http.Request, path string) bool {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' blob: data:; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		w.Header().Set("Referrer-Policy", "no-referrer")

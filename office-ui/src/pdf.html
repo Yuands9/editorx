@@ -21,6 +21,7 @@
       <button id="larger" title="放大" aria-label="放大" disabled>＋</button>
     </div>
     <div class="pdf-group pdf-actions">
+      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" disabled>标题</button>
       <button id="find-toggle" aria-expanded="false" aria-controls="find">查找</button>
       <button id="save-copy">另存原件</button>
       <button id="external" title="在系统阅读器中打开">系统阅读器</button>
@@ -39,11 +40,18 @@
     <input id="password" type="password" autocomplete="off" required>
     <button type="submit">打开</button>
   </form>
-  <main class="pdf-workspace">
-    <div id="viewer-container" aria-label="PDF 文档" tabindex="0">
-      <div id="viewer" class="pdfViewer"></div>
-    </div>
-  </main>
+  <div class="document-layout">
+    <aside id="document-outline" class="document-outline" aria-label="标题" hidden>
+      <h2>标题</h2>
+      <p id="outline-status" role="status" hidden></p>
+      <div id="outline-entries"></div>
+    </aside>
+    <main class="pdf-workspace">
+      <div id="viewer-container" aria-label="PDF 文档" tabindex="0">
+        <div id="viewer" class="pdfViewer"></div>
+      </div>
+    </main>
+  </div>
   <script type="module" src="pdf.js"></script>
 </body>
 </html>

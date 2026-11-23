@@ -162,6 +162,15 @@ func TestNativeOfficeEditing(t *testing.T) {
 									finish(fmt.Errorf("native formula %q: %v", value, e))
 									return
 								}
+								if !hasWordEditor {
+									m.activate(wordTab)
+									if wordTab.office.view != nil || wordTab.office.server != nil {
+										finish(fmt.Errorf("public release started a Word editor"))
+										return
+									}
+									finish(nil)
+									return
+								}
 								m.setLightMode(true)
 								m.activate(wordTab)
 								phase = 3
@@ -250,5 +259,9 @@ func TestNativeOfficeEditing(t *testing.T) {
 	if failure != nil {
 		t.Fatal(failure)
 	}
-	t.Log("真实 WebView2：Word 标题与缩放、XLSX 公式编辑保存、DOCX 中文编辑保存、表格图片保留、退出时最后一次修改与草稿恢复、未编辑/重复保存不重新导出通过。")
+	if hasWordEditor {
+		t.Log("真实 WebView2：Word 标题与缩放、XLSX 公式编辑保存、DOCX 中文编辑保存、表格图片保留、退出时最后一次修改与草稿恢复、未编辑/重复保存不重新导出通过。")
+		return
+	}
+	t.Log("真实 WebView2：公开版 XLSX 公式编辑保存、中文输入保护及未编辑时不重新导出通过。")
 }

@@ -1,0 +1,114 @@
+.document-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.document-layout > main {
+  z-index: 0;
+}
+
+.document-outline {
+  z-index: 1;
+  flex: 0 0 clamp(180px, 27%, 280px);
+  min-width: 0;
+  padding: 8px;
+  overflow: auto;
+  box-sizing: border-box;
+  border-inline-end: 1px solid var(--viva-border, var(--edge));
+  background: var(--viva-card, var(--surface));
+  color: var(--viva-text, var(--text));
+  font-size: 13px;
+}
+
+.document-outline[hidden],
+.document-outline [hidden] {
+  display: none;
+}
+
+.document-outline h2 {
+  margin: 2px 6px 7px;
+  font-size: 13px;
+}
+
+.document-outline p {
+  margin: 10px 6px;
+  color: var(--viva-muted, var(--muted));
+  line-height: 1.5;
+}
+
+.document-outline ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outline-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  min-height: 28px;
+  align-items: center;
+  gap: 2px;
+}
+
+.document-outline button {
+  min-height: 26px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.document-outline button:not(:disabled) {
+  cursor: pointer;
+}
+
+.document-outline button:focus-visible {
+  outline: 1px solid var(--viva-action, var(--focus));
+  outline-offset: -1px;
+}
+
+.document-outline .outline-disclosure {
+  padding: 0;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.outline-disclosure[aria-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+.outline-entry {
+  grid-column: 2;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-outline button:not(:disabled):hover {
+  background: var(--viva-hover, var(--hover));
+}
+
+.document-outline button.outline-entry[aria-current] {
+  background: var(--viva-selection, var(--selection));
+}
+
+#outline-toggle[aria-expanded="true"] {
+  background: var(--viva-selection, var(--selection));
+}
+
+@media (max-width: 440px) {
+  .document-outline {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(72%, 260px);
+  }
+}

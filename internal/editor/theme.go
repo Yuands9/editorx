@@ -3,7 +3,51 @@ package editor
 import (
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
+
+var themeOptions = []struct{ id, label string }{
+	{themeDark, "深色"},
+	{themeLight, "浅色"},
+	{themeSystem, "跟随系统"},
+}
+
+func (m *editorApp) selectedTheme(theme string) string {
+	if theme != "" {
+		return theme
+	}
+	if m.light {
+		return themeLight
+	}
+	return themeDark
+}
+
+func (m *editorApp) themePicker(c ui.C, blocked bool) {
+	if blocked {
+		m.themeMenu = false
+	}
+	button := ui.Button(c, "切换颜色主题").Icon(themeIcon).IconOnly().Ghost().Size(32, 34).
+		Tooltip("切换颜色主题").Disabled(blocked)
+	if button.Clicked() {
+		m.themeMenu = !m.themeMenu
+	}
+	if m.themeMenu {
+		button.Secondary()
+	}
+	ui.Menu(c, button, &m.themeMenu, func(menu *ui.MenuItems) {
+		menu.Above()
+		menu.WidthRange(132, 172)
+		current := m.selectedTheme("")
+		if m.desktop != nil {
+			current = m.selectedTheme(m.desktop.preferences.Theme)
+		}
+		for _, option := range themeOptions {
+			if menu.Item(option.label).Checked(option.id == current).Clicked() {
+				c.After(func() { m.chooseTheme(option.id) })
+			}
+		}
+	})
+}
 
 func editorTheme() gfx.Theme {
 	theme := gfx.DarkTheme()

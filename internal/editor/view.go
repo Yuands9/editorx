@@ -22,8 +22,7 @@ func (m *editorApp) page(c ui.C) {
 	m.aiUpdate(c)
 	m.updateProjectGit(c)
 	m.updateLocalShell()
-	blocked := m.confirm || m.showError || m.showHistory || m.rename.open || m.ai.reviewOpen || m.ai.conversationEdit.open ||
-		(m.desktop != nil && m.desktop.exiting)
+	blocked := m.interactionBlocked()
 	if !blocked && ui.Shortcut(c, ui.Ctrl, ",") {
 		c.After(m.toggleApplicationSettings)
 	}
@@ -198,6 +197,9 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			}
 		}
 		ui.Slot(c).Grow(1)
+		if !m.appSettings.open {
+			m.themePicker(c.Part("theme-toggle"), blocked)
+		}
 		label := "设置"
 		if m.appSettings.open {
 			label = "关闭设置"

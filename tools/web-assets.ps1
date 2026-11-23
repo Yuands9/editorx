@@ -1,11 +1,19 @@
-param([switch]$Force)
+param([switch]$Force, [switch]$PublicRelease)
 
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path -LiteralPath (Split-Path $PSScriptRoot -Parent)).ProviderPath
 $frontend = Join-Path $project 'office-ui'
 $assetRoot = Join-Path $project 'internal\editor\assets'
-$assets = Join-Path $assetRoot 'office'
-$expected = @('main.js', 'xlsx.html', 'docx.html', 'pdf.html', 'pdf-resources\pdf.worker.min.mjs', 'THIRD-PARTY-NOTICES.txt')
+$officeAssetDirectory = if ($PublicRelease) { 'office-public' } else { 'office' }
+$assets = Join-Path $assetRoot $officeAssetDirectory
+$expected = @('main.js', 'xlsx.html', 'pdf.html', 'pdf-resources\pdf.worker.min.mjs', 'THIRD-PARTY-NOTICES.txt')
+$buildOptions = @()
+if ($PublicRelease) {
+    $buildOptions += '--public-release'
+    $Force = $Force -or (Test-Path -LiteralPath (Join-Path $assets 'docx.html'))
+} else {
+    $expected += 'docx.html'
+}
 $missing = @($expected | Where-Object { !(Test-Path -LiteralPath (Join-Path $assets $_) -PathType Leaf) })
 if (!$Force -and $missing.Count -eq 0) { return }
 
@@ -26,7 +34,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Installing locked web dependencies failed.' }
     }
     $node = (Get-Command node.exe).Source
-    & $node build.mjs $stage
+    & $node build.mjs $stage @buildOptions
     if ($LASTEXITCODE -ne 0) { throw 'Building the embedded web assets failed.' }
 } finally {
     Pop-Location

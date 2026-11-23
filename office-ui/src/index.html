@@ -15,6 +15,7 @@
       <button id="word-larger" title="放大" aria-label="放大">＋</button>
     </div>
     <div class="header-actions">
+      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" disabled hidden>标题</button>
       <span id="state"></span>
       <button id="save">保存 · Ctrl+S</button>
       <button id="save-as">另存为</button>
@@ -22,7 +23,14 @@
   </header>
   <div id="notice" hidden></div>
   <div id="toolbar"></div>
-  <main id="editor"></main>
+  <div class="document-layout">
+    <aside id="document-outline" class="document-outline" aria-label="标题" hidden>
+      <h2>标题</h2>
+      <p id="outline-status" role="status" hidden></p>
+      <div id="outline-entries"></div>
+    </aside>
+    <main id="editor"></main>
+  </div>
   <div id="busy" hidden>正在保存…</div>
   <script type="module" src="main.js"></script>
 </body>

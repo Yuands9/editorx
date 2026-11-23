@@ -4,6 +4,7 @@
 /data/
 /office-ui/node_modules/
 /internal/editor/assets/office/
+/internal/editor/assets/office-public/
 /internal/editor/assets/icon.ico
 /internal/editor/assets/icon-[0-9]*.png
 /Viva Editor.lnk

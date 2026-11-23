@@ -14,27 +14,30 @@ import (
 )
 
 func previewFixturePDF() []byte {
-	var pdf bytes.Buffer
-	pdf.WriteString("%PDF-1.4\n")
 	stream := "BT /F1 24 Tf 65 370 Td (Viva PDF preview) Tj ET"
-	objects := []string{
+	return makeFixturePDF(
 		"<< /Type /Catalog /Pages 2 0 R >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 500 420] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(stream), stream),
-	}
+	)
+}
+
+func makeFixturePDF(objects ...string) []byte {
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.4\n")
 	var offsets []int
 	for i, item := range objects {
 		offsets = append(offsets, pdf.Len())
 		fmt.Fprintf(&pdf, "%d 0 obj\n%s\nendobj\n", i+1, item)
 	}
 	xref := pdf.Len()
-	pdf.WriteString("xref\n0 6\n0000000000 65535 f \n")
+	fmt.Fprintf(&pdf, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
 	for _, offset := range offsets {
 		fmt.Fprintf(&pdf, "%010d 00000 n \n", offset)
 	}
-	fmt.Fprintf(&pdf, "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", xref)
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
 	return pdf.Bytes()
 }
 

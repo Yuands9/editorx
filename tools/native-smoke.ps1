@@ -1,10 +1,14 @@
-param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeOpenTiming','TestNativeEditorBackground')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log')
+param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeDocumentOutline','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeOpenTiming','TestNativeEditorBackground')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log', [switch]$PublicRelease)
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
 $devDirectory = Join-Path $projectDirectory '.dev'
 . (Join-Path $PSScriptRoot 'dev-env.ps1')
 $go = Initialize-VivaDevEnvironment $projectDirectory
-& (Join-Path $PSScriptRoot 'web-assets.ps1')
+& (Join-Path $PSScriptRoot 'web-assets.ps1') -PublicRelease:$PublicRelease
+$goOptions = @('-mod=vendor')
+if ($PublicRelease) {
+    $goOptions += @('-tags', 'editorx_public')
+}
 $previousNativeSmoke = $env:VIVA_NATIVE_SMOKE
 $previousNativeDrag = $env:VIVA_NATIVE_DRAG
 $previousScale = $env:VIVA_SCALE
@@ -24,7 +28,7 @@ $testExecutable = Join-Path $devDirectory 'viva-native.test.exe'
 $logPath = Join-Path $devDirectory $LogName
 Push-Location $projectDirectory
 try {
-    & $go test -mod=vendor -c -o $testExecutable ./internal/editor
+    & $go test @goOptions -c -o $testExecutable ./internal/editor
     if ($LASTEXITCODE -ne 0) { throw 'Native test build failed' }
     if (!('VivaIsolatedDesktop' -as [type])) {
         Add-Type -Path (Join-Path $PSScriptRoot 'IsolatedDesktop.cs')

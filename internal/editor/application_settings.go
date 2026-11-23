@@ -107,9 +107,45 @@ func (m *editorApp) saveApplicationSettings() {
 		return
 	}
 	settings.original, settings.draft, settings.problem = preferences, preferences, ""
+	if err := m.applyApplicationPreferences(preferences); err != nil {
+		settings.problem = fmt.Sprintf("设置已保存，无法显示系统托盘图标：%v", err)
+	}
+	m.status = "设置已保存"
+}
+
+func (m *editorApp) chooseTheme(theme string) {
+	if m.dataDirectory == "" {
+		directory, err := editorDataDirectory()
+		if err != nil {
+			m.fail(fmt.Errorf("无法读取设置目录：%w", err))
+			return
+		}
+		m.dataDirectory = directory
+	}
+	preferences, err := m.applicationPreferences()
+	if err != nil {
+		m.fail(fmt.Errorf("无法读取设置：%w", err))
+		return
+	}
+	if preferences.Theme == theme {
+		return
+	}
+	preferences.Theme = theme
+	if err := preferences.save(m.dataDirectory); err != nil {
+		m.fail(fmt.Errorf("无法保存颜色主题：%w", err))
+		return
+	}
+	m.status = "已切换颜色主题"
+	if err := m.applyApplicationPreferences(preferences); err != nil {
+		m.fail(err)
+	}
+}
+
+func (m *editorApp) applyApplicationPreferences(preferences applicationPreferences) error {
 	theme := preferences.resolvedTheme()
 	if m.desktop != nil {
 		desktop := m.desktop
+		trayChanged := desktop.preferences.ShowTrayIcon != preferences.ShowTrayIcon
 		desktop.preferences = preferences
 		for _, window := range desktop.store.windows {
 			if !window.windowClosed {
@@ -122,13 +158,12 @@ func (m *editorApp) saveApplicationSettings() {
 			}
 		}
 		if trayChanged {
-			if err := desktop.syncTray(); err != nil {
-				settings.problem = fmt.Sprintf("设置已保存，无法显示系统托盘图标：%v", err)
-			}
+			return desktop.syncTray()
 		}
-	} else {
-		m.applyThemePreference(theme)
-		m.applyEditorPreferences(preferences.Editor)
+		return nil
 	}
-	m.status = "设置已保存"
+	m.applyThemePreference(theme)
+	m.applyEditorPreferences(preferences.Editor)
+	m.invalidator.Invalidate()
+	return nil
 }

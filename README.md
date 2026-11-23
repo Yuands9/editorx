@@ -1,51 +1,67 @@
-# EditorX
+<div align="center">
+  <img src="internal/editor/assets/icon.png" width="80" height="80" alt="EditorX 图标">
+  <h1>EditorX</h1>
+  <p><strong>Windows 多格式文本编辑器</strong></p>
+  <p>打开本地文本和配置，整理 JSON，查看文档与图片。</p>
+  <p>
+    <a href="https://github.com/coderyds/editorx/releases/latest/download/EditorX-windows-x64.zip"><strong>↓ 下载 Windows x64 便携版</strong></a>
+    · <a href="https://github.com/coderyds/editorx/releases/latest/download/EditorX.exe">单文件 EXE</a>
+    · <a href="https://github.com/coderyds/editorx/releases/latest">发布说明</a>
+    · <a href="docs/usage.md">使用指南</a>
+  </p>
+</div>
 
-<img src="internal/editor/assets/icon.png" width="72" height="72" alt="EditorX 图标">
+## 三步上手
 
-EditorX 是一款基于 Viva 的 Windows 多格式文本编辑器，用于日常打开、查看和编辑本地文件。
+1. 下载便携版 ZIP，解压到有写入权限的目录。
+2. 双击 `EditorX.exe`。把文件从资源管理器拖进窗口，或按 `Ctrl+O` 选择文件。
+3. 用 `Ctrl+F` 查找，按 `Ctrl+S` 保存。想先试用，可以打开仓库的[示例文件](examples)。
 
-- 用标签页处理纯文本、无后缀文件和常见配置格式，支持中文输入、跨标签查找和语法高亮。
-- 使用 JSON 格式化与对比、Markdown 和 HTML 预览，编辑 Excel 和 Word，查看 PDF、图片和 XMind。
-- 按需使用 AI 助手、Git 和 PowerShell。
+会话和设置保存在 EXE 旁的 `data` 目录。Excel、PDF、HTML 内嵌预览及终端使用 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section)。
 
-## 开始使用
+<p align="center">
+  <img src="docs/images/json-compare.png" width="100%" alt="EditorX 的 JSON 对比工作区，两份 JSON 并排显示，下面列出可逐项合并的差异">
+</p>
 
-本机已有便携版时，运行 `EditorX.exe`，按 Ctrl+O 打开文件，按 Ctrl+Shift+O 添加项目文件夹。从源码构建使用 Windows、Go 1.26、Node.js 24 或更新版本和 PowerShell 7。内嵌文档与终端使用 Microsoft Edge WebView2 Runtime。
+## 功能一览
 
-```powershell
-.\dev.ps1 build
-.\dist\EditorX.exe
-```
-
-首次构建按锁定版本准备文档编辑和预览资源，随后生成带图标的 EXE。Go 便携工具链也可放在项目下的 `.dev/go`。开发缓存和验收文件位于 `.dev`。
-
-## 源码目录
-
-| 目录 | 内容 |
+| 场景 | 可以做什么 |
 | --- | --- |
-| `cmd/editorx` | Windows 程序入口 |
-| `internal/editor` | 编辑器、测试及内嵌资源 |
-| `office-ui` | Word、Excel 和 PDF 的内嵌界面源码 |
-| `tools` | 构建、打包和测试脚本 |
-| `docs`、`examples` | 文档和示例文件 |
+| 编辑本地文件 | 处理 UTF-8 文本、无后缀文件、XML、YAML、INI、TOML、`.properties` 和 `.env`，支持中文输入、语法高亮、跨标签查找 |
+| 处理 JSON | 双栏同步编辑、自动格式化、压缩、折叠、键排序、结构对比和逐项合并，支持转义转换及导出 XML、Form-Data |
+| 查看与编辑文档 | Markdown 和 HTML 可分屏预览，PDF 可按标题或书签跳转，支持编辑 Excel `.xlsx`、查看图片和 XMind |
+| 管理工作区 | 标签可拖动、分组、固定和重命名，支持添加多个项目文件夹、恢复会话、托盘和跟随 Windows 主题 |
+| 按需使用工具 | 内置 Git 和 PowerShell 入口，可配置 AI 助手使用 API 或已登录的本机 CLI |
 
-## 文档
+<details>
+  <summary>查看 Markdown 分屏与大纲截图</summary>
+  <p><img src="docs/images/markdown-preview.png" width="100%" alt="EditorX 同时显示 Markdown 源文、阅读预览和文档大纲"></p>
+</details>
 
-- [使用指南](docs/usage.md)
-- [功能说明](docs/features.md)
-- [设计与发布说明](docs/design.md)
-- [大文件首次打开实测](docs/large-files.md)
+## 常用快捷键
 
-## 验证
+| 操作 | 快捷键 |
+| --- | --- |
+| 打开文件 / 添加项目文件夹 | `Ctrl+O` / `Ctrl+Shift+O` |
+| 新建标签 / 关闭当前标签 | `Ctrl+N` / `Ctrl+W` |
+| 查找 / 保存 / 另存 | `Ctrl+F` / `Ctrl+S` / `Ctrl+Shift+S` |
+| 显示或隐藏项目栏 / 打开设置 | `Ctrl+B` / `Ctrl+,` |
+
+## 文档与反馈
+
+- [使用指南](docs/usage.md) · [完整功能](docs/features.md) · [设计与发布](docs/design.md) · [大文件首次打开实测](docs/large-files.md)
+- [提交问题或建议](https://github.com/coderyds/editorx/issues)
+
+## 从源码构建
+
+准备 Windows、Go 1.26、Node.js 24 或更新版本和 PowerShell 7。在仓库目录里执行：
 
 ```powershell
-.\dev.ps1 test
-.\tools\native-smoke.ps1 -TestName TestNativeOfficeEditing -TimeoutSeconds 100
-.\tools\large-open.ps1 -Runs 3
+.\dev.ps1 build -PublicRelease
+.\dist\EditorX.exe
+.\dev.ps1 test -PublicRelease
 ```
 
-最后两条命令在独立 Windows 桌面运行。大文件测试从点击项目树中的文件开始计时，到一次编辑生效或 PDF 首屏渲染结束。
+生成的文件位于 `dist`，开发缓存位于 `.dev`。公开下载版使用上述构建方式。源码中的 Word 编辑组件另有依赖许可，见[发布说明](docs/design.md#发布范围)。
 
-## 许可证
-
-EditorX 的自有源码采用 [Apache-2.0](LICENSE)。第三方代码和资源保留各自的许可。公开仓库提供源码和文档，带 Word 功能的 EXE 分发条件见[设计与发布说明](docs/design.md#发布范围)。
+EditorX 基于 [Viva](https://github.com/vivaui/viva)，自有源码采用 [Apache-2.0](LICENSE)。便携版附带第三方许可声明。

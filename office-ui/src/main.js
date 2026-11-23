@@ -1,5 +1,7 @@
 import "./style.css";
+import { bindDocumentOutline, groupHeadings } from "./document-outline.js";
 let editor, workbook, api, univer, ready = false, revision = 0, exportedRevision = 0, composing = false, disposed = false, snapshotQueued = false, timer, exporting = Promise.resolve();
+let refreshWordOutline;
 const requests = new AbortController();
 const state = document.querySelector("#state"), notice = document.querySelector("#notice");
 const page = document.documentElement;
@@ -21,6 +23,7 @@ function changed() {
     return;
   }
   revision++;
+  refreshWordOutline?.();
   state.textContent = "未保存";
   send({ kind: "dirty", revision });
   clearTimeout(timer);
@@ -227,6 +230,22 @@ try {
       ready = true;
       renderZoom(editor?.getZoom() ?? 100);
       zoom.hidden = false;
+      refreshWordOutline ??= bindDocumentOutline(async () => {
+        const { outline } = await editor.activeEditor.doc.info({});
+        return groupHeadings(outline.map(({ nodeId, level, text }) => ({
+          key: nodeId,
+          level,
+          title: text,
+          target: nodeId,
+        })));
+      }, async (nodeId) => {
+        const result = await editor.ui.viewport.scrollIntoView({
+          target: { kind: "text", blockId: nodeId, range: { start: 0, end: 0 } },
+          block: "start",
+          behavior: "instant",
+        });
+        return result.success;
+      }, "暂无标题。为段落应用标题样式后，标题会显示在这里。");
       state.textContent = info.dirty ? "未保存" : "就绪";
       send({ kind: "ready" });
     }, onEditorUpdate: changed, onContentError: ({ error }) => failure(error), onException: (event) => {
