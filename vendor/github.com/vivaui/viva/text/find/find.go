@@ -224,6 +224,16 @@ type Edit struct {
 	Text       string
 }
 
+// Replacements appends the disjoint byte ranges and their expanded replacements
+// in source order. An editor can apply them as one undo unit without retaining
+// all the unchanged text between distant matches in its history.
+func (query *Query) Replacements(dst []Edit, value, template string) []Edit {
+	query.each(value, template, func(start, end int, replacement string) {
+		dst = append(dst, Edit{Start: start, End: end, Text: replacement})
+	})
+	return dst
+}
+
 // ReplaceAllEdit is ReplaceAll as the one edit that makes it: from the start of
 // the first match to the end of the last, which an editor applies as a single
 // undo unit without rewriting the text around it. It returns the number of

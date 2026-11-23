@@ -11,7 +11,7 @@ EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。�
 | 应用与窗口 | `editor.go`、`view.go`、`theme.go` | 原生窗口配置、打开路径分派、快捷键、主题和页面布局 |
 | 编辑与文件 | `pane.go`、`document.go`、`format.go`、`syntax_languages.go` | 文本模型、输入法、语法检测、编码、保存与磁盘冲突检查 |
 | 标签和项目 | `tab_strip.go`、`tab_actions.go`、`tab_groups.go`、`workspace.go` | 标签、拖放、分组、固定保护、项目树与目录操作 |
-| 搜索与 JSON | `search.go`、`search_dialog.go`、`search_results.go`、`json_tools.go`、`json_diff.go` | 文本搜索、匹配定位、JSON 转换和结构对比 |
+| 搜索与 JSON | `search.go`、`search_replace.go`、`search_results.go`、`json_tools.go`、`json_diff.go` | 多行查找、匹配定位、跨文件替换、JSON 转换和结构对比 |
 | 预览 | `html_preview.go`、`markdown.go`、`document_preview.go`、`pdf_preview.go`、`image_view.go` | 文本及媒体预览、资源加载、生命周期和主题 |
 | Office | `office.go`、`office_workbook.go`、`document_server.go`、`office-ui/src` | 工作簿转换、文档桥接、按需加载、编辑快照与原格式保存 |
 | 全局设置 | `settings_view.go`、`application_settings.go`、`editor_preferences.go`、`ai_settings_view.go` | 设置入口、主题、窗口行为、编辑器默认值、AI 模型配置和对话偏好 |

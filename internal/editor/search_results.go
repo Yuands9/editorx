@@ -33,7 +33,7 @@ type searchResults struct {
 	origin        *editorTab
 	pane          *editorPane
 	query         string
-	options       find.Options
+	options       searchOptions
 	groups        []searchResultGroup
 	rows          []searchResultRow
 	total         int
@@ -67,10 +67,10 @@ func (m *editorApp) findAll(t *editorTab, allOpen bool) {
 
 func (r *searchResults) refresh(m *editorApp) {
 	tabs := m.tabs
-	if slices.ContainsFunc(tabs, func(tab *editorTab) bool { return tab.picture != nil || tab.office != nil }) {
+	if slices.ContainsFunc(tabs, func(tab *editorTab) bool { return !tab.canSearchText() }) {
 		tabs = nil
 		for _, tab := range m.tabs {
-			if tab.picture == nil && tab.office == nil {
+			if tab.canSearchText() {
 				tabs = append(tabs, tab)
 			}
 		}
@@ -97,7 +97,7 @@ func (r *searchResults) refresh(m *editorApp) {
 	if !changed {
 		return
 	}
-	query, err := find.Compile(r.query, r.options)
+	query, err := r.options.compile(r.query)
 	if err != nil {
 		return
 	}
@@ -166,6 +166,9 @@ func (r *searchResults) buildRows() {
 				before = "…" + before
 			}
 			value := g.source[from:to]
+			if value == "" && match.End > end {
+				value = "↵"
+			}
 			if value == "" {
 				value = "│"
 			}
@@ -229,6 +232,7 @@ func (m *editorApp) chooseSearchResult(index int) {
 	s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
 	s.query.Insert(r.query)
 	s.target, s.options, s.matches, s.current, s.ready = group.pane, r.options, group.matches, row.match, false
+	s.replacing = s.replacing && group.pane == tab.source
 	s.reveal()
 	group.pane.view.Snapshot.Marks = group.matches
 	group.pane.focus = true
@@ -281,7 +285,8 @@ func (m *editorApp) searchResultsView(c ui.C) {
 	ui.Column(c.Part("search-results")).FillWidth().Grow(1).MinHeight(0).Background(m.theme.Card).Children(func() {
 		ui.Row(c).FillWidth().Height(35).PadX(12).Gap(8).Items(ui.Center).Children(func() {
 			ui.Text(c, "搜索结果").Bold().FontSize(13)
-			summary := fmt.Sprintf("“%s” · %d 个匹配 · %d 个文档", r.query, r.total, files)
+			pattern := strings.ReplaceAll(strings.ReplaceAll(r.query, "\r\n", "\n"), "\n", "↵")
+			summary := fmt.Sprintf("“%s” · %d 个匹配 · %d 个文档", pattern, r.total, files)
 			if r.truncated {
 				summary += " · 已截断至 10,000 项"
 			}

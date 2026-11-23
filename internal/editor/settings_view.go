@@ -46,7 +46,7 @@ func (m *editorApp) showSettings(section string) {
 		if err != nil {
 			settings.problem = "无法读取设置：" + err.Error()
 		}
-		m.fileMenu, m.languageMenu, m.themeMenu = false, false, false
+		m.fileMenu, m.languageMenu = false, false
 	}
 	settings.section = section
 	if section == settingsAI && !m.ai.settingsEditing {
@@ -181,7 +181,7 @@ func (m *editorApp) generalSettings(c ui.C) {
 }
 
 func (m *editorApp) appearanceSettings(c ui.C) {
-	theme := m.selectedTheme(m.appSettings.draft.Theme)
+	theme := m.appSettings.draft.Theme
 	m.applicationSetting(c.Part("color-theme"), "颜色主题",
 		"编辑器和支持主题切换的预览会使用此配色。", func() {
 			ui.Row(c.Part("theme-options")).Gap(5).Items(ui.Center).Children(func() {

@@ -111,7 +111,7 @@ func TestSearchOptionsEditsTabsAndIME(t *testing.T) {
 	if tab.search.errorText != "" || len(tab.search.matches) != 2 {
 		t.Fatal("regex search failed")
 	}
-	tab.search.options.Regexp = false
+	tab.search.options.mode = searchText
 	tab.search.query.SetSelection(text.Range{Start: 0, End: tab.search.query.RuneCount()})
 	tab.search.focus = true
 	if err := s.Frame(); err != nil {

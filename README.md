@@ -15,7 +15,7 @@
 
 1. 下载便携版 ZIP，解压到有写入权限的目录。
 2. 双击 `EditorX.exe`。把文件从资源管理器拖进窗口，或按 `Ctrl+O` 选择文件。
-3. 用 `Ctrl+F` 查找，按 `Ctrl+S` 保存。想先试用，可以打开仓库的[示例文件](examples)。
+3. 用 `Ctrl+F` 查找、`Ctrl+R` 替换，按 `Ctrl+S` 保存。想先试用，可以打开仓库的[示例文件](examples)。
 
 会话和设置保存在 EXE 旁的 `data` 目录。Excel、PDF、HTML 内嵌预览及终端使用 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section)。
 
@@ -27,7 +27,7 @@
 
 | 场景 | 可以做什么 |
 | --- | --- |
-| 编辑本地文件 | 处理 UTF-8 文本、无后缀文件、XML、YAML、INI、TOML、`.properties` 和 `.env`，支持中文输入、语法高亮、跨标签查找 |
+| 编辑本地文件 | 处理 UTF-8 文本、无后缀文件、XML、YAML、INI、TOML、`.properties` 和 `.env`，支持中文输入、语法高亮及跨标签多行查找替换 |
 | 处理 JSON | 双栏同步编辑、自动格式化、压缩、折叠、键排序、结构对比和逐项合并，支持转义转换及导出 XML、Form-Data |
 | 查看与编辑文档 | Markdown 和 HTML 可分屏预览，PDF 可按标题或书签跳转，支持编辑 Excel `.xlsx`、查看图片和 XMind |
 | 管理工作区 | 标签可拖动、分组、固定和重命名，支持添加多个项目文件夹、恢复会话、托盘和跟随 Windows 主题 |
@@ -44,7 +44,8 @@
 | --- | --- |
 | 打开文件 / 添加项目文件夹 | `Ctrl+O` / `Ctrl+Shift+O` |
 | 新建标签 / 关闭当前标签 | `Ctrl+N` / `Ctrl+W` |
-| 查找 / 保存 / 另存 | `Ctrl+F` / `Ctrl+S` / `Ctrl+Shift+S` |
+| 查找 / 替换 | `Ctrl+F` / `Ctrl+R` |
+| 保存 / 另存 | `Ctrl+S` / `Ctrl+Shift+S` |
 | 显示或隐藏项目栏 / 打开设置 | `Ctrl+B` / `Ctrl+,` |
 
 ## 文档与反馈

@@ -12,6 +12,9 @@ package gfx
 //	menu.Paint(canvas) // stands over the page
 //	canvas.PopLayer()
 
+// TooltipLayer is the paint layer used by tooltips, including over native views.
+const TooltipLayer uint16 = 1000
+
 // NativeViewID names a native view in a window. The values are chosen by whatever opens the view
 // (see app.WebHost); zero is never a view.
 type NativeViewID uint32

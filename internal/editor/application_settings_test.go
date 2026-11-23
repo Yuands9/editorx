@@ -124,13 +124,18 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 	driver.SetSystemAppearance(app.AppearanceLight)
 	t.Cleanup(app.WatchSystemAppearance(desktop.systemAppearanceChanged))
 
-	selectTheme := func(label string) {
+	cycleTheme := func(theme string) {
 		t.Helper()
-		for _, control := range []string{"button:切换颜色主题", "menuitem:" + label} {
-			if err := session.ClickLabel(control); err != nil {
-				t.Fatal(err)
-			}
+		if err := session.ClickLabel("button:切换颜色主题"); err != nil {
+			t.Fatal(err)
 		}
+		if desktop.preferences.Theme != theme {
+			t.Fatalf("one click selected %q, want %q", desktop.preferences.Theme, theme)
+		}
+	}
+	initial, err := readApplicationPreferences(store.directory)
+	if err != nil || initial.Theme != themeSystem || initial.resolvedTheme() != themeLight {
+		t.Fatalf("a fresh profile did not follow system appearance: %+v, %v", initial, err)
 	}
 	checkTheme := func(light bool) {
 		t.Helper()
@@ -141,7 +146,9 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 		}
 	}
 
-	selectTheme("跟随系统")
+	cycleTheme(themeLight)
+	checkTheme(true)
+	cycleTheme(themeSystem)
 	checkTheme(true)
 	preferences, err := readApplicationPreferences(store.directory)
 	if err != nil || preferences.Theme != themeSystem || preferences.resolvedTheme() != themeLight {
@@ -153,7 +160,9 @@ func TestSystemThemeFollowsAppearance(t *testing.T) {
 	driver.SetSystemAppearance(app.AppearanceLight)
 	checkTheme(true)
 
-	selectTheme("浅色")
+	cycleTheme(themeDark)
+	checkTheme(false)
+	cycleTheme(themeLight)
 	driver.SetSystemAppearance(app.AppearanceDark)
 	checkTheme(true)
 }

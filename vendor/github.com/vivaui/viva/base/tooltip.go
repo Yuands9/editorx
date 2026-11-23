@@ -7,7 +7,7 @@ import (
 
 // TooltipLayer is the canvas layer tooltips are painted on: over the page, its
 // popovers, menus and dialogs.
-const TooltipLayer = 1000
+const TooltipLayer = gfx.TooltipLayer
 
 // Tooltip names what the element does in a tip that appears beside it while the
 // pointer rests on it, and is its description for assistive technology: what an

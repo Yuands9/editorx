@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/vivaui/viva/components"
@@ -10,12 +11,53 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
+type searchMode uint8
+
+const (
+	searchText searchMode = iota
+	searchEscapes
+	searchRegexp
+)
+
+var searchEscapeCharacters = strings.NewReplacer(
+	"\\r\\n", "\n",
+	"\\\\", "\\",
+	"\\n", "\n",
+	"\\r", "\r",
+	"\\t", "\t",
+)
+
+type searchOptions struct {
+	mode                     searchMode
+	CaseSensitive, WholeWord bool
+}
+
+func (o searchOptions) findOptions() find.Options {
+	return find.Options{CaseSensitive: o.CaseSensitive, WholeWord: o.WholeWord, Regexp: o.mode == searchRegexp}
+}
+
+func (o searchOptions) compile(pattern string) (*find.Query, error) {
+	pattern = strings.ReplaceAll(pattern, "\r\n", "\n")
+	if o.mode == searchEscapes {
+		pattern = searchEscapeCharacters.Replace(pattern)
+	}
+	options := o.findOptions()
+	// Literal multiline input matches both line ending styles in mixed files.
+	if !options.Regexp && strings.Contains(pattern, "\n") {
+		pattern = strings.ReplaceAll(regexp.QuoteMeta(pattern), "\n", "\\r?\\n")
+		options.Regexp = true
+	}
+	return find.Compile(pattern, options)
+}
+
 type documentSearch struct {
 	open, focus           bool
 	centerOnOpen          bool
-	query                 *text.Editor
-	field                 ui.Field
-	key                   func(gfx.KeyEvent) gfx.EventResult
+	replacing             bool
+	query, replacement    *text.Editor
+	field, replaceField   ui.Field
+	compiled              *find.Query
+	inputKey              func(gfx.KeyEvent) gfx.EventResult
 	header                ui.Handlers
 	bounds                gfx.Rect
 	dragStart, dragOrigin gfx.Point
@@ -23,24 +65,30 @@ type documentSearch struct {
 	wrap                  bool
 	message               string
 	target                *editorPane
-	options               find.Options
+	options               searchOptions
 	matches               []text.Span
 	current               int
 	truncated             bool
 	errorText             string
 	ready                 bool
 	source, pattern       string
-	lastOptions           find.Options
+	lastOptions           searchOptions
 }
 
 func (t *editorTab) initSearch() {
 	s := &t.search
-	s.query = text.NewEditor("")
+	s.query, s.replacement = text.NewEditor(""), text.NewEditor("")
 	s.field.Bind(s.query)
+	s.replaceField.Bind(s.replacement)
+	s.inputKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if event.Key == gfx.KeyEnter && event.Target == s.replaceField.ID {
+			return gfx.EventResult{}
+		}
+		return t.searchKey(event, nil)
+	}
 	s.target = t.source
 	s.current = -1
 	s.wrap = true
-	s.key = func(event gfx.KeyEvent) gfx.EventResult { return t.searchKey(event, nil) }
 	s.header.Pointer = func(event gfx.PointerEvent) gfx.EventResult {
 		switch event.Kind {
 		case gfx.PointerDown:
@@ -74,35 +122,47 @@ func (t *editorTab) initSearch() {
 	}
 }
 
-func (t *editorTab) openSearch() {
-	if t.office != nil {
-		return
-	}
-	if t.readOnlyPreview() {
+func (t *editorTab) canSearchText() bool {
+	return t.office == nil && !t.readOnlyPreview()
+}
+
+func (t *editorTab) openSearch() { t.showSearch(false) }
+
+func (t *editorTab) openReplace() { t.showSearch(true) }
+
+func (t *editorTab) showSearch(replacing bool) {
+	if !t.canSearchText() {
 		return
 	}
 	s := &t.search
 	target := t.source
-	if s.open {
-		target = s.target
-	}
-	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
-		if pane.focused && t.searchPaneVisible(pane) {
-			target = pane
-			break
+	if !replacing {
+		if s.open && t.searchPaneVisible(s.target) {
+			target = s.target
+		}
+		for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
+			if pane.focused && t.searchPaneVisible(pane) {
+				target = pane
+				break
+			}
 		}
 	}
 	target.text.CancelComposition()
 	s.query.CancelComposition()
-	selection := target.text.Selection()
-	selected := target.text.String()[target.text.ByteOffset(selection.Start):target.text.ByteOffset(selection.End)]
-	if selected != "" && !strings.ContainsAny(selected, "\r\n") {
-		s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
-		s.query.Insert(selected)
+	s.replacement.CancelComposition()
+	if !s.open || target.focused {
+		selection := target.text.Selection()
+		selected := target.text.String()[target.text.ByteOffset(selection.Start):target.text.ByteOffset(selection.End)]
+		if selected != "" {
+			if s.options.mode == searchEscapes {
+				selected = strings.ReplaceAll(selected, "\\", "\\\\")
+			}
+			s.field.SetText(selected)
+		}
 	}
 	s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
 	s.centerOnOpen = !s.open
-	s.target, s.open, s.focus, s.ready = target, true, true, false
+	s.target, s.open, s.focus, s.ready, s.replacing = target, true, true, false, replacing
 	if t.format() == "HTML" && t.htmlMode == "预览" {
 		t.htmlMode = "分屏"
 	}
@@ -115,7 +175,7 @@ func (t *editorTab) openSearch() {
 }
 
 func (t *editorTab) searchPaneVisible(p *editorPane) bool {
-	return t.picture == nil && (p == t.source || t.format() == "JSON" && (p == t.comparison && t.jsonCompare || p == t.result && !t.jsonCompare))
+	return t.canSearchText() && (p == t.source || t.format() == "JSON" && (p == t.comparison && t.jsonCompare || p == t.result && !t.jsonCompare))
 }
 
 func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventResult {
@@ -123,7 +183,7 @@ func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventRes
 	if !s.open && s.query.String() == "" {
 		return gfx.EventResult{}
 	}
-	if _, composing := s.query.Composition(); composing {
+	if s.composing() {
 		return gfx.EventResult{}
 	}
 	command, ok := components.FindBarCommandForKey(event, pane == nil)
@@ -133,7 +193,7 @@ func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventRes
 	if !ok || command == components.FindBarOpen || command == components.FindBarOpenReplace {
 		return gfx.EventResult{}
 	}
-	if pane != nil && s.target != pane {
+	if pane != nil && !s.replacing && s.target != pane {
 		s.target, s.ready = pane, false
 	}
 	switch command {
@@ -149,6 +209,7 @@ func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventRes
 
 func (s *documentSearch) close() {
 	s.query.CancelComposition()
+	s.replacement.CancelComposition()
 	s.open, s.focus, s.dragging = false, false, false
 	s.target.view.Snapshot.Marks = nil
 	s.target.view.Snapshot.CurrentMark = text.Span{}
@@ -172,7 +233,8 @@ func (s *documentSearch) refresh() {
 	}
 	s.source, s.pattern, s.lastOptions, s.ready = source, pattern, s.options, true
 	s.matches, s.errorText, s.truncated, s.current = s.matches[:0], "", false, -1
-	query, err := find.Compile(pattern, s.options)
+	query, err := s.options.compile(pattern)
+	s.compiled = query
 	if err != nil {
 		s.errorText = "正则表达式无效：" + err.Error()
 	} else {
@@ -232,7 +294,7 @@ func (m *editorApp) searchView(c ui.C, t *editorTab, blocked bool) {
 	if !s.open {
 		return
 	}
-	if !t.searchPaneVisible(s.target) {
+	if !t.searchPaneVisible(s.target) || s.replacing && s.target != t.source {
 		s.target, s.ready = t.source, false
 	}
 	s.refresh()

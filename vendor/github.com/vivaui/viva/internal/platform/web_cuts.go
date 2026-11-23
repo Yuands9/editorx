@@ -10,8 +10,9 @@ import (
 // where Viva draws over it on a higher layer (rectangles and labels, not shadows, which have no
 // edge to cut at). Adapters whose native view lies above Viva's drawing cut these out of it, so
 // what Viva draws shows and takes the pointer. Touching parts are joined, so a menu is one cut and
-// not a hundred. The result is appended to into.
-func NativeCuts(view NativeView, rectangles []render.Rectangle, labels []TextLabel, into []gfx.Rect) []gfx.Rect {
+// not a hundred. The result is appended to into. omitLayer lets adapters that
+// preserve a layer's shape handle that layer separately.
+func NativeCuts(view NativeView, rectangles []render.Rectangle, labels []TextLabel, into []gfx.Rect, omitLayer uint16) []gfx.Rect {
 	start := len(into)
 	add := func(b gfx.Rect) {
 		b = intersectRect(b, view.Bounds)
@@ -22,7 +23,7 @@ func NativeCuts(view NativeView, rectangles []render.Rectangle, labels []TextLab
 	}
 	for i := range rectangles {
 		r := &rectangles[i]
-		if r.Layer <= view.Layer || r.Kind == scene.KindShadow || r.Color.Alpha <= 0 {
+		if r.Layer <= view.Layer || r.Layer == omitLayer || r.Kind == scene.KindShadow || r.Color.Alpha <= 0 {
 			continue
 		}
 		b := gfx.Rect{X: r.Bounds.X, Y: r.Bounds.Y, Width: r.Bounds.Width, Height: r.Bounds.Height}
@@ -33,7 +34,7 @@ func NativeCuts(view NativeView, rectangles []render.Rectangle, labels []TextLab
 	}
 	for i := range labels {
 		l := &labels[i]
-		if l.Layer <= view.Layer {
+		if l.Layer <= view.Layer || l.Layer == omitLayer {
 			continue
 		}
 		b := gfx.Rect{X: l.X, Y: l.Y, Width: l.Width, Height: l.Height}

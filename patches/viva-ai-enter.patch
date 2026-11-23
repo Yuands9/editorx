@@ -9,7 +9,7 @@ index c258196..072fee0 100644
 -	if key == gfx.KeyEnter && modifiers&(gfx.ModifierControl|gfx.ModifierMeta) != 0 {
 -		// As on a window: Control+Enter is offered to the application before the
 -		// text system, which would make a line break of it.
-+	textEnter := modifiers == 0 && driver.editing() && driver.painter.nativeText.Placed &&
++	textEnter := modifiers&^gfx.ModifierShift == 0 && driver.editing() && driver.painter.nativeText.Placed &&
 +		driver.painter.nativeText.Multiline && !driver.terminal() && !driver.painter.nativeText.State.Composing
 +	if key == gfx.KeyEnter && (textEnter || modifiers&(gfx.ModifierControl|gfx.ModifierMeta) != 0) {
 +		// As on a window: offer Return before it inserts a line break.
@@ -30,7 +30,7 @@ index 76cf552..7b8663c 100644
 -	if !platform.ShortcutCandidate(event) {
 +	// A multiline field may use plain Return to send. If the application leaves
 +	// it alone, the native editor still inserts a line break.
-+	textEnter := event.Key == input.KeyEnter && mods == 0 && state.textEnabled &&
++	textEnter := event.Key == input.KeyEnter && mods&^input.ModifierShift == 0 && state.textEnabled &&
 +		state.textInput.Placed && state.textInput.Multiline && !state.textInput.Terminal && !state.textState.Composing
 +	if !textEnter && !platform.ShortcutCandidate(event) {
  		return false

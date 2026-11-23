@@ -65,6 +65,7 @@ type tabSession struct {
 	ImagePan                   gfx.Point
 	SearchQuery                string
 	SearchOptions              find.Options
+	SearchEscapes              bool `json:",omitempty"`
 	SearchOpen, SearchWrap     bool
 	SearchBounds               gfx.Rect
 }
@@ -204,7 +205,7 @@ func (m *editorApp) snapshotSession() windowSession {
 			Picture: tab.picture != nil, Pinned: tab.pinned, Source: snapshotPane(tab.source), Comparison: snapshotPane(tab.comparison), Result: snapshotPane(tab.result),
 			SplitPos: tab.split.Pos, SplitRatio: tab.split.Ratio, JSONAction: tab.jsonAction, JSONCompare: tab.jsonCompare, JSONDiffRatio: tab.diffSplit.Ratio,
 			MarkdownMode: tab.markdownMode, HTMLMode: tab.htmlMode, MarkdownOffset: tab.markdown.Offset, HTMLScroll: tab.html.scroll, OutlineCollapsed: maps.Clone(tab.outlineCollapsed), SyncScroll: tab.scroll.enabled,
-			SearchQuery: tab.search.query.CommittedString(), SearchOptions: tab.search.options, SearchOpen: tab.search.open, SearchWrap: tab.search.wrap, SearchBounds: tab.search.bounds}
+			SearchQuery: tab.search.query.CommittedString(), SearchOptions: tab.search.options.findOptions(), SearchEscapes: tab.search.options.mode == searchEscapes, SearchOpen: tab.search.open, SearchWrap: tab.search.wrap, SearchBounds: tab.search.bounds}
 		if tab.indentOverride {
 			item.JSONIndentOverride = tab.jsonIndent
 		}
@@ -389,7 +390,13 @@ func (m *editorApp) restoreSession(state windowSession) {
 			tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = true, true
 		}
 		tab.search.query.Insert(item.SearchQuery)
-		tab.search.options, tab.search.wrap, tab.search.bounds = item.SearchOptions, item.SearchWrap, item.SearchBounds
+		options := searchOptions{CaseSensitive: item.SearchOptions.CaseSensitive, WholeWord: item.SearchOptions.WholeWord}
+		if item.SearchOptions.Regexp {
+			options.mode = searchRegexp
+		} else if item.SearchEscapes {
+			options.mode = searchEscapes
+		}
+		tab.search.options, tab.search.wrap, tab.search.bounds = options, item.SearchWrap, item.SearchBounds
 		tab.search.open = item.SearchOpen && !tab.readOnlyPreview() && item.Office == nil
 		tab.search.refresh()
 	}

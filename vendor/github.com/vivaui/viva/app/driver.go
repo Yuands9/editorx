@@ -653,7 +653,7 @@ func (driver *Driver) Key(key gfx.Key, modifiers gfx.Modifiers) error {
 			return err
 		}
 	}
-	textEnter := modifiers == 0 && driver.editing() && driver.painter.nativeText.Placed &&
+	textEnter := modifiers&^gfx.ModifierShift == 0 && driver.editing() && driver.painter.nativeText.Placed &&
 		driver.painter.nativeText.Multiline && !driver.terminal() && !driver.painter.nativeText.State.Composing
 	if key == gfx.KeyEnter && (textEnter || modifiers&(gfx.ModifierControl|gfx.ModifierMeta) != 0) {
 		// As on a window: offer Return before it inserts a line break.

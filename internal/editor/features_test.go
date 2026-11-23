@@ -27,7 +27,7 @@ func newTestEditorWithDocument() *editorApp {
 func openTestSession(t *testing.T, m *editorApp) *headless.Session {
 	t.Helper()
 	page := ui.NewPage(ui.PageConfig{View: m.page, Theme: &m.theme})
-	session, err := headless.Open(ui.Configure(page, app.Config{Width: 1440, Height: 900, OnShortcut: m.aiPromptShortcut, OnFileDrop: m.dropFiles}), nil, headless.Options{Scale: 1})
+	session, err := headless.Open(ui.Configure(page, app.Config{Width: 1440, Height: 900, OnShortcut: m.windowShortcut, OnFileDrop: m.dropFiles}), nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

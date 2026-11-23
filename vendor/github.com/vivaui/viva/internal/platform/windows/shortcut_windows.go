@@ -80,7 +80,7 @@ func (state *windowState) offerShortcut(first, second uintptr, mods input.Modifi
 	}
 	// A multiline field may use plain Return to send. If the application leaves
 	// it alone, the native editor still inserts a line break.
-	textEnter := event.Key == input.KeyEnter && mods == 0 && state.textEnabled &&
+	textEnter := event.Key == input.KeyEnter && mods&^input.ModifierShift == 0 && state.textEnabled &&
 		state.textInput.Placed && state.textInput.Multiline && !state.textInput.Terminal && !state.textState.Composing
 	if !textEnter && !platform.ShortcutCandidate(event) {
 		return false

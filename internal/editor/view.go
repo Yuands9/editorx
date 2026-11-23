@@ -150,7 +150,7 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			if save.Clicked() {
 				c.After(func() { m.saveTab(t, false) })
 			}
-			searchHint := "查找内容 · Ctrl+F"
+			searchHint := "查找 Ctrl+F · 替换 Ctrl+R"
 			if t.office != nil {
 				searchHint = "Office 文档请使用文档内的查找功能"
 			}
@@ -165,7 +165,7 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			if wrap.Clicked() {
 				t.toggleWrap()
 			}
-			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(30).Height(34).Tooltip("AI 助手").Disabled(blocked)
+			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(30).Height(34).Tooltip("AI 助手").TooltipOn(ui.TooltipLeft).Disabled(blocked)
 			if m.ai.open || m.ai.hasPendingRequest() {
 				assistant.Secondary()
 			}
@@ -198,7 +198,7 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 		}
 		ui.Slot(c).Grow(1)
 		if !m.appSettings.open {
-			m.themePicker(c.Part("theme-toggle"), blocked)
+			m.themeButton(c.Part("theme-toggle"), blocked)
 		}
 		label := "设置"
 		if m.appSettings.open {
@@ -253,6 +253,9 @@ func (m *editorApp) shortcuts(c ui.C, t *editorTab) {
 	}
 	if ui.Shortcut(c, ui.Ctrl, "f") {
 		c.After(t.openSearch)
+	}
+	if ui.Shortcut(c, ui.Ctrl, "r") {
+		c.After(t.openReplace)
 	}
 	if ui.Shortcut(c, ui.Ctrl, "s") {
 		c.After(func() { m.saveTab(t, false) })
@@ -318,8 +321,11 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			if menu.Item("搜索结果").Disabled(m.results.query == "").Clicked() {
 				m.results.open = true
 			}
-			if menu.Item("搜索内容").Disabled(t.readOnlyPreview() || t.office != nil).Keys(ui.Ctrl, "f").Clicked() {
+			if menu.Item("搜索内容").Disabled(!t.canSearchText()).Keys(ui.Ctrl, "f").Clicked() {
 				c.After(t.openSearch)
+			}
+			if menu.Item("替换内容").Disabled(!t.canSearchText()).Keys(ui.Ctrl, "r").Clicked() {
+				c.After(t.openReplace)
 			}
 		} else if menu.Item("AI 助手").Icon(aiIcon).Checked(m.ai.open).Clicked() {
 			c.After(m.toggleAIPanel)

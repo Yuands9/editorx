@@ -175,12 +175,12 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 	if t.html.view == nil {
 		view, err := m.webHost.Open(app.WebViewConfig{URL: address, Ephemeral: true, TopCornerRadius: 12, BridgeMainFrameOnly: true,
 			LetterShortcut: func(letter rune, modifiers gfx.Modifiers) func() {
-				if letter != 'f' || modifiers != gfx.ModifierControl || m.active != t || m.confirm || m.showError || m.showHistory {
+				if (letter != 'f' && letter != 'r') || modifiers != gfx.ModifierControl || m.active != t || m.interactionBlocked() {
 					return nil
 				}
 				return func() {
-					if m.active == t && !m.confirm && !m.showError && !m.showHistory {
-						t.openSearch()
+					if m.active == t && !m.appSettings.open && !m.interactionBlocked() {
+						t.showSearch(letter == 'r')
 						m.invalidator.Invalidate()
 					}
 				}

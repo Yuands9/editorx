@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,10 +86,11 @@ var interfaceWebView4 = guid{0x20d02d59, 0x6df2, 0x42dc, [8]byte{0xbd, 0x06, 0xf
 
 // webHost is the pages of one window.
 type webHost struct {
-	state *windowState
-	pages map[uint32]*windowsWeb
-	rects []platform.NativeView
-	cuts  []gfx.Rect
+	state       *windowState
+	pages       map[uint32]*windowsWeb
+	rects       []platform.NativeView
+	cuts        []gfx.Rect
+	tooltipCuts []render.Rectangle
 }
 
 // windowsWeb is one page.
@@ -104,9 +106,10 @@ type windowsWeb struct {
 	queued           []func()
 	closed           bool
 	// device is where the child window is, and cutsSet the region it was last given.
-	device  rect
-	cutsSet []gfx.Rect
-	shown   bool
+	device         rect
+	cutsSet        []gfx.Rect
+	tooltipCutsSet []render.Rectangle
+	shown          bool
 	// covers are windows over the page that take the pointer for Viva where something Viva handles
 	// lies over it without being drawn; they pass what they get to the window.
 	covers   []uintptr
@@ -762,11 +765,13 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
 		Right: int32(round((view.Bounds.X + view.Bounds.Width) * scale)), Bottom: int32(round((view.Bounds.Y + view.Bounds.Height) * scale)),
 	}
 	w.layoutCovers(page, view)
-	w.cuts = platform.NativeCuts(view, w.state.textRectangles, w.state.textLabels, w.cuts[:0])
-	if !force && page.shown && page.device == device && sameRects(page.cutsSet, w.cuts) {
+	w.cuts = platform.NativeCuts(view, w.state.textRectangles, w.state.textLabels, w.cuts[:0], gfx.TooltipLayer)
+	w.tooltipCuts = visibleTooltipCuts(view, w.state.textRectangles, w.tooltipCuts[:0])
+	if !force && page.shown && page.device == device && sameRects(page.cutsSet, w.cuts) && slices.Equal(page.tooltipCutsSet, w.tooltipCuts) {
 		return
 	}
 	page.device, page.cutsSet, page.shown = device, append(page.cutsSet[:0], w.cuts...), true
+	page.tooltipCutsSet = append(page.tooltipCutsSet[:0], w.tooltipCuts...)
 	width, height := device.Right-device.Left, device.Bottom-device.Top
 	setWindowPosition.Call(page.window, 0, uintptr(device.Left), uintptr(device.Top), uintptr(width), uintptr(height), swpNoActive|swpShow)
 	comCall(page.controller, controllerPutVisible, 1)
@@ -794,6 +799,12 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
 		part, _, _ := createRectRgn.Call(uintptr(left), uintptr(top), uintptr(right), uintptr(bottom))
 		combineRgn.Call(region, region, part, rgnDiff)
 		deleteObject.Call(part)
+	}
+	for _, tooltip := range w.tooltipCuts {
+		if part := tooltipCutRegion(tooltip, view.Bounds, scale); part != 0 {
+			combineRgn.Call(region, region, part, rgnDiff)
+			deleteObject.Call(part)
+		}
 	}
 	setWindowRgn.Call(page.window, region, 1) // the window owns the region now
 }

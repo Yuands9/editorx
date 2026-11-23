@@ -195,7 +195,6 @@ type editorApp struct {
 	rename        tabRenameState
 	fileMenu      bool
 	languageMenu  bool
-	themeMenu     bool
 	results       searchResults
 	ai            aiAssistant
 	tools         projectTools
@@ -647,7 +646,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 	return app.Config{
 		Title: applicationName, Icon: applicationIcon, Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
 		Invalidator: &m.invalidator,
-		OnShortcut:  m.aiPromptShortcut,
+		OnShortcut:  m.windowShortcut,
 		OnFileDrop:  m.dropFiles,
 		OnActivate: func() {
 			if m.desktop != nil && !m.nativeWindow.Hidden() {

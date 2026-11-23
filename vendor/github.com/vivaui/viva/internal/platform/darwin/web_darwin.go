@@ -238,7 +238,7 @@ func (w *webState) layout(force bool) {
 			}
 			continue
 		}
-		w.cuts = platform.NativeCuts(view, w.rectangles, w.labels, w.cuts[:0])
+		w.cuts = platform.NativeCuts(view, w.rectangles, w.labels, w.cuts[:0], 0)
 		visible := len(w.cuts)
 		w.cuts = platform.NativeCovers(view, w.cuts)
 		if !force && page.shown && page.placed.Bounds == view.Bounds && slices.Equal(page.cutsSet, w.cuts) {

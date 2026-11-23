@@ -191,7 +191,7 @@ func (b Box) Submitted() bool {
 // OnKey gives the field a handler for the keys pressed while it has the
 // keyboard, before the page routes them anywhere else: a search field whose Up
 // and Down move a list below it, and whose Escape closes it. The handler is a
-// chain on the TextField or TextFieldID box:
+// chain on a TextField or TextArea box:
 //
 //	search := ui.TextField(c, &m.query, "Search", "")
 //	search.OnKey(func(event gfx.KeyEvent) gfx.EventResult {
@@ -209,15 +209,14 @@ func (b Box) Submitted() bool {
 // Returning Handled claims the key; returning anything else leaves it to the
 // page's other routes, so Enter can still submit the form and Escape can still
 // close an overlay. Keys that type text are never offered, so typing always
-// reaches the field. The handler also switches the field to NavigationKeys:
-// Up, Down, PageUp and PageDown reach the application instead of moving the
-// caret, which is what a command palette needs.
+// reaches the field. On a single-line input, the handler also enables
+// NavigationKeys so an application such as a command palette can handle them.
 //
 // Not inside a Memo, whose copied fields are not declared.
 func (b Box) OnKey(handler func(gfx.KeyEvent) gfx.EventResult) Box {
 	n := b.N()
-	if n.Kind != kindInput {
-		panic("ui: OnKey is for a TextField")
+	if n.Kind != kindInput && n.Kind != kindTextarea {
+		panic("ui: OnKey is for a TextField or TextArea")
 	}
 	if handler == nil {
 		panic("ui: OnKey needs a handler")
@@ -235,11 +234,13 @@ func (b Box) OnKey(handler func(gfx.KeyEvent) gfx.EventResult) Box {
 			if p.fieldKeyRoute == nil {
 				p.keyRoute, p.fieldKeyRoute = (*Page).RouteKey, (*Page).FieldKey
 			}
-			WidgetsOf(b.f).inputs[n.Aux].NavigationKeys = true
+			if n.Kind == kindInput {
+				WidgetsOf(b.f).inputs[n.Aux].NavigationKeys = true
+			}
 			return b
 		}
 	}
-	panic("ui: OnKey must be chained on a TextField or TextFieldID")
+	panic("ui: OnKey must be chained on a TextField or TextArea")
 }
 
 // Fields answers Config.TextInput for the fields: the platform asks which editor

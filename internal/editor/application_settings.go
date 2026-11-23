@@ -25,7 +25,7 @@ type applicationPreferences struct {
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
-	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Editor: defaultEditorPreferences()}
+	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, Editor: defaultEditorPreferences()}
 	data, err := os.ReadFile(filepath.Join(directory, applicationSettingsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return defaults, nil
@@ -38,7 +38,7 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 		return defaults, err
 	}
 	if preferences.Theme != themeDark && preferences.Theme != themeLight && preferences.Theme != themeSystem {
-		preferences.Theme = ""
+		preferences.Theme = themeSystem
 	}
 	preferences.Editor = preferences.Editor.normalized()
 	return preferences, nil
@@ -113,7 +113,7 @@ func (m *editorApp) saveApplicationSettings() {
 	m.status = "设置已保存"
 }
 
-func (m *editorApp) chooseTheme(theme string) {
+func (m *editorApp) cycleTheme() {
 	if m.dataDirectory == "" {
 		directory, err := editorDataDirectory()
 		if err != nil {
@@ -127,15 +127,19 @@ func (m *editorApp) chooseTheme(theme string) {
 		m.fail(fmt.Errorf("无法读取设置：%w", err))
 		return
 	}
-	if preferences.Theme == theme {
-		return
+	next := themeOptions[0]
+	for index, option := range themeOptions {
+		if option.id == preferences.Theme {
+			next = themeOptions[(index+1)%len(themeOptions)]
+			break
+		}
 	}
-	preferences.Theme = theme
+	preferences.Theme = next.id
 	if err := preferences.save(m.dataDirectory); err != nil {
 		m.fail(fmt.Errorf("无法保存颜色主题：%w", err))
 		return
 	}
-	m.status = "已切换颜色主题"
+	m.status = "颜色主题 · " + next.label
 	if err := m.applyApplicationPreferences(preferences); err != nil {
 		m.fail(err)
 	}
