@@ -1,0 +1,45 @@
+diff --git a/vendor/github.com/vivaui/viva/app/painter.go b/vendor/github.com/vivaui/viva/app/painter.go
+index 1296859..0da1ad0 100644
+--- a/vendor/github.com/vivaui/viva/app/painter.go
++++ b/vendor/github.com/vivaui/viva/app/painter.go
+@@ -1354,14 +1354,18 @@ func (painter *painter) applyTextEvent(event platform.TextEvent) (platform.TextS
+ 			explicit = active.State.TentativeComposition
+ 		}
+ 	}
++	if appEvent.Kind == TextPaste && !appEvent.Rectangular && !explicit && active.TransformPaste != nil {
++		appEvent.Text = active.TransformPaste(appEvent.Text)
++	}
+ 	if !painter.nativeText.Multiline && !painter.nativeText.Terminal &&
+-		(event.Kind == platform.TextPaste || event.Kind == platform.TextInsert) && event.Text != "" {
+-		appEvent.Text = text.SingleLine(event.Text)
+-		if appEvent.Text != event.Text {
++		(event.Kind == platform.TextPaste || event.Kind == platform.TextInsert) && appEvent.Text != "" {
++		singleLine := text.SingleLine(appEvent.Text)
++		if singleLine != appEvent.Text {
+ 			// Folding removed the line structure, so the column shape the
+ 			// clipboard declared no longer describes the text the app receives.
+ 			appEvent.Rectangular = false
+ 		}
++		appEvent.Text = singleLine
+ 		if appEvent.Text == "" && !explicit {
+ 			return painter.nativeText.State, nil
+ 		}
+diff --git a/vendor/github.com/vivaui/viva/window/text_input.go b/vendor/github.com/vivaui/viva/window/text_input.go
+index 9a3de2c..431c93f 100644
+--- a/vendor/github.com/vivaui/viva/window/text_input.go
++++ b/vendor/github.com/vivaui/viva/window/text_input.go
+@@ -1,3 +1,4 @@
++// Modified for EditorX. See patches/ in the project root.
+ package window
+ 
+ import (
+@@ -184,6 +185,9 @@ type TextInput struct {
+ 	// It does not alter the editor's selection or evaluate CopyText during paint.
+ 	CopyRectangular bool
+ 	CopyText        func() string
++	// TransformPaste may format ordinary pasted text before the native edit.
++	// Column pastes and input-method events keep their original text.
++	TransformPaste func(string) string
+ 	// AltSendsEscape asks printable Alt/Option chords on a terminal to arrive as
+ 	// raw key events with the unmodified character in KeyEvent.Text. Terminal
+ 	// encoders can then send the conventional Escape-prefixed Meta sequence.

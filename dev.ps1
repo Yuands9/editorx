@@ -20,25 +20,26 @@ try {
         'preview' {
             $env:VIVA_PREVIEW_DIR = Join-Path $PSScriptRoot '.dev\previews'
             New-Item -ItemType Directory -Path $env:VIVA_PREVIEW_DIR -Force | Out-Null
-            & $go test -mod=vendor -run 'Test(RenderPreview|MediaPreviews|TabPreviews|SessionPreviews)' -count=1 -v .
+            & $go test -mod=vendor -run 'Test(RenderPreview|MediaPreviews|TabPreviews|SessionPreviews)' -count=1 -v ./internal/editor
         }
         default {
             New-Item -ItemType Directory -Path $output -Force | Out-Null
             $exe = Join-Path $output 'EditorX.exe'
-            & $go build -mod=vendor -trimpath -ldflags '-s -w -H windowsgui' -o $exe .
+            & $go build -mod=vendor -trimpath -ldflags '-s -w -H windowsgui' -o $exe ./cmd/editorx
             if ($LASTEXITCODE -ne 0) { throw 'Go build failed.' }
             & $go run -mod=vendor ./tools/package $exe
             if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
 
             $notices = @{
-                'assets/office/THIRD-PARTY-NOTICES.txt' = 'THIRD-PARTY-NOTICES.txt'
-                'assets/ai-providers/LICENSE.txt' = 'AI-PROVIDER-LICENSE.txt'
-                'assets/ai-providers/DBX-LICENSE.txt' = 'DBX-ICON-LICENSE.txt'
-                'assets/terminal/XTERM-LICENSE.txt' = 'XTERM-LICENSE.txt'
-                'assets/terminal/ADDON-FIT-LICENSE.txt' = 'XTERM-ADDON-FIT-LICENSE.txt'
+                'office/THIRD-PARTY-NOTICES.txt' = 'THIRD-PARTY-NOTICES.txt'
+                'ai-providers/LICENSE.txt' = 'AI-PROVIDER-LICENSE.txt'
+                'ai-providers/DBX-LICENSE.txt' = 'DBX-ICON-LICENSE.txt'
+                'terminal/XTERM-LICENSE.txt' = 'XTERM-LICENSE.txt'
+                'terminal/ADDON-FIT-LICENSE.txt' = 'XTERM-ADDON-FIT-LICENSE.txt'
             }
+            $assets = Join-Path $PSScriptRoot 'internal\editor\assets'
             foreach ($source in $notices.Keys) {
-                Copy-Item -LiteralPath $source -Destination (Join-Path $output $notices[$source]) -Force
+                Copy-Item -LiteralPath (Join-Path $assets $source) -Destination (Join-Path $output $notices[$source]) -Force
             }
             if ($Action -eq 'run') {
                 Start-Process -FilePath $exe -WorkingDirectory $PSScriptRoot -WindowStyle Normal

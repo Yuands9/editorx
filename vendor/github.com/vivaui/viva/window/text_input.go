@@ -1,3 +1,4 @@
+// Modified for EditorX. See patches/ in the project root.
 package window
 
 import (
@@ -184,6 +185,9 @@ type TextInput struct {
 	// It does not alter the editor's selection or evaluate CopyText during paint.
 	CopyRectangular bool
 	CopyText        func() string
+	// TransformPaste may format ordinary pasted text before the native edit.
+	// Column pastes and input-method events keep their original text.
+	TransformPaste func(string) string
 	// AltSendsEscape asks printable Alt/Option chords on a terminal to arrive as
 	// raw key events with the unmodified character in KeyEvent.Text. Terminal
 	// encoders can then send the conventional Escape-prefixed Meta sequence.

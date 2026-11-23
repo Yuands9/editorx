@@ -35,10 +35,18 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 }
 .pdf-toolbar {
   min-height: 36px;
-  padding: 4px 9px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--edge);
   flex-wrap: wrap;
-  justify-content: space-between;
+  column-gap: 12px;
+}
+.pdf-title {
+  flex: 1 1 130px;
+  min-width: 0;
+  padding-block: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pdf-group { flex-shrink: 0; }
 button, input {

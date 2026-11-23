@@ -1,4 +1,4 @@
-param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeOpenTiming')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log')
+param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeOpenTiming','TestNativeEditorBackground')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log')
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
 $devDirectory = Join-Path $projectDirectory '.dev'
@@ -24,7 +24,7 @@ $testExecutable = Join-Path $devDirectory 'viva-native.test.exe'
 $logPath = Join-Path $devDirectory $LogName
 Push-Location $projectDirectory
 try {
-    & $go test -mod=vendor -c -o $testExecutable .
+    & $go test -mod=vendor -c -o $testExecutable ./internal/editor
     if ($LASTEXITCODE -ne 0) { throw 'Native test build failed' }
     if (!('VivaIsolatedDesktop' -as [type])) {
         Add-Type -Path (Join-Path $PSScriptRoot 'IsolatedDesktop.cs')

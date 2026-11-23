@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { mkdir, copyFile, readFile, writeFile, cp } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-const output = resolve(process.argv[2] ?? "../assets/office");
+const output = resolve(process.argv[2] ?? "../internal/editor/assets/office");
 await mkdir(output, { recursive: true });
 const { metafile } = await build({ metafile: true, entryPoints: ["src/main.js", "src/xlsx.js", "src/docx.js", "src/pdf.js"], outdir: output, bundle: true, format: "esm", splitting: true, minify: true, target: "chrome120", loader: { ".woff2": "file", ".woff": "file", ".ttf": "file", ".png": "file", ".gif": "file", ".svg": "file" }, assetNames: "assets/[name]-[hash]", legalComments: "external", logLevel: "info" });
 await cp("node_modules/@superdoc/docx-engine/dist/assets", join(output, "assets"), { recursive: true });

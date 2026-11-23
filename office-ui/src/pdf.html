@@ -8,16 +8,17 @@
 </head>
 <body>
   <header class="pdf-toolbar">
-    <div class="pdf-group" aria-label="页码">
+    <strong id="name" class="pdf-title">PDF 预览</strong>
+    <div class="pdf-group" role="group" aria-label="页码">
       <button id="back" title="上一页" aria-label="上一页" disabled>‹</button>
       <input id="page" type="number" min="1" value="1" aria-label="页码" disabled>
       <span id="total">/ …</span>
       <button id="forward" title="下一页" aria-label="下一页" disabled>›</button>
     </div>
-    <div class="pdf-group" aria-label="缩放">
-      <button id="smaller" title="缩小" aria-label="缩小">−</button>
-      <button id="fit" title="适合宽度">适合宽度</button>
-      <button id="larger" title="放大" aria-label="放大">＋</button>
+    <div class="pdf-group" role="group" aria-label="缩放">
+      <button id="smaller" title="缩小" aria-label="缩小" disabled>−</button>
+      <button id="fit" title="适合宽度" disabled>适合宽度</button>
+      <button id="larger" title="放大" aria-label="放大" disabled>＋</button>
     </div>
     <div class="pdf-group pdf-actions">
       <button id="find-toggle" aria-expanded="false" aria-controls="find">查找</button>

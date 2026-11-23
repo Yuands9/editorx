@@ -1,8 +1,12 @@
 # EditorX
 
-<img src="assets/icon.png" width="72" height="72" alt="EditorX 图标">
+<img src="internal/editor/assets/icon.png" width="72" height="72" alt="EditorX 图标">
 
-EditorX 是一款基于 Viva 的 Windows 文本编辑器，适合编辑代码、配置和本地文档。一个窗口可以管理多个项目和标签，提供 JSON 工具、Markdown 和 HTML 预览、Office 编辑、PDF 阅读，以及 Git 和 PowerShell。
+EditorX 是一款基于 Viva 的 Windows 多格式文本编辑器，用于日常打开、查看和编辑本地文件。使用体验参考 Notepad++、Sublime Text 和 EditPlus。
+
+- 用标签页处理纯文本、无后缀文件和常见配置格式，支持中文输入、跨标签查找和语法高亮。
+- 使用 JSON 格式化与对比、Markdown 和 HTML 预览，编辑 Excel 和 Word，查看 PDF、图片和 XMind。
+- 按需使用 AI 助手、Git 和 PowerShell。
 
 ## 开始使用
 
@@ -14,6 +18,16 @@ EditorX 是一款基于 Viva 的 Windows 文本编辑器，适合编辑代码、
 ```
 
 首次构建按锁定版本准备文档编辑和预览资源，随后生成带图标的 EXE。Go 便携工具链也可放在项目下的 `.dev/go`。开发缓存和验收文件位于 `.dev`。
+
+## 源码目录
+
+| 目录 | 内容 |
+| --- | --- |
+| `cmd/editorx` | Windows 程序入口 |
+| `internal/editor` | 编辑器、测试及内嵌资源 |
+| `office-ui` | Word、Excel 和 PDF 的内嵌界面源码 |
+| `tools` | 构建、打包和测试脚本 |
+| `docs`、`examples` | 文档和示例文件 |
 
 ## 文档
 

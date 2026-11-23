@@ -1,1 +1,29 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Viva Office</title><link rel="stylesheet" href="main.css"></head><body><header><strong id="name">正在打开…</strong><span id="state"></span><button id="save">保存 · Ctrl+S</button><button id="save-as">另存为</button></header><div id="notice" hidden></div><div id="toolbar"></div><main id="editor"></main><div id="busy" hidden>正在保存…</div><script type="module" src="main.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EditorX</title>
+  <link rel="stylesheet" href="main.css">
+</head>
+<body>
+  <header>
+    <strong id="name">正在打开…</strong>
+    <div id="word-zoom" class="header-actions" role="group" aria-label="缩放" hidden>
+      <button id="word-smaller" title="缩小" aria-label="缩小">−</button>
+      <button id="word-fit" title="适合宽度">100%</button>
+      <button id="word-larger" title="放大" aria-label="放大">＋</button>
+    </div>
+    <div class="header-actions">
+      <span id="state"></span>
+      <button id="save">保存 · Ctrl+S</button>
+      <button id="save-as">另存为</button>
+    </div>
+  </header>
+  <div id="notice" hidden></div>
+  <div id="toolbar"></div>
+  <main id="editor"></main>
+  <div id="busy" hidden>正在保存…</div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-module viva-editor
+module github.com/coderyds/editorx
 
 go 1.26.0
 

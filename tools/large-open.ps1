@@ -20,7 +20,7 @@ $oldProfile = $env:VIVA_LARGE_PROFILE
 
 Push-Location -LiteralPath $project
 try {
-    & $go test -mod=vendor -c -o $exe .
+    & $go test -mod=vendor -c -o $exe ./internal/editor
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile native timing tests.' }
     $env:VIVA_LARGE_FIXTURES = $fixtures
     & $exe '-test.run=^TestMakeLargeOpenFixtures$' '-test.v'

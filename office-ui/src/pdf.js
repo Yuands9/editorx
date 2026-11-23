@@ -3,6 +3,9 @@ import "./pdf-view.css";
 
 const element = (name) => document.getElementById(name);
 const send = (kind, text = "") => window.viva?.postMessage(JSON.stringify({kind, text}));
+const name = element("name");
+const title = new URLSearchParams(location.search).get("title") || name.textContent;
+name.textContent = name.title = document.title = title;
 const message = element("message");
 const page = element("page");
 const container = element("viewer-container");
@@ -80,6 +83,9 @@ try {
       page.disabled = false;
       element("total").textContent = "/ " + documentPDF.numPages;
       element("forward").disabled = documentPDF.numPages === 1;
+      for (const control of ["smaller", "fit", "larger"]) {
+        element(control).disabled = false;
+      }
     });
     events.on("pagechanging", ({pageNumber}) => {
       page.value = pageNumber;

@@ -1354,14 +1354,18 @@ func (painter *painter) applyTextEvent(event platform.TextEvent) (platform.TextS
 			explicit = active.State.TentativeComposition
 		}
 	}
+	if appEvent.Kind == TextPaste && !appEvent.Rectangular && !explicit && active.TransformPaste != nil {
+		appEvent.Text = active.TransformPaste(appEvent.Text)
+	}
 	if !painter.nativeText.Multiline && !painter.nativeText.Terminal &&
-		(event.Kind == platform.TextPaste || event.Kind == platform.TextInsert) && event.Text != "" {
-		appEvent.Text = text.SingleLine(event.Text)
-		if appEvent.Text != event.Text {
+		(event.Kind == platform.TextPaste || event.Kind == platform.TextInsert) && appEvent.Text != "" {
+		singleLine := text.SingleLine(appEvent.Text)
+		if singleLine != appEvent.Text {
 			// Folding removed the line structure, so the column shape the
 			// clipboard declared no longer describes the text the app receives.
 			appEvent.Rectangular = false
 		}
+		appEvent.Text = singleLine
 		if appEvent.Text == "" && !explicit {
 			return painter.nativeText.State, nil
 		}

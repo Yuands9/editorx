@@ -55,7 +55,8 @@ body {
 }
 body > header {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   align-items: center;
   min-height: 48px;
   padding: 7px 14px;
@@ -64,12 +65,28 @@ body > header {
   flex-shrink: 0;
 }
 body > header > strong {
-  flex: 1;
+  flex: 1 1 130px;
   min-width: 0;
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-actions[hidden] {
+  display: none;
+}
+#word-smaller,
+#word-larger {
+  min-width: 30px;
+  padding-inline: 0;
+}
+#word-fit {
+  min-width: 56px;
 }
 #state {
   flex-shrink: 0;
@@ -77,7 +94,7 @@ body > header > strong {
   font-size: 12px;
   white-space: nowrap;
 }
-body > header > button {
+.header-actions > button {
   flex-shrink: 0;
   font: inherit;
   font-size: 12px;
@@ -90,23 +107,23 @@ body > header > button {
   color: var(--viva-text);
   cursor: pointer;
 }
-body > header > button:hover:not(:disabled) {
+.header-actions > button:hover:not(:disabled) {
   background: var(--viva-hover);
 }
-body > header > #save {
+.header-actions > #save {
   border-color: var(--viva-action);
   background: var(--viva-action);
   color: var(--viva-action-text);
 }
-body > header > #save:hover:not(:disabled) {
+.header-actions > #save:hover:not(:disabled) {
   border-color: var(--viva-action-hover);
   background: var(--viva-action-hover);
 }
-body > header > button:focus-visible {
+.header-actions > button:focus-visible {
   outline: 2px solid var(--viva-action);
   outline-offset: 2px;
 }
-body > header > button:disabled {
+.header-actions > button:disabled {
   opacity: 0.5;
   cursor: default;
 }

@@ -151,7 +151,8 @@ try {
     documentResponse("document").then((response) => kind === "xlsx" ? response.json() : response.blob()),
   ]);
   revision = exportedRevision = info.revision || 0;
-  document.querySelector("#name").textContent = info.name;
+  const name = document.querySelector("#name");
+  name.textContent = name.title = document.title = info.name;
   document.querySelector("#editor").dataset.kind = info.kind;
   if (info.kind === "xlsx") {
     const { createUniver, LocaleType, CommandType, ICommandService, sheets, locale } = engine;
@@ -187,6 +188,19 @@ try {
     ready = true;
   } else {
     const { SuperDoc, createTheme } = engine;
+    const zoom = document.querySelector("#word-zoom");
+    const smaller = document.querySelector("#word-smaller");
+    const fit = document.querySelector("#word-fit");
+    const larger = document.querySelector("#word-larger");
+    const minimumZoom = 25, maximumZoom = 400, zoomStep = 10;
+    function renderZoom(value) {
+      fit.textContent = Math.round(value) + "%";
+      smaller.disabled = value <= minimumZoom;
+      larger.disabled = value >= maximumZoom;
+    }
+    smaller.onclick = () => editor.setZoom(Math.max(minimumZoom, Math.round(editor.getZoom()) - zoomStep));
+    fit.onclick = () => editor.setZoomMode("fit-width");
+    larger.onclick = () => editor.setZoom(Math.min(maximumZoom, Math.round(editor.getZoom()) + zoomStep));
     const officeTheme = createTheme({
       name: "viva",
       radius: "10px",
@@ -209,8 +223,10 @@ try {
       },
     });
     page.classList.add(officeTheme);
-    editor = new SuperDoc({ selector: "#editor", document: new File([documentData], info.name, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), contained: true, telemetry: { enabled: false }, uiDisplayFallbackFont: "Segoe UI, Microsoft YaHei, sans-serif", ui: { toolbar: { container: "#toolbar", responsiveTo: "container", strings: { bold: "粗体", "font-family": "字体", "font-size": "字号", italic: "斜体", underline: "下划线", strikethrough: "删除线", "text-color": "文字颜色", "highlight-color": "高亮", search: "查找", link: "链接", image: "插入图片", table: "插入表格", "table-actions": "表格操作", "insert-row-before": "上方插入行", "insert-row-after": "下方插入行", "insert-column-before": "左侧插入列", "insert-column-after": "右侧插入列", "delete-row": "删除行", "delete-column": "删除列", "delete-table": "删除表格", "merge-cells": "合并单元格", "split-cell": "拆分单元格", "text-align": "对齐", "bullet-list": "项目符号", "numbered-list": "编号", "indent-decrease": "减少缩进", "indent-increase": "增加缩进", zoom: "缩放", undo: "撤销", redo: "重做", "clear-formatting": "清除格式", "copy-format": "格式刷", "line-height": "行距", "linked-style-label": "段落格式", "linked-style": "段落样式", ruler: "标尺", "measurement-unit": "度量单位", "document-mode-editing": "编辑", "document-mode-viewing": "查看", "document-mode-suggesting": "修订" } }, comments: false }, onReady() {
+    editor = new SuperDoc({ selector: "#editor", document: new File([documentData], info.name, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), contained: true, telemetry: { enabled: false }, uiDisplayFallbackFont: "Segoe UI, Microsoft YaHei, sans-serif", ui: { toolbar: { container: "#toolbar", responsiveTo: "container", strings: { bold: "粗体", "font-family": "字体", "font-size": "字号", italic: "斜体", underline: "下划线", strikethrough: "删除线", "text-color": "文字颜色", "highlight-color": "高亮", search: "查找", link: "链接", image: "插入图片", table: "插入表格", "table-actions": "表格操作", "insert-row-before": "上方插入行", "insert-row-after": "下方插入行", "insert-column-before": "左侧插入列", "insert-column-after": "右侧插入列", "delete-row": "删除行", "delete-column": "删除列", "delete-table": "删除表格", "merge-cells": "合并单元格", "split-cell": "拆分单元格", "text-align": "对齐", "bullet-list": "项目符号", "numbered-list": "编号", "indent-decrease": "减少缩进", "indent-increase": "增加缩进", zoom: "缩放", undo: "撤销", redo: "重做", "clear-formatting": "清除格式", "copy-format": "格式刷", "line-height": "行距", "linked-style-label": "段落格式", "linked-style": "段落样式", ruler: "标尺", "measurement-unit": "度量单位", "document-mode-editing": "编辑", "document-mode-viewing": "查看", "document-mode-suggesting": "修订" } }, comments: false }, onZoomChange: ({ zoom }) => renderZoom(zoom), onReady() {
       ready = true;
+      renderZoom(editor?.getZoom() ?? 100);
+      zoom.hidden = false;
       state.textContent = info.dirty ? "未保存" : "就绪";
       send({ kind: "ready" });
     }, onEditorUpdate: changed, onContentError: ({ error }) => failure(error), onException: (event) => {

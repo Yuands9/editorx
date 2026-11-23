@@ -3,7 +3,8 @@ param([switch]$Force)
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path -LiteralPath (Split-Path $PSScriptRoot -Parent)).ProviderPath
 $frontend = Join-Path $project 'office-ui'
-$assets = Join-Path $project 'assets\office'
+$assetRoot = Join-Path $project 'internal\editor\assets'
+$assets = Join-Path $assetRoot 'office'
 $expected = @('main.js', 'xlsx.html', 'docx.html', 'pdf.html', 'pdf-resources\pdf.worker.min.mjs', 'THIRD-PARTY-NOTICES.txt')
 $missing = @($expected | Where-Object { !(Test-Path -LiteralPath (Join-Path $assets $_) -PathType Leaf) })
 if (!$Force -and $missing.Count -eq 0) { return }
@@ -32,7 +33,8 @@ try {
 }
 
 if ((Resolve-Path -LiteralPath $stage).ProviderPath -ne $stage -or
-    (Resolve-Path -LiteralPath (Split-Path $assets -Parent)).ProviderPath -ne (Join-Path $project 'assets') -or
+    (Resolve-Path -LiteralPath $assetRoot).ProviderPath -ne $assetRoot -or
+    ((Get-Item -LiteralPath $assetRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
     ((Get-Item -LiteralPath $stage).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
     throw 'Unexpected web asset directory.'
 }

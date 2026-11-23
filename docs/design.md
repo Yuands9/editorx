@@ -4,14 +4,18 @@ EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。�
 
 ## 模块划分
 
+程序从 `cmd/editorx/main.go` 启动。下表中的 Go 文件位于 `internal/editor`，测试与对应实现放在同一包中。内嵌资源位于 `internal/editor/assets`，测试素材位于 `internal/editor/testdata`，构建与打包脚本位于 `tools`。
+
 | 区域 | 主要入口 | 职责 |
 | --- | --- | --- |
-| 应用与窗口 | `main.go`、`view.go`、`theme.go` | 原生窗口配置、打开路径分派、快捷键、主题和页面布局 |
+| 应用与窗口 | `editor.go`、`view.go`、`theme.go` | 原生窗口配置、打开路径分派、快捷键、主题和页面布局 |
 | 编辑与文件 | `pane.go`、`document.go`、`format.go`、`syntax_languages.go` | 文本模型、输入法、语法检测、编码、保存与磁盘冲突检查 |
 | 标签和项目 | `tab_strip.go`、`tab_actions.go`、`tab_groups.go`、`workspace.go` | 标签、拖放、分组、固定保护、项目树与目录操作 |
 | 搜索与 JSON | `search.go`、`search_dialog.go`、`search_results.go`、`json_tools.go`、`json_diff.go` | 文本搜索、匹配定位、JSON 转换和结构对比 |
 | 预览 | `html_preview.go`、`markdown.go`、`document_preview.go`、`pdf_preview.go`、`image_view.go` | 文本及媒体预览、资源加载、生命周期和主题 |
 | Office | `office.go`、`office_workbook.go`、`document_server.go`、`office-ui/src` | 工作簿转换、文档桥接、按需加载、编辑快照与原格式保存 |
+| 全局设置 | `settings_view.go`、`application_settings.go`、`editor_preferences.go`、`ai_settings_view.go` | 设置入口、主题、窗口行为、编辑器默认值、AI 模型配置和对话偏好 |
+| 后台和启动 | `desktop.go`、`activation_windows.go` | Viva 系统托盘、隐藏与退出、同一数据目录内唤起已有进程 |
 | 本地会话 | `session.go`、`session_windows.go`、`history.go` | 窗口与编辑草稿恢复、数据目录写入锁、最近打开记录 |
 | AI | `ai.go`、`ai_provider.go`、`ai_model_picker.go`、`ai_session.go` | 服务商、配置、模型、对话状态与审阅应用 |
 | 项目工具 | `project_tools.go`、`project_git_windows.go`、`shell_view.go`、`terminal_windows.go` | Git 子进程、本机 ConPTY、内嵌终端与文件树联动 |
@@ -20,7 +24,7 @@ EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。�
 
 选择路径后按格式进入相应标签。纯文本在 Go 端加载为可编辑缓冲。Office 标签启动本地编辑页面，同时读取文档和加载编辑前端。Excel 工作簿在本地请求处理中解析，Office 前端通过消息桥通知就绪和修改。PDF 通过本地服务读取原文件并渲染可见页。HTML 默认使用编辑缓冲生成的预览副本，以原路径为相对资源基准。
 
-保存文本时先核对磁盘基线，再用同目录临时文件替换目标。Office 保存前等待最近一次编辑快照。Excel 保存会基于原工作簿应用改动。Word 由编辑组件导出 DOCX。PDF 原件另存沿用原始字节流。关闭窗口前把已提交编辑写入会话，后台也按间隔自动保存。
+保存文本时先核对磁盘基线，再用同目录临时文件替换目标。Office 保存前等待最近一次编辑快照。Excel 保存会基于原工作簿应用改动。Word 由编辑组件导出 DOCX。PDF 原件另存沿用原始字节流。退出程序前把已提交编辑写入会话，后台也按间隔自动保存。主题、关闭行为、托盘开关和编辑器默认值保存在数据目录的 `application-settings.json`。重复启动通过 Windows 消息唤起同一数据目录的 EditorX，命令行中的文件和目录交给已打开的窗口。
 
 ## 嵌入页面与本地数据
 
@@ -51,6 +55,6 @@ EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 
 | Viva | `vendor/github.com/vivaui/viva` 中的 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES.md` |
 | 其他 Go 依赖 | `vendor` 各模块的许可证和版权声明 |
 | Univer、SuperDoc、DOCX Engine 与 PDF.js | 构建生成的 `THIRD-PARTY-NOTICES.txt` 及 npm 包内声明 |
-| 终端和助手服务商标识 | `assets/terminal` 与 `assets/ai-providers` 的许可文件 |
+| 终端和助手服务商标识 | `internal/editor/assets/terminal` 与 `internal/editor/assets/ai-providers` 的许可文件 |
 
 Word 功能使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。分发包含 Word 功能的 EXE 时，需要同时满足 SuperDoc 的适用许可与 DOCX Engine 的分发授权。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)

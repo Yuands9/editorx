@@ -3,9 +3,9 @@
 /dist/
 /data/
 /office-ui/node_modules/
-/assets/office/
-/assets/icon.ico
-/assets/icon-[0-9]*.png
+/internal/editor/assets/office/
+/internal/editor/assets/icon.ico
+/internal/editor/assets/icon-[0-9]*.png
 /Viva Editor.lnk
 /EditorX.lnk
 
@@ -13,6 +13,7 @@
 *.exe
 *.test
 ai-settings.json
+application-settings.json
 session.json
 session.json.bak
 .env

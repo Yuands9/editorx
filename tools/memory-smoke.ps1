@@ -20,7 +20,12 @@ try {
         $testExecutable = (Resolve-Path -LiteralPath $ExecutablePath).Path
         $arguments = ($Files | ForEach-Object { '"' + (Resolve-Path -LiteralPath $_).Path + '"' }) -join ' '
     } else {
-        & $go test -mod=vendor -c -o $testExecutable .
+        $editorPackage = if (Test-Path -LiteralPath 'internal\editor\editor.go' -PathType Leaf) {
+            './internal/editor'
+        } else {
+            '.'
+        }
+        & $go test -mod=vendor -c -o $testExecutable $editorPackage
         if ($LASTEXITCODE -ne 0) { throw 'Memory test build failed' }
     }
     Add-Type -TypeDefinition @"

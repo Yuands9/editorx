@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-$assetDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'assets'
+$assetDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'internal\editor\assets'
 
 function New-RoundedSquare([single]$origin, [single]$size, [single]$radius) {
     $path = [Drawing.Drawing2D.GraphicsPath]::new()
