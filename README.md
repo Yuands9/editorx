@@ -4,9 +4,9 @@
   <p><strong>Windows 多格式文本编辑器</strong></p>
   <p>打开本地文本和配置，整理 JSON，查看文档与图片。</p>
   <p>
-    <a href="https://github.com/coderyds/editorx/releases/latest/download/EditorX-windows-x64.zip"><strong>↓ 下载 Windows x64 便携版</strong></a>
-    · <a href="https://github.com/coderyds/editorx/releases/latest/download/EditorX.exe">单文件 EXE</a>
-    · <a href="https://github.com/coderyds/editorx/releases/latest">发布说明</a>
+    <a href="https://github.com/Yuands9/editorx/releases/latest/download/EditorX-windows-x64.zip"><strong>↓ 下载 Windows x64 便携版</strong></a>
+    · <a href="https://github.com/Yuands9/editorx/releases/latest/download/EditorX.exe">单文件 EXE</a>
+    · <a href="https://github.com/Yuands9/editorx/releases/latest">发布说明</a>
     · <a href="docs/usage.md">使用指南</a>
   </p>
 </div>
@@ -50,7 +50,7 @@
 ## 文档与反馈
 
 - [使用指南](docs/usage.md) · [完整功能](docs/features.md) · [设计与发布](docs/design.md) · [大文件首次打开实测](docs/large-files.md)
-- [提交问题或建议](https://github.com/coderyds/editorx/issues)
+- [提交问题或建议](https://github.com/Yuands9/editorx/issues)
 
 ## 从源码构建
 

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/coderyds/editorx/internal/editor"
+	"github.com/Yuands9/editorx/internal/editor"
 )
 
 func main() {

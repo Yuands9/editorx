@@ -49,7 +49,7 @@ for (const [name, file] of officeLicenses) {
 ` + await readFile(`node_modules/${file}`, "utf8"));
 }
 if (publicRelease) {
-  notices.unshift("EditorX uses a modified copy of Viva. Source and patches: https://github.com/coderyds/editorx\n");
+  notices.unshift("EditorX uses a modified copy of Viva. Source and patches: https://github.com/Yuands9/editorx\n");
   const files = new Set(["../LICENSE"]);
   const licenseName = /^(?:licen[cs]e|copying|notice|third[-_ ]party[-_ ](?:notices|licenses))(?:[._-].*)?$/i;
   const directories = new Set([pdfPackage, join(pdfPackage, "cmaps"), join(pdfPackage, "iccs"),

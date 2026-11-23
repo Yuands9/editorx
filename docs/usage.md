@@ -2,7 +2,7 @@
 
 ## 打开文件和项目
 
-下载 [Windows x64 便携版](https://github.com/coderyds/editorx/releases/latest/download/EditorX-windows-x64.zip)，解压后双击 `EditorX.exe`。可以把文件拖入 EditorX 窗口打开，也可以拖到 EXE 图标上。文件夹拖入后作为项目添加。按 Ctrl+O 可以选择一个或多个文件。按 Ctrl+Shift+O 添加项目文件夹，点击左侧项目树里的文件即可打开。项目的「…」菜单支持打开资源管理器、打开 Git 或终端、刷新和移除项目。收起侧栏后，顶部仍可打开文件、添加项目和恢复侧栏。
+下载 [Windows x64 便携版](https://github.com/Yuands9/editorx/releases/latest/download/EditorX-windows-x64.zip)，解压后双击 `EditorX.exe`。可以把文件拖入 EditorX 窗口打开，也可以拖到 EXE 图标上。文件夹拖入后作为项目添加。按 Ctrl+O 可以选择一个或多个文件。按 Ctrl+Shift+O 添加项目文件夹，点击左侧项目树里的文件即可打开。项目的「…」菜单支持打开资源管理器、打开 Git 或终端、刷新和移除项目。收起侧栏后，顶部仍可打开文件、添加项目和恢复侧栏。
 
 在 Windows 上执行 `.\tools\register-open-with.ps1` 后，常见文件类型的「打开方式」里会显示 EditorX。文件右键菜单也有「使用 EditorX 打开」，无后缀文件可用这个入口。
 

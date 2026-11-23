@@ -1,4 +1,4 @@
-module github.com/coderyds/editorx
+module github.com/Yuands9/editorx
 
 go 1.26.0
 
