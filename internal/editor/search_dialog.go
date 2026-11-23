@@ -54,7 +54,10 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 							c.After(t.openSearch)
 						}
 					})
-					s.field.Hint = "Ctrl+Enter 换行，Enter 查找下一处"
+					s.field.Hint = "Enter 查找下一处"
+					if binding := m.keyBindings.chord(shortcutSearchNewline).Label(); binding != "" {
+						s.field.Hint = binding + " 换行，" + s.field.Hint
+					}
 					field := ui.TextArea(c, &s.field, "搜索内容", "输入查找内容").FillWidth().Height(57).OnKey(s.inputKey)
 					if s.focus {
 						field.AutoFocus()
@@ -84,10 +87,10 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 				})
 				ui.Column(c).Width(180).Gap(8).Children(func() {
 					disabled := s.composing() || s.query.String() == "" || s.errorText != ""
-					if ui.Button(c, "下一个匹配").FillWidth().Height(32).Disabled(disabled).Clicked() {
+					if ui.Button(c, "下一个匹配").FillWidth().Height(32).Disabled(disabled).Tooltip(m.shortcutHint("下一个匹配", shortcutFindNext)).Clicked() {
 						c.After(func() { s.step(1) })
 					}
-					if ui.Button(c, "上一个匹配").Outline().FillWidth().Height(32).Disabled(disabled).Clicked() {
+					if ui.Button(c, "上一个匹配").Outline().FillWidth().Height(32).Disabled(disabled).Tooltip(m.shortcutHint("上一个匹配", shortcutFindPrevious)).Clicked() {
 						c.After(func() { s.step(-1) })
 					}
 					if s.replacing {
@@ -113,7 +116,10 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 					}
 				})
 			})
-			status := "Ctrl+Enter 换行 · Enter 下一处 · Shift+Enter 上一处"
+			status := "Enter 下一处 · Shift+Enter 上一处"
+			if binding := m.keyBindings.chord(shortcutSearchNewline).Label(); binding != "" {
+				status = binding + " 换行 · " + status
+			}
 			color := m.theme.MutedForeground
 			if s.pattern != "" {
 				status = fmt.Sprintf("%d / %d", s.current+1, len(s.matches))

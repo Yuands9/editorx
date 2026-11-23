@@ -5,35 +5,48 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/keymap"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/text/find"
 )
 
 func (m *editorApp) windowShortcut(event gfx.KeyEvent) gfx.EventResult {
-	if m.active != nil && !m.appSettings.open && !m.interactionBlocked() {
-		s := &m.active.search
-		if s.open && !event.Target.IsZero() && !event.Release && event.Key == gfx.KeyEnter {
-			queryFocused := event.Target == s.field.ID
-			replacementFocused := s.replacing && event.Target == s.replaceField.ID
-			if queryFocused || replacementFocused {
-				editor := s.query
-				if replacementFocused {
-					editor = s.replacement
-				}
-				if _, composing := editor.Composition(); composing {
-					return gfx.EventResult{}
-				}
-				if event.Modifiers == gfx.ModifierControl {
-					editor.Insert("\n")
-					return gfx.EventResult{Handled: true, Repaint: true}
-				}
-				if queryFocused && (event.Modifiers == 0 || event.Modifiers == gfx.ModifierShift) {
-					return m.active.searchKey(event, nil)
-				}
-			}
-		}
+	if result := m.recordShortcut(event); result.Handled {
+		return result
+	}
+	if result := m.searchFieldShortcut(event); result.Handled {
+		return result
 	}
 	return m.aiPromptShortcut(event)
+}
+
+func (m *editorApp) searchFieldShortcut(event gfx.KeyEvent) gfx.EventResult {
+	if m.active == nil || m.appSettings.open || m.interactionBlocked() || event.Release || event.Target.IsZero() {
+		return gfx.EventResult{}
+	}
+	s := &m.active.search
+	queryFocused := event.Target == s.field.ID
+	replacementFocused := s.replacing && event.Target == s.replaceField.ID
+	if !s.open || !queryFocused && !replacementFocused || s.composing() {
+		return gfx.EventResult{}
+	}
+	if chord, ok := keymap.FromEvent(event); ok && chord == m.keyBindings.chord(shortcutSearchNewline) {
+		editor := s.query
+		if replacementFocused {
+			editor = s.replacement
+		}
+		editor.Insert("\n")
+		return gfx.EventResult{Handled: true, Repaint: true}
+	}
+	if queryFocused && event.Key == gfx.KeyEnter && event.Modifiers&^gfx.ModifierShift == 0 {
+		direction := 1
+		if event.Modifiers == gfx.ModifierShift {
+			direction = -1
+		}
+		s.step(direction)
+		return gfx.EventResult{Handled: true, Repaint: true}
+	}
+	return gfx.EventResult{}
 }
 
 func (s *documentSearch) composing() bool {

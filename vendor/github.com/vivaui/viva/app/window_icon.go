@@ -1,3 +1,4 @@
+// Modified for EditorX. See patches/ in the project root.
 package app
 
 import (
@@ -33,6 +34,27 @@ func (icon WindowIcon) StatusIcon(size int) StatusIcon {
 	}
 	tile := icon.platform().TileMark(size)
 	return StatusIcon{Size: tile.Size, RGBA: tile.RGBA}
+}
+
+type windowIconControl interface {
+	SetIcon(platform.WindowIcon) error
+}
+
+// SetIcon changes the icon shown by an open window. Windows applies the change
+// on the window thread. The icon pixels must remain immutable after the call.
+func (window *Window) SetIcon(icon WindowIcon) error {
+	if window.Closed() {
+		return fmt.Errorf("app: window is closed")
+	}
+	native := icon.platform()
+	if !native.Valid() {
+		return fmt.Errorf("app: window icon pixels do not match its size")
+	}
+	control, ok := window.control.(windowIconControl)
+	if !ok {
+		return fmt.Errorf("%w: window icons", ErrUnsupported)
+	}
+	return control.SetIcon(native)
 }
 
 func (icon WindowIcon) validate() error {

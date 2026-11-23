@@ -74,18 +74,7 @@ func (m *editorApp) editorSettings(c ui.C) {
 			}).Label("Tab 键输入").Width(112).Height(34)
 		})
 	})
-	m.applicationSetting(c.Part("wrap"), "默认自动折行", "按文件类型时，JSON 默认折行。", func() {
-		ui.Select(c, &draft.Wrap, []string{wrapByFileType, wrapEnabled, wrapDisabled}, func(mode string) string {
-			switch mode {
-			case wrapEnabled:
-				return "开启"
-			case wrapDisabled:
-				return "关闭"
-			default:
-				return "按文件类型"
-			}
-		}).Label("默认自动折行").Width(144).Height(34)
-	})
+	m.editorWrapSettings(c.Part("wrap"), draft)
 	m.applicationSetting(c.Part("json-indent"), "JSON 默认缩进", "用于双栏格式化、粘贴和转换结果。", func() {
 		ui.Select(c, &draft.JSONIndent, []int{2, 4}, func(indent int) string { return fmt.Sprintf("%d 个空格", indent) }).
 			Label("JSON 默认缩进").Width(144).Height(34)
@@ -93,8 +82,33 @@ func (m *editorApp) editorSettings(c ui.C) {
 	if previewBelow {
 		m.editorSettingsPreview(c.Part("preview"), *draft)
 	}
-	if *draft != before {
+	if !draft.equal(before) {
 		c.After(m.saveApplicationSettings)
+	}
+}
+
+func (m *editorApp) editorWrapSettings(c ui.C, draft *editorPreferences) {
+	settings := &m.appSettings
+	m.applicationSetting(c, "默认自动折行", "为选中的文件类型开启折行。", func() {
+		icon := chevronRightIcon
+		if settings.wrapTypesOpen {
+			icon = chevronDownIcon
+		}
+		if ui.Button(c.Part("types"), fmt.Sprintf("文件类型 · %d 项", len(draft.WrapFileTypes))).
+			Icon(icon).Outline().Height(34).Clicked() {
+			settings.wrapTypesOpen = !settings.wrapTypesOpen
+		}
+	})
+	if settings.wrapTypesOpen {
+		ui.Grid(c.Part("types-list"), 140).FillWidth().Pad(12).Gap(6).Radius(12).
+			Border(1, m.theme.Border).Children(func() {
+			for _, language := range editorWrapLanguages {
+				enabled := draft.wraps(language)
+				if ui.Checkbox(c.Key(language), &enabled, language).Height(28).Changed() {
+					draft.setWrapFileType(language, enabled)
+				}
+			}
+		})
 	}
 }
 
@@ -112,7 +126,7 @@ func (m *editorApp) editorSettingsPreview(c ui.C, preferences editorPreferences)
 	pane.light = m.light
 	pane.applyEditorPreferences(preferences)
 	pane.view.Snapshot.Language = "JSON"
-	pane.view.Snapshot.Wrap = preferences.Wrap != wrapDisabled
+	pane.view.Snapshot.Wrap = preferences.wraps("JSON")
 	ui.Text(c, "实时预览").Muted().FontSize(12)
 	pane.declare(c, "编辑器设置预览", false).FillWidth().Height(max(110, float32(preferences.FontSize)*6)).Radius(10).Clip()
 }

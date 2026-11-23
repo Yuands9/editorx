@@ -9,27 +9,32 @@ import (
 )
 
 const (
-	wrapByFileType = ""
-	wrapEnabled    = "on"
-	wrapDisabled   = "off"
-
 	minEditorFontSize = 10
 	maxEditorFontSize = 32
 )
 
 var editorTabWidths = []int{2, 4, 8}
 
+var editorWrapLanguages = func() []string {
+	languages := slices.Concat(syntaxLanguages[:], dataSyntaxLanguages[:])
+	for _, syntax := range codeSyntaxes {
+		languages = append(languages, syntax.name)
+	}
+	return languages
+}()
+
 type editorPreferences struct {
-	FontFamily string `json:"fontFamily,omitempty"`
-	FontSize   int    `json:"fontSize"`
-	TabWidth   int    `json:"tabWidth"`
-	HardTabs   bool   `json:"hardTabs,omitempty"`
-	Wrap       string `json:"wrap,omitempty"`
-	JSONIndent int    `json:"jsonIndent"`
+	FontFamily    string   `json:"fontFamily,omitempty"`
+	FontSize      int      `json:"fontSize"`
+	TabWidth      int      `json:"tabWidth"`
+	HardTabs      bool     `json:"hardTabs,omitempty"`
+	WrapFileTypes []string `json:"wrapFileTypes"`
+	LegacyWrap    string   `json:"wrap,omitempty"`
+	JSONIndent    int      `json:"jsonIndent"`
 }
 
 func defaultEditorPreferences() editorPreferences {
-	return editorPreferences{FontSize: 16, TabWidth: 4, JSONIndent: 4}
+	return editorPreferences{FontSize: 16, TabWidth: 4, WrapFileTypes: []string{"JSON"}, JSONIndent: 4}
 }
 
 func (p editorPreferences) normalized() editorPreferences {
@@ -44,9 +49,24 @@ func (p editorPreferences) normalized() editorPreferences {
 	if !slices.Contains(editorTabWidths, p.TabWidth) {
 		p.TabWidth = defaults.TabWidth
 	}
-	if p.Wrap != wrapEnabled && p.Wrap != wrapDisabled {
-		p.Wrap = wrapByFileType
+	if p.WrapFileTypes == nil {
+		switch p.LegacyWrap {
+		case "on":
+			p.WrapFileTypes = slices.Clone(editorWrapLanguages)
+		case "off":
+			p.WrapFileTypes = []string{}
+		default:
+			p.WrapFileTypes = defaults.WrapFileTypes
+		}
 	}
+	p.LegacyWrap = ""
+	selected := make([]string, 0, len(p.WrapFileTypes))
+	for _, language := range editorWrapLanguages {
+		if p.wraps(language) {
+			selected = append(selected, language)
+		}
+	}
+	p.WrapFileTypes = selected
 	if p.JSONIndent != 2 && p.JSONIndent != 4 {
 		p.JSONIndent = defaults.JSONIndent
 	}
@@ -66,8 +86,10 @@ func (p editorPreferences) withChanges(original, draft editorPreferences) editor
 	if draft.HardTabs != original.HardTabs {
 		p.HardTabs = draft.HardTabs
 	}
-	if draft.Wrap != original.Wrap {
-		p.Wrap = draft.Wrap
+	for _, language := range editorWrapLanguages {
+		if enabled := draft.wraps(language); enabled != original.wraps(language) {
+			p.setWrapFileType(language, enabled)
+		}
 	}
 	if draft.JSONIndent != original.JSONIndent {
 		p.JSONIndent = draft.JSONIndent
@@ -75,8 +97,28 @@ func (p editorPreferences) withChanges(original, draft editorPreferences) editor
 	return p.normalized()
 }
 
+func (p editorPreferences) equal(other editorPreferences) bool {
+	return p.FontFamily == other.FontFamily && p.FontSize == other.FontSize &&
+		p.TabWidth == other.TabWidth && p.HardTabs == other.HardTabs &&
+		p.JSONIndent == other.JSONIndent && slices.Equal(p.WrapFileTypes, other.WrapFileTypes)
+}
+
+func (p editorPreferences) wraps(language string) bool {
+	return slices.Contains(p.WrapFileTypes, language)
+}
+
+func (p *editorPreferences) setWrapFileType(language string, enabled bool) {
+	if enabled {
+		p.WrapFileTypes = append(slices.Clone(p.WrapFileTypes), language)
+		return
+	}
+	p.WrapFileTypes = slices.DeleteFunc(slices.Clone(p.WrapFileTypes), func(value string) bool {
+		return value == language
+	})
+}
+
 func (m *editorApp) applyEditorPreferences(preferences editorPreferences) {
-	if preferences == m.editorPrefs {
+	if preferences.equal(m.editorPrefs) {
 		return
 	}
 	m.editorPrefs = preferences
@@ -92,7 +134,7 @@ func (t *editorTab) applyEditorPreferences(preferences editorPreferences) {
 	if !t.indentOverride {
 		t.setJSONIndent(preferences.JSONIndent)
 	}
-	t.applyDefaultWrap(preferences, t.format() == "JSON")
+	t.applyDefaultWrap(preferences)
 }
 
 func (p *editorPane) applyEditorPreferences(preferences editorPreferences) {
@@ -104,9 +146,9 @@ func (p *editorPane) applyEditorPreferences(preferences editorPreferences) {
 	p.text.SetCode(text.CodeOptions{TabWidth: preferences.TabWidth, HardTabs: preferences.HardTabs, AutoIndent: true})
 }
 
-func (t *editorTab) applyDefaultWrap(preferences editorPreferences, isJSON bool) {
+func (t *editorTab) applyDefaultWrap(preferences editorPreferences) {
 	if !t.wrapOverride {
-		t.setWrap(preferences.Wrap == wrapEnabled || preferences.Wrap == wrapByFileType && isJSON)
+		t.setWrap(preferences.wraps(t.syntaxLanguage()))
 	}
 }
 

@@ -70,8 +70,8 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 	click("menuitem:设置")
 	another.openApplicationSettings()
 	click("外观")
-	if _, err := session.Locate("button:跟随系统"); err == nil {
-		t.Fatal("appearance settings should only offer dark and light")
+	if _, err := session.Locate("button:跟随系统"); err != nil {
+		t.Fatal("appearance settings must offer Windows system theme")
 	}
 	click("浅色")
 	if !m.light || !another.light || !m.appSettings.open || another.appSettings.draft.Theme != themeLight {
@@ -114,7 +114,7 @@ func TestThemeSwitchAlternatesDarkAndLight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desktop := &editorDesktop{store: store, preferences: applicationPreferences{Theme: themeDark}}
+	desktop := &editorDesktop{store: store, preferences: applicationPreferences{Theme: themeSystem}}
 	m := newEditorApp()
 	for _, window := range []*editorApp{m, newEditorApp()} {
 		store.attach(window)
@@ -124,17 +124,18 @@ func TestThemeSwitchAlternatesDarkAndLight(t *testing.T) {
 
 	session := openTestSession(t, m)
 	driver := session.Driver()
+	t.Cleanup(app.WatchSystemAppearance(desktop.refreshSystemTheme))
 	driver.SetSystemAppearance(app.AppearanceLight)
 	initial, err := readApplicationPreferences(store.directory)
-	if err != nil || initial.Theme != themeDark {
-		t.Fatalf("a fresh profile should use dark even when Windows is light: %+v, %v", initial, err)
+	if err != nil || initial.Theme != themeSystem {
+		t.Fatalf("a fresh profile should follow Windows: %+v, %v", initial, err)
 	}
 	if err := os.WriteFile(filepath.Join(store.directory, applicationSettingsFile), []byte("{\"theme\":\"system\"}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	legacy, err := readApplicationPreferences(store.directory)
-	if err != nil || legacy.Theme != themeDark {
-		t.Fatalf("a legacy system preference should use dark: %+v, %v", legacy, err)
+	if err != nil || legacy.Theme != themeSystem {
+		t.Fatalf("a saved system preference should still follow Windows: %+v, %v", legacy, err)
 	}
 	desktop.preferences = legacy
 
@@ -160,13 +161,22 @@ func TestThemeSwitchAlternatesDarkAndLight(t *testing.T) {
 		}
 	}
 
+	checkTheme(true)
+	cycleTheme(themeDark)
 	checkTheme(false)
 	cycleTheme(themeLight)
 	driver.SetSystemAppearance(app.AppearanceDark)
 	checkTheme(true)
-	cycleTheme(themeDark)
-	driver.SetSystemAppearance(app.AppearanceLight)
+	if err := session.ClickLabel("button:设置"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ClickLabel("跟随系统"); err != nil {
+		t.Fatal(err)
+	}
 	checkTheme(false)
-	cycleTheme(themeLight)
+	if desktop.preferences.Theme != themeSystem || driver.NativeAppearance() != app.AppearanceUnknown {
+		t.Fatal("system theme did not restore Windows control of the title bar")
+	}
+	driver.SetSystemAppearance(app.AppearanceLight)
 	checkTheme(true)
 }

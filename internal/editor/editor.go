@@ -173,6 +173,7 @@ type editorApp struct {
 	showError     bool
 	confirm       bool
 	confirmFocus  bool
+	dontAskToSave bool
 	confirmTab    *editorTab
 	pending       func()
 	workspace     *folderTree
@@ -205,6 +206,7 @@ type editorApp struct {
 	backup        editorBackupState
 	update        editorUpdateState
 	editorPrefs   editorPreferences
+	keyBindings   shortcutOverrides
 	store         *sessionStore
 	dataDirectory string
 	showHistory   bool
@@ -250,7 +252,7 @@ func (m *editorApp) addTab(doc document, name string) *editorTab {
 	t.source.input.TransformPaste = formatPaste
 	t.result.input.TransformPaste = formatPaste
 	t.comparison.input.TransformPaste = formatPaste
-	t.initSearch()
+	t.initSearch(m)
 	t.scroll.enabled = true
 	t.markdown.Style = uimarkdown.Style{Size: 16, LineHeight: 27}
 	t.markdown.Scroll = func(event gfx.ScrollEvent) gfx.EventResult {
@@ -322,7 +324,42 @@ func (m *editorApp) requestTab(t *editorTab, action func()) {
 		return
 	}
 	m.activate(t)
-	m.confirmTab, m.pending, m.confirm, m.confirmFocus = t, action, true, true
+	if m.desktop != nil || m.dataDirectory != "" {
+		preferences, err := m.applicationPreferences()
+		if err == nil && preferences.SkipSaveConfirmation {
+			m.saveBeforeClosing(t, action)
+			return
+		}
+	}
+	m.confirmTab, m.pending, m.confirm, m.confirmFocus, m.dontAskToSave = t, action, true, true, false
+}
+
+func (m *editorApp) saveBeforeClosing(tab *editorTab, proceed func()) {
+	if tab.office != nil {
+		m.saveOfficeTab(tab, false, proceed)
+		return
+	}
+	if m.saveTab(tab, false) {
+		proceed()
+	}
+}
+
+func (m *editorApp) clearSaveConfirmation() {
+	m.confirm, m.confirmFocus, m.dontAskToSave = false, false, false
+	m.pending, m.confirmTab = nil, nil
+}
+
+func (m *editorApp) finishSaveConfirmation() {
+	proceed, dontAsk := m.pending, m.dontAskToSave
+	m.clearSaveConfirmation()
+	if dontAsk {
+		if err := m.rememberSkippingSaveConfirmation(); err != nil {
+			m.fail(fmt.Errorf("无法保存询问设置：%w", err))
+		}
+	}
+	if proceed != nil {
+		proceed()
+	}
 }
 
 func (m *editorApp) closeTab(t *editorTab) {
@@ -597,7 +634,7 @@ func (m *editorApp) openFolder() {
 }
 
 func openEditorWindow(application *app.Application, m *editorApp) error {
-	window, err := ui.OpenWindow(application, m.editorWindowConfig(application), ui.PageConfig{View: m.page, Theme: &m.theme})
+	window, err := ui.OpenWindow(application, m.editorWindowConfig(application), ui.PageConfig{View: m.page, Theme: &m.theme, Styles: &editorControlStyles})
 	if err != nil {
 		return err
 	}
@@ -618,6 +655,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		next.desktop = m.desktop
 		next.setLightMode(m.light)
 		next.editorPrefs = m.editorPrefs
+		next.keyBindings = m.keyBindings
 		if m.store != nil {
 			m.store.attach(next)
 		}
@@ -646,9 +684,10 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		origin = &gfx.Point{X: m.windowFrame.X, Y: m.windowFrame.Y}
 	}
 	return app.Config{
-		Title: applicationName, Icon: applicationIcon, Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
+		Title: applicationName, Icon: themedApplicationIcon(m.light), Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
 		Invalidator: &m.invalidator,
 		OnShortcut:  m.windowShortcut,
+		OnKey:       m.functionShortcut,
 		OnFileDrop:  m.dropFiles,
 		OnActivate: func() {
 			if m.desktop != nil && !m.nativeWindow.Hidden() {
@@ -709,16 +748,20 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 
 	for _, window := range store.windows {
 		window.applyEditorPreferences(desktop.preferences.Editor)
+		window.keyBindings = desktop.preferences.Shortcuts
 	}
 	store.windows[0].openLaunchPaths(paths)
 
 	// 激活窗口与 Viva 的窗口使用同一 Windows 消息线程。
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	var stopActivation func()
+	var stopActivation, stopAppearance func()
 	defer func() {
 		if stopActivation != nil {
 			stopActivation()
+		}
+		if stopAppearance != nil {
+			stopAppearance()
 		}
 	}()
 	stop := make(chan struct{})
@@ -735,6 +778,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 		if err != nil {
 			return err
 		}
+		app.SetNativeAppearance(themeAppearance(desktop.preferences.Theme))
+		stopAppearance = app.WatchSystemAppearance(desktop.refreshSystemTheme)
 		for _, window := range store.windows {
 			window.desktop = desktop
 			window.applyThemePreference(desktop.preferences.Theme)
@@ -783,7 +828,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 
 func (m *editorApp) interactionBlocked() bool {
 	return m.windowClosed || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
-		m.ai.reviewOpen || m.ai.conversationEdit.open || (m.desktop != nil && m.desktop.exiting)
+		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
+		(m.desktop != nil && m.desktop.exiting)
 }
 
 func (m *editorApp) dropFiles(event gfx.FileDropEvent) gfx.EventResult {
@@ -852,7 +898,8 @@ func (m *editorApp) releaseWindowState() {
 	m.tabDrag = ui.DragState{}
 	m.tabGhost, m.groupGhost = nil, nil
 	m.rename = tabRenameState{}
-	m.confirmTab, m.pending, m.newWindow, m.browser = nil, nil, nil, nil
+	m.clearSaveConfirmation()
+	m.newWindow, m.browser = nil, nil
 	m.webHost = app.WebHost{}
 	m.webReady = false
 	m.nativeWindow = nil

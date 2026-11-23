@@ -27,12 +27,14 @@ func (d *editorDesktop) syncTray() error {
 		}
 		return nil
 	}
+	logo := themedApplicationIcon(editorThemeIsLight(d.preferences.Theme))
+	icon := app.StatusIcon{Size: logo.Size, RGBA: logo.RGBA}
 	if d.tray != nil {
-		return nil
+		return d.tray.SetIcon(icon)
 	}
 	item, err := d.application.AddStatusItem(app.StatusItemConfig{
 		Tooltip: applicationName,
-		Icon:    app.StatusIcon{Size: applicationIcon.Size, RGBA: applicationIcon.RGBA},
+		Icon:    icon,
 		OnClick: func(click app.StatusClick) {
 			if click.Button == gfx.PointerButtonPrimary {
 				d.present(nil)

@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="internal/editor/assets/icon.png" width="64" height="64" alt="EditorX 图标">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="internal/editor/assets/icon-light.png">
+    <img src="internal/editor/assets/icon.png" width="64" height="64" alt="EditorX 图标">
+  </picture>
   <h1>EditorX</h1>
   <p>一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。</p>
   <p><a href="https://github.com/Yuands9/editorx/releases/latest/download/EditorX.exe"><strong>下载 EditorX.exe</strong></a> · Windows x64</p>

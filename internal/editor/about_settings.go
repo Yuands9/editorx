@@ -1,30 +1,18 @@
 package editor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Yuands9/editorx/internal/version"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
-
-var editorLogo = sync.OnceValue(func() gfx.Bitmap {
-	source, err := png.Decode(bytes.NewReader(applicationIconPNG))
-	if err != nil {
-		panic(err)
-	}
-	return imageToVivaBitmap(source)
-})
 
 type editorUpdateState struct {
 	open     bool
@@ -39,7 +27,7 @@ func (m *editorApp) aboutSettings(c ui.C) {
 	state := &m.update
 	ui.Row(c.Part("editorx")).FillWidth().Pad(16).Gap(16).Items(ui.Center).
 		Background(m.theme.Card).Radius(14).Children(func() {
-		ui.Image(c, editorLogo()).Size(56, 56).Shrink(0)
+		ui.Image(c, editorLogo(m.light)).Size(56, 56).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			ui.Text(c, applicationName).FontSize(23).Bold()
 			ui.Wrap(c, "一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。").

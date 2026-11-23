@@ -25,7 +25,7 @@ func (m *editorApp) page(c ui.C) {
 	m.updateProjectGit(c)
 	m.updateLocalShell()
 	blocked := m.interactionBlocked()
-	if !blocked && ui.Shortcut(c, ui.Ctrl, ",") {
+	if !blocked && m.appSettings.shortcutEdit.action == shortcutNone && m.shortcutPressed(c, shortcutOpenSettings) {
 		c.After(m.toggleApplicationSettings)
 	}
 	ui.Row(c.Part("workspace")).Fill().Background(m.theme.Card).Children(func() {
@@ -45,6 +45,8 @@ func (m *editorApp) page(c ui.C) {
 		m.aiConversationDialog(c)
 		m.aiReviewDialog(c)
 	}
+	m.backupSelectionDialog(c.Part("backup-selection"))
+	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
 	m.dialogs(c)
 }
@@ -53,13 +55,16 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 	t := m.active
 	if t != nil {
 		isJSON := t.format() == "JSON"
-		t.applyDefaultWrap(m.editorPrefs, isJSON)
+		t.applyDefaultWrap(m.editorPrefs)
 		if isJSON {
 			t.updateResult()
 		}
 	}
 	if !blocked {
-		m.shortcuts(c, t)
+		m.editorShortcuts(c)
+		if t != nil && t.search.open && ui.Shortcut(c, 0, "escape") {
+			c.After(t.search.close)
+		}
 	}
 
 	page := ui.Column(c).Grow(1).MinWidth(0).FillHeight()
@@ -146,14 +151,14 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 	ui.Column(c).Width(44).Shrink(0).FillHeight().PadX(6).PadY(workspaceInset + 4).Gap(6).Children(func() {
 		t := m.active
 		if t != nil && !m.appSettings.open {
-			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t.readOnlyPreview() || blocked).Tooltip("保存文件 · Ctrl+S")
+			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
 			if t.modified() {
 				save.Secondary().ButtonRecipe(m.pinButtonRecipe)
 			}
 			if save.Clicked() {
 				c.After(func() { m.saveTab(t, false) })
 			}
-			searchHint := "查找 Ctrl+F · 替换 Ctrl+R"
+			searchHint := m.shortcutHint("查找", shortcutFind) + " / " + m.shortcutHint("替换", shortcutReplace)
 			if t.office != nil {
 				searchHint = "Office 文档请使用文档内的查找功能"
 			}
@@ -161,7 +166,7 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 				c.After(t.openSearch)
 			}
 			ui.Slot(c).FillWidth().Height(1).MarginY(3).Background(m.theme.Border)
-			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(30).Height(34).Disabled(t.readOnlyPreview() || t.office != nil || blocked).Tooltip("自动折行 · Alt+Z")
+			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(30).Height(34).Disabled(t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint("自动折行", shortcutWrap))
 			if !t.readOnlyPreview() && t.source.view.Snapshot.Wrap {
 				wrap.Secondary()
 			}
@@ -197,7 +202,7 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			label = "关闭设置"
 		}
 		gear := ui.Button(c.Part("settings-toggle"), label).Icon(settingsIcon).IconOnly().Ghost().Size(32, 34).
-			Disabled(blocked).Tooltip(label + " · Ctrl+,")
+			Disabled(blocked).Tooltip(m.shortcutHint(label, shortcutOpenSettings))
 		if m.appSettings.open {
 			gear.Secondary()
 		}
@@ -205,73 +210,6 @@ func (m *editorApp) rightRail(c ui.C, blocked bool) {
 			c.After(m.toggleApplicationSettings)
 		}
 	})
-}
-
-func (m *editorApp) shortcuts(c ui.C, t *editorTab) {
-	if ui.Shortcut(c, ui.Ctrl, "n") {
-		c.After(m.newDocument)
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Shift, "n") && m.newWindow != nil {
-		c.After(m.newWindow)
-	}
-	if ui.Shortcut(c, ui.Ctrl, "o") {
-		c.After(m.open)
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Shift, "o") {
-		c.After(m.openFolder)
-	}
-	if ui.Shortcut(c, ui.Ctrl, "b") {
-		c.After(m.toggleFiles)
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Shift, "g") {
-		c.After(func() { m.useTool("Git") })
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Alt, "t") {
-		c.After(func() { m.useTool("终端") })
-	}
-	if t == nil {
-		return
-	}
-	if ui.Shortcut(c, 0, "escape") && t.search.open {
-		c.After(t.search.close)
-	}
-	nextMatch, previousMatch := ui.Shortcut(c, 0, "f3"), ui.Shortcut(c, ui.Shift, "f3")
-	if (nextMatch || previousMatch) && !t.readOnlyPreview() && t.office == nil {
-		direction := 1
-		if previousMatch {
-			direction = -1
-		}
-		c.After(func() { t.search.step(direction) })
-	}
-	if ui.Shortcut(c, ui.Ctrl, "f") {
-		c.After(t.openSearch)
-	}
-	if ui.Shortcut(c, ui.Ctrl, "r") {
-		c.After(t.openReplace)
-	}
-	if ui.Shortcut(c, ui.Ctrl, "s") {
-		c.After(func() { m.saveTab(t, false) })
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Shift, "s") {
-		c.After(func() { m.saveTab(t, true) })
-	}
-	if ui.Shortcut(c, ui.Ctrl, "w") {
-		c.After(func() { m.closeTab(t) })
-	}
-	nextTab, previousTab := ui.Shortcut(c, ui.Ctrl, "tab"), ui.Shortcut(c, ui.Ctrl|ui.Shift, "tab")
-	if nextTab || previousTab {
-		step := 1
-		if previousTab {
-			step = -1
-		}
-		c.After(func() { m.stepTab(step) })
-	}
-	if ui.Shortcut(c, ui.Ctrl|ui.Alt, "b") {
-		c.After(m.toggleMarkdownOutline)
-	}
-	if ui.Shortcut(c, ui.Alt, "z") && !t.readOnlyPreview() && t.office == nil {
-		t.toggleWrap()
-	}
 }
 
 func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
@@ -283,16 +221,16 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		menu.WidthRange(264, 300)
 		menu.RowHeight(32)
 		menu.Label(applicationName)
-		if menu.Item("新建").Icon(plusIcon).Keys(ui.Ctrl, "n").Clicked() {
+		if m.shortcutMenu(menu.Item("新建").Icon(plusIcon), shortcutNewFile).Clicked() {
 			c.After(m.newDocument)
 		}
-		if menu.Item("新建窗口").Keys(ui.Ctrl|ui.Shift, "n").Disabled(m.newWindow == nil).Clicked() {
+		if m.shortcutMenu(menu.Item("新建窗口"), shortcutNewWindow).Disabled(m.newWindow == nil).Clicked() {
 			c.After(m.newWindow)
 		}
-		if menu.Item("打开…").Icon(fileIcon).Keys(ui.Ctrl, "o").Clicked() {
+		if m.shortcutMenu(menu.Item("打开…").Icon(fileIcon), shortcutOpenFile).Clicked() {
 			c.After(m.open)
 		}
-		if menu.Item("添加项目…").Icon(folderIcon).Keys(ui.Ctrl|ui.Shift, "o").Clicked() {
+		if m.shortcutMenu(menu.Item("添加项目…").Icon(folderIcon), shortcutOpenProject).Clicked() {
 			c.After(m.openFolder)
 		}
 		if menu.Item("最近打开…").Disabled(m.store == nil || len(m.store.history) == 0).Clicked() {
@@ -300,40 +238,40 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		}
 		menu.Separator()
 		if t != nil {
-			if menu.Item("保存").Disabled(t.readOnlyPreview()).Keys(ui.Ctrl, "s").Clicked() {
+			if m.shortcutMenu(menu.Item("保存").Disabled(t.readOnlyPreview()), shortcutSave).Clicked() {
 				c.After(func() { m.saveTab(t, false) })
 			}
-			if menu.Item("另存为…").Disabled(t.readOnlyPreview()).Keys(ui.Ctrl|ui.Shift, "s").Clicked() {
+			if m.shortcutMenu(menu.Item("另存为…").Disabled(t.readOnlyPreview()), shortcutSaveAs).Clicked() {
 				c.After(func() { m.saveTab(t, true) })
 			}
-			if menu.Item("关闭当前标签").Keys(ui.Ctrl, "w").Disabled(t.isPinned()).Clicked() {
+			if m.shortcutMenu(menu.Item("关闭当前标签"), shortcutCloseTab).Disabled(t.isPinned()).Clicked() {
 				c.After(func() { m.closeTab(t) })
 			}
 			menu.Separator()
 			if menu.Item("搜索结果").Disabled(m.results.query == "").Clicked() {
 				m.results.open = true
 			}
-			if menu.Item("搜索内容").Disabled(!t.canSearchText()).Keys(ui.Ctrl, "f").Clicked() {
+			if m.shortcutMenu(menu.Item("搜索内容").Disabled(!t.canSearchText()), shortcutFind).Clicked() {
 				c.After(t.openSearch)
 			}
-			if menu.Item("替换内容").Disabled(!t.canSearchText()).Keys(ui.Ctrl, "r").Clicked() {
+			if m.shortcutMenu(menu.Item("替换内容").Disabled(!t.canSearchText()), shortcutReplace).Clicked() {
 				c.After(t.openReplace)
 			}
 		} else if menu.Item("AI 助手").Icon(aiIcon).Checked(m.ai.open).Clicked() {
 			c.After(m.toggleAIPanel)
 		}
 		menu.Separator()
-		if menu.Item("Git").Icon(gitBranchIcon).Keys(ui.Ctrl|ui.Shift, "g").Checked(m.tools.active == "Git").Clicked() {
+		if m.shortcutMenu(menu.Item("Git").Icon(gitBranchIcon), shortcutGit).Checked(m.tools.active == "Git").Clicked() {
 			c.After(func() { m.useTool("Git") })
 		}
-		if menu.Item("本地终端").Icon(shellIcon).Keys(ui.Ctrl|ui.Alt, "t").Checked(m.tools.active == "终端").Clicked() {
+		if m.shortcutMenu(menu.Item("本地终端").Icon(shellIcon), shortcutTerminal).Checked(m.tools.active == "终端").Clicked() {
 			c.After(func() { m.useTool("终端") })
 		}
-		if t != nil && menu.Item("自动折行").Disabled(t.readOnlyPreview() || t.office != nil).Checked(t.source.view.Snapshot.Wrap).Keys(ui.Alt, "z").Clicked() {
+		if t != nil && m.shortcutMenu(menu.Item("自动折行").Disabled(t.readOnlyPreview() || t.office != nil).Checked(t.source.view.Snapshot.Wrap), shortcutWrap).Clicked() {
 			t.toggleWrap()
 		}
 		menu.Separator()
-		if menu.Item("设置").Icon(settingsIcon).Keys(ui.Ctrl, ",").Clicked() {
+		if m.shortcutMenu(menu.Item("设置").Icon(settingsIcon), shortcutOpenSettings).Clicked() {
 			c.After(m.openApplicationSettings)
 		}
 		if m.desktop != nil && menu.Item("退出 EditorX").Clicked() {
@@ -391,7 +329,7 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 	ui.Row(c).FillWidth().Height(tabStripHeight + 4).PadX(4).Items(ui.Center).Children(func() {
 		if !m.showFiles {
 			m.mainMenu(c, m.active, blocked)
-			if ui.Button(c, "展开文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip("显示左侧主菜单 · Ctrl+B").Disabled(blocked).Clicked() {
+			if ui.Button(c, "展开文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip(m.shortcutHint("显示左侧主菜单", shortcutFiles)).Disabled(blocked).Clicked() {
 				c.After(m.toggleFiles)
 			}
 			for _, action := range []struct {
@@ -409,7 +347,7 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 		scroll := ui.Scroll(c).Sideways().Scrollbars().Grow(1).MinWidth(0).FillHeight()
 		m.tabStrip(c, scroll, blocked)
 		if ui.Button(c, "新建标签").Icon(plusIcon).IconOnly().Ghost().Size(30, 30).MarginX(5).
-			Shrink(0).Radius(10).Tooltip("新建标签 · Ctrl+N").Disabled(blocked).Clicked() {
+			Shrink(0).Radius(10).Tooltip(m.shortcutHint("新建标签", shortcutNewFile)).Disabled(blocked).Clicked() {
 			c.After(m.newDocument)
 		}
 	})
@@ -427,7 +365,7 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 				label = "收起大纲"
 			}
 			toggle := ui.Button(c.Part("outline-toggle"), label).Icon(leftPanelIcon).Ghost().Height(28).FontSize(12).
-				Disabled(blocked || m.ai.open).Tooltip(label + " · Ctrl+Alt+B")
+				Disabled(blocked || m.ai.open).Tooltip(m.shortcutHint(label, shortcutOutline))
 			if m.showOutline {
 				toggle.Secondary()
 			}
@@ -656,39 +594,29 @@ func (m *editorApp) dialogs(c ui.C) {
 	if m.confirmTab != nil {
 		description = m.confirmTab.title() + " 有未保存的修改。"
 	}
-	ui.ModalWith(c, &m.confirm, "保存当前修改？", ui.ModalSpec{Description: description, Width: 480, NoClose: true}, nil, func() {
+	ui.ModalWith(c, &m.confirm, "保存当前修改？", ui.ModalSpec{Description: description, Width: 480, NoClose: true}, func() {
+		ui.Checkbox(c.Part("save-confirmation-choice"), &m.dontAskToSave, "不再询问").Height(28)
+	}, func() {
 		if ui.Button(c, "取消").Outline().Clicked() {
-			m.confirm, m.pending, m.confirmTab = false, nil, nil
+			m.clearSaveConfirmation()
 			m.focusActiveSource()
 		}
 		if ui.Button(c, "放弃修改").Outline().Clicked() {
-			action := m.pending
-			m.confirm, m.pending, m.confirmTab = false, nil, nil
-			c.After(action)
+			c.After(m.finishSaveConfirmation)
 		}
 		save := ui.Button(c, "保存并继续")
 		if m.confirmFocus {
 			save.AutoFocus()
 			m.confirmFocus = false
 		}
-		if save.Clicked() {
+		if save.Clicked() && m.confirmTab != nil {
+			tab := m.confirmTab
 			c.After(func() {
-				if m.confirmTab.office != nil {
-					tab := m.confirmTab
-					m.saveOfficeTab(tab, false, func() {
-						action := m.pending
-						m.confirm, m.pending, m.confirmTab = false, nil, nil
-						if action != nil {
-							action()
-						}
-					})
-					return
-				}
-				if m.saveTab(m.confirmTab, false) {
-					action := m.pending
-					m.confirm, m.pending, m.confirmTab = false, nil, nil
-					action()
-				}
+				m.saveBeforeClosing(tab, func() {
+					if m.confirmTab == tab {
+						m.finishSaveConfirmation()
+					}
+				})
 			})
 		}
 	})

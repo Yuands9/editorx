@@ -327,10 +327,17 @@ func TestMarkdownScrollSyncUsesSourceAnchors(t *testing.T) {
 }
 
 func TestApplicationIcon(t *testing.T) {
-	if applicationIcon.Size != 512 || len(applicationIcon.RGBA) != 512*512*4 {
-		t.Fatal("missing application icon")
-	}
-	if applicationIcon.RGBA[3] != 0 || applicationIcon.RGBA[(256*512+256)*4+3] != 255 {
-		t.Fatal("icon transparency incorrect")
+	for _, light := range []bool{false, true} {
+		icon := themedApplicationIcon(light)
+		if icon.Size != 512 || len(icon.RGBA) != 512*512*4 {
+			t.Fatalf("missing application icon for light=%t", light)
+		}
+		center, mark := (256*512+256)*4, (180*512+130)*4
+		if icon.RGBA[3] != 0 || icon.RGBA[center+3] != 255 || icon.RGBA[mark+3] != 255 {
+			t.Fatalf("icon transparency incorrect for light=%t", light)
+		}
+		if (icon.RGBA[center] > 200) != light || (icon.RGBA[mark] > 200) == light {
+			t.Fatalf("tile and mark have the wrong colors for light=%t", light)
+		}
 	}
 }

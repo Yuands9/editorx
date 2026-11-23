@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/vivaui/viva/app"
 )
 
 func TestNativeEditorBackground(t *testing.T) {
@@ -142,7 +144,7 @@ func TestNativeEditorBackground(t *testing.T) {
 		})
 	})
 
-	t.Run("default close saves session and exits", func(t *testing.T) {
+	t.Run("default startup follows system and close saves session", func(t *testing.T) {
 		directory := filepath.Join(t.TempDir(), "data")
 		window, exited := openWindow(t, newLaunch(t, directory))
 		send(t, window, closeMessage, 0)
@@ -154,8 +156,14 @@ func TestNativeEditorBackground(t *testing.T) {
 		case <-time.After(8 * time.Second):
 			t.Fatal("close did not terminate the editor")
 		}
-		if _, err := os.Stat(filepath.Join(directory, "session.json")); err != nil {
+		data, err := os.ReadFile(filepath.Join(directory, "session.json"))
+		if err != nil {
 			t.Fatalf("session was not saved before exit: %v", err)
+		}
+		saved, err := decodeEditorSession(data)
+		wantLight := app.SystemAppearance() == app.AppearanceLight
+		if err != nil || len(saved.Windows) != 1 || saved.Windows[0].Light != wantLight {
+			t.Fatalf("a fresh EXE did not follow the Windows app theme: want light=%v, %v", wantLight, err)
 		}
 	})
 }

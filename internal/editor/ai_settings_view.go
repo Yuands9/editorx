@@ -21,12 +21,12 @@ func (m *editorApp) aiSettingsContent(c ui.C, submitted *bool) {
 		m.aiProfileForm(c.Part("profile-form"), e.probe != nil, submitted)
 		return
 	}
-	m.aiChatPreferences(c.Part("chat-preferences"), false)
+	m.aiChatPreferences(c.Part("chat-preferences"))
 	m.aiSettingsOverview(c.Part("profile-overview"))
 }
 
-func (m *editorApp) aiSettingsActions(c ui.C, submitted bool) {
-	a, e := &m.ai, &m.ai.settings
+func (m *editorApp) aiSettingsActions(c ui.C) {
+	e := &m.ai.settings
 	if e.removePending {
 		if ui.Button(c, "取消删除").Outline().Clicked() {
 			c.After(func() { e.removePending, e.problem = false, "" })
@@ -45,22 +45,25 @@ func (m *editorApp) aiSettingsActions(c ui.C, submitted bool) {
 		}
 		return
 	}
-	ui.Text(c, "离开配置时自动保存").Muted().FontSize(12)
-	if e.problem != "" && e.dirty() && ui.Button(c, "重新载入配置").Ghost().
-		Tooltip("恢复已保存的配置").Clicked() {
-		c.After(m.reloadAISettingsPage)
+	canSave := e.original.ID == 0 || e.dirty()
+	if ui.Button(c.Part("save-profile"), "保存配置").Height(34).Disabled(!canSave).Clicked() {
+		c.After(m.finishAIProfile)
 	}
-	back := ui.Button(c, "返回配置列表").Outline()
-	if back.Clicked() || submitted {
-		c.After(func() {
-			if m.applyAIProfileChanges() {
-				if e.viewingSavedKey {
-					e.toggleKeyVisibility()
-				}
-				a.settingsEditing, e.scrollTop = false, true
-			}
-		})
+}
+
+func (m *editorApp) aiDiscardDraftDialog(c ui.C) {
+	editor := &m.ai.settings
+	if !m.appSettings.open || m.appSettings.section != settingsAI || !editor.discardPending {
+		return
 	}
+	ui.ModalWith(c, &editor.discardPending, "放弃未保存的模型配置？", ui.ModalSpec{Width: 410}, nil, func() {
+		if ui.Button(c, "继续编辑").Outline().Clicked() {
+			editor.discardPending = false
+		}
+		if ui.Button(c, "放弃修改").Destructive().Clicked() {
+			c.After(m.reloadAISettingsPage)
+		}
+	})
 }
 
 func (m *editorApp) aiSettingsOverview(c ui.C) {
@@ -139,22 +142,22 @@ func (m *editorApp) aiProfileAction(c ui.C, label, accessibleLabel string, color
 	return action.Clicked()
 }
 
-func (m *editorApp) aiChatPreferences(c ui.C, disabled bool) {
+func (m *editorApp) aiChatPreferences(c ui.C) {
 	a := &m.ai
-	ui.Column(c).FillWidth().Pad(12).Gap(8).Radius(12).Background(m.theme.Background).Children(func() {
+	ui.Column(c).FillWidth().MaxWidth(338).Pad(12).Gap(8).Radius(12).Background(m.theme.Background).Children(func() {
 		ui.Text(c, "对话偏好").FontSize(14).Bold()
 		mode, size := a.profiles.DefaultMode, a.profiles.chatFontSize()
 		ui.Row(c).FillWidth().Gap(12).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+			ui.Column(c).Width(172).MinWidth(0).Gap(4).Children(func() {
 				ui.Text(c, "新对话的默认模式").Muted().FontSize(12)
-				if ui.Select(c, &mode, aiModes, aiModeLabel).Label("新对话的默认模式").FillWidth().Height(34).Disabled(disabled).Changed() {
+				if ui.Select(c, &mode, aiModes, aiModeLabel).Label("新对话的默认模式").FillWidth().Height(34).Changed() {
 					c.After(func() { m.saveAIChatPreferences(mode, size) })
 				}
 			})
-			ui.Column(c).Width(150).Gap(4).Children(func() {
+			ui.Column(c).Width(108).Gap(4).Children(func() {
 				ui.Text(c, "对话字号").Muted().FontSize(12)
 				if ui.Select(c, &size, aiFontSizes, func(value int) string { return fmt.Sprintf("%d px", value) }).
-					Label("对话字号").FillWidth().Height(34).Disabled(disabled).Changed() {
+					Label("对话字号").FillWidth().Height(34).Changed() {
 					c.After(func() { m.saveAIChatPreferences(mode, size) })
 				}
 			})

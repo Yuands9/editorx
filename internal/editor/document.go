@@ -84,13 +84,20 @@ func writeFile(path string, data []byte) error {
 }
 
 func writeFileFrom(path string, data io.Reader, size int64) error {
+	return writeFileAtomically(path, func(output io.Writer) error {
+		_, err := io.CopyN(output, data, size)
+		return err
+	})
+}
+
+func writeFileAtomically(path string, write func(io.Writer) error) error {
 	file, err := os.CreateTemp(filepath.Dir(path), ".viva-save-*")
 	if err != nil {
 		return err
 	}
 	tempPath := file.Name()
 	defer os.Remove(tempPath)
-	if _, err = io.CopyN(file, data, size); err != nil {
+	if err = write(file); err != nil {
 		file.Close()
 		return err
 	}

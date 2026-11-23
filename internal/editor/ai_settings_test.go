@@ -107,6 +107,19 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	check(s.Type(provider.URL + "/v1/chat/completions"))
 	click("API 密钥")
 	check(s.Type(key))
+	click("button:编辑器")
+	if m.appSettings.section != settingsEditor {
+		t.Fatal("model form prevented navigation to another settings section")
+	}
+	drafts, err := readAIProfiles(m.dataDirectory)
+	check(err)
+	if len(drafts.Profiles) != 1 {
+		t.Fatal("leaving the form unexpectedly saved an incomplete configuration")
+	}
+	click("button:AI")
+	if !m.ai.settingsEditing || m.ai.settings.name.Text() != "本机验收模型" || m.ai.settings.enteredKey() != key {
+		t.Fatal("navigation lost an unsaved model configuration")
+	}
 	click("获取模型")
 	waitProbe()
 	if !slices.Equal(m.ai.settings.models, []string{"case-chat", "case-z"}) {
@@ -119,7 +132,7 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	if !strings.Contains(m.ai.settings.message, "连接成功") || !strings.Contains(m.ai.settings.message, "case-chat-routed") {
 		t.Fatal("probe did not display the resolved model")
 	}
-	click("返回配置列表")
+	click("保存配置")
 	if m.ai.settings.original.ID == 0 || m.ai.settings.problem != "" {
 		t.Fatal("new profile could not be saved: " + m.ai.settings.problem)
 	}
@@ -148,7 +161,7 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	if !m.ai.settings.key.Secure || m.ai.settings.key.Text() != "" {
 		t.Fatal("hiding the key did not clear the revealed value")
 	}
-	click("返回配置列表")
+	click("button:模型配置")
 	check(s.Resize(900, 560))
 	directory := os.Getenv("VIVA_PREVIEW_DIR")
 	if directory != "" {
@@ -166,12 +179,14 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	check(err)
 	click("高级设置")
 	check(s.Scroll(gfx.ScrollEvent{X: modelRow.Bounds.X + 80, Y: modelRow.Bounds.Y + 12, DeltaY: 440, Precise: true}))
+	click("自定义请求头 · JSON")
+	check(s.Type(`{"X-Draft":"uncommitted"}`))
 	headers, err := s.Locate("自定义请求头 · JSON")
 	check(err)
-	footer, err := s.Locate("返回配置列表")
+	save, err := s.Locate("保存配置")
 	check(err)
-	if headers.Bounds.Y+headers.Bounds.Height >= footer.Bounds.Y {
-		t.Fatal("advanced fields overlap the footer at minimum window size")
+	if headers.Bounds.Y <= save.Bounds.Y+save.Bounds.Height {
+		t.Fatal("advanced fields overlap the header actions at minimum window size")
 	}
 	if directory != "" {
 		check(s.Resize(1440, 900))
@@ -181,6 +196,7 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	profiles, err := readAIProfiles(m.dataDirectory)
 	check(err)
 	if len(profiles.Profiles) != 2 || profiles.active(0).Name != "本机验收模型" || !slices.Equal(profiles.Profiles[0].Key, oldKey) ||
+		len(profiles.active(0).Headers) != 0 ||
 		profiles.ChatFont != 16 || profiles.DefaultMode != aiDraft {
 		t.Fatal("new configuration or updated default overwrote the migrated configuration")
 	}
@@ -204,6 +220,11 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 		t.Fatalf("sidebar did not switch the current window to the chosen profile: open=%t, selected=%d, expected=%d, row=%+v", m.ai.profileMenu, m.ai.profileID, profiles.Profiles[0].ID, modelOption.Bounds)
 	}
 	click("模型设置")
+	if m.ai.settings.headers.Text() != `{"X-Draft":"uncommitted"}` {
+		t.Fatal("closing settings lost the unsaved profile")
+	}
+	click("button:模型配置")
+	click("放弃修改")
 	click("删除配置 原有配置")
 	click("取消删除")
 	if len(m.ai.profiles.Profiles) != 2 {

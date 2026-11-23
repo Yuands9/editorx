@@ -49,7 +49,7 @@ func newEditorPane(value string, readOnly bool) *editorPane {
 	p.view.Snapshot.HorizontalScrollbarID = gfx.Item(2)
 	p.view.Snapshot.Highlight = p.highlightLine
 	if !readOnly {
-		p.view.Snapshot.Placeholder = "开始输入，或按 Ctrl+O 打开文件"
+		p.view.Snapshot.Placeholder = "开始输入内容"
 	}
 	p.view.Text = func(window.TextInputContext) *window.TextInput { return &p.input }
 	p.view.Key = p.key

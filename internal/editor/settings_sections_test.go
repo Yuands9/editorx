@@ -1,8 +1,10 @@
 package editor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +20,12 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 	m := newEditorApp()
 	store.attach(m)
 	m.newDocument()
-	m.active.source.replace("备份中保留的未保存草稿")
+	draft := strings.Repeat("备份中保留的未保存草稿\r\n", 256)
+	m.active.source.replace(draft)
+	included := m.active
+	m.newDocument()
+	m.active.source.replace("未勾选的草稿")
+	m.activate(included)
 	s := openTestSession(t, m)
 	click := func(label string) {
 		t.Helper()
@@ -45,26 +52,55 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 		t.Fatal("editor settings preview is absent")
 	}
 	click("备份")
-	destination := filepath.Join(store.directory, "test.editorx-backup.json")
+	if s.HasText("本地会话数据") {
+		t.Fatal("unused local data card is still shown")
+	}
+	click("导出备份")
+	if !s.HasText("已选 1 个文件") {
+		t.Fatal("backup selection did not start with only the active file")
+	}
+	click("清空选择")
+	click("checkbox:" + included.tabTitle())
+	if !s.HasText("已选 1 个文件") {
+		t.Fatal("manually reselecting a file failed")
+	}
+	if directory := os.Getenv("VIVA_PREVIEW_DIR"); directory != "" {
+		if err := s.Screenshot(filepath.Join(directory, "settings-backup-tabs.png")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	destination := filepath.Join(store.directory, "test.editorx-backup.zip")
 	if err := s.Driver().QueueSaveFile(destination, nil); err != nil {
 		t.Fatal(err)
 	}
-	click("导出备份")
+	click("选择保存位置…")
 	if err := s.WaitFor(func(app.Snapshot) bool { return m.backup.message != "" }, 3*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(destination)
-	if err != nil {
-		t.Fatal(err)
+	info, err := os.Stat(destination)
+	if err != nil || info.Size() >= int64(len(draft)/4) {
+		t.Fatalf("ZIP did not compress repeated text: %v, %v", info, err)
 	}
-	saved, err := decodeEditorSession(data)
+	saved, err := readEditorBackup(destination)
 	if err != nil || len(saved.Windows) != 1 || len(saved.Windows[0].Tabs) != 1 {
 		t.Fatalf("invalid session export: %+v, %v", saved, err)
 	}
 	restored := newEditorApp()
 	restored.restoreSession(saved.Windows[0])
-	if restored.active.source.text.String() != "备份中保留的未保存草稿" || !restored.active.modified() {
+	if restored.active.source.text.String() != draft || !restored.active.modified() {
 		t.Fatal("restoring the backup lost the unsaved text")
+	}
+
+	legacy, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(store.directory, "legacy.editorx-backup.json")
+	if err := os.WriteFile(legacyPath, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if version1, err := readEditorBackup(legacyPath); err != nil || len(version1.Windows) != 1 {
+		t.Fatalf("legacy backup could not be read: %v", err)
 	}
 
 	click("关于")

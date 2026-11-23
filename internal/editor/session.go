@@ -157,6 +157,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 	for _, state := range saved.Windows {
 		m := newEditorApp()
 		m.editorPrefs = preferences.Editor
+		m.keyBindings = preferences.Shortcuts
 		m.store, m.dataDirectory = store, directory
 		m.restoreSession(state)
 		if recovered {
@@ -172,10 +173,17 @@ func decodeEditorSession(data []byte) (savedSession, error) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return savedSession{}, err
 	}
-	if saved.Version != editorSessionVersion {
-		return savedSession{}, fmt.Errorf("不支持的会话版本：%d", saved.Version)
+	if err := saved.validateVersion(); err != nil {
+		return savedSession{}, err
 	}
 	return saved, nil
+}
+
+func (saved savedSession) validateVersion() error {
+	if saved.Version != editorSessionVersion {
+		return fmt.Errorf("不支持的会话版本：%d", saved.Version)
+	}
+	return nil
 }
 
 func (store *sessionStore) attach(m *editorApp) {
@@ -196,16 +204,23 @@ func (m *editorApp) snapshotSession() windowSession {
 	if m.closedSession != nil {
 		return *m.closedSession
 	}
-	state := windowSession{Active: slices.Index(m.tabs, m.active), Light: m.light, ShowFiles: m.showFiles, ShowOutline: m.showOutline,
+	return m.snapshotWorkspace(m.tabs, true)
+}
+
+func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowSession {
+	state := windowSession{Active: slices.Index(tabs, m.active), Light: m.light, ShowFiles: m.showFiles, ShowOutline: m.showOutline,
 		FilesWidth: m.filesSplit.Pos, OutlineRatio: 1 - m.outlineSplit.Ratio,
-		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, AI: m.snapshotAI(), Frame: m.windowFrame, Maximized: m.maximized}
+		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, Frame: m.windowFrame, Maximized: m.maximized}
+	if includeAI {
+		state.AI = m.snapshotAI()
+	}
 	if m.workspace != nil {
 		for _, root := range m.workspace.roots {
 			state.Projects = append(state.Projects, projectSession{Path: root.path, ExpandedFolders: expandedProjectFolders(root)})
 		}
 	}
 	var previousGroup *tabGroup
-	for _, tab := range m.tabs {
+	for _, tab := range tabs {
 		if tab.format() == "JSON" && tab.resultReady {
 			tab.updateResult()
 		}
@@ -371,7 +386,7 @@ func (m *editorApp) restoreSession(state windowSession) {
 		restorePane(tab.result, item.Result)
 		tab.resultOutput = tab.result.text.CommittedString()
 		isJSON := tab.format() == "JSON"
-		tab.applyDefaultWrap(m.editorPrefs, isJSON)
+		tab.applyDefaultWrap(m.editorPrefs)
 		if item.WrapOverride != nil {
 			tab.wrapOverride = true
 			tab.setWrap(*item.WrapOverride)

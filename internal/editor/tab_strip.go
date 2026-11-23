@@ -293,7 +293,7 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 			if pin.Clicked() {
 				c.After(func() { m.togglePin(tab) })
 			}
-			closeHint := "关闭 · Ctrl+W"
+			closeHint := m.shortcutHint("关闭", shortcutCloseTab)
 			if tab.isPinned() {
 				closeHint = tab.pinnedCloseHint()
 			}

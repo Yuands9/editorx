@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -9,6 +10,15 @@ import (
 var themeOptions = []struct{ id, label string }{
 	{themeDark, "深色"},
 	{themeLight, "浅色"},
+	{themeSystem, "跟随系统"},
+}
+
+var editorControlStyles = ui.Styles{
+	Checkbox: func(theme gfx.Theme, state gfx.State) components.CheckboxLook {
+		theme.Input = theme.MutedForeground
+		theme.Input.Alpha = .7
+		return components.CheckboxRecipe(theme, state)
+	},
 }
 
 func (m *editorApp) themeButton(c ui.C, blocked bool) {
@@ -81,9 +91,42 @@ func lightEditorTheme() gfx.Theme {
 	return theme
 }
 
+func themeAppearance(theme string) app.Appearance {
+	switch theme {
+	case themeLight:
+		return app.AppearanceLight
+	case themeDark:
+		return app.AppearanceDark
+	default:
+		return app.AppearanceUnknown
+	}
+}
+
+func editorThemeIsLight(theme string) bool {
+	if theme == themeSystem {
+		return app.SystemAppearance() == app.AppearanceLight
+	}
+	return theme == themeLight
+}
+
 func (m *editorApp) applyThemePreference(theme string) {
-	if light := theme == themeLight; light != m.light {
+	if light := editorThemeIsLight(theme); light != m.light {
 		m.setLightMode(light)
+	}
+}
+
+func (d *editorDesktop) refreshSystemTheme() {
+	if d.preferences.Theme != themeSystem {
+		return
+	}
+	for _, window := range d.store.windows {
+		if !window.windowClosed {
+			window.applyThemePreference(themeSystem)
+			window.invalidator.Invalidate()
+		}
+	}
+	if d.tray != nil {
+		_ = d.syncTray()
 	}
 }
 
@@ -92,6 +135,9 @@ func (m *editorApp) setLightMode(light bool) {
 	m.theme = editorTheme()
 	if light {
 		m.theme = lightEditorTheme()
+	}
+	if m.nativeWindow != nil {
+		_ = m.nativeWindow.SetIcon(themedApplicationIcon(light))
 	}
 	for _, tab := range m.tabs {
 		tab.source.light, tab.result.light, tab.comparison.light = light, light, light

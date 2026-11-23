@@ -1,6 +1,11 @@
+// Modified for EditorX. See patches/ in the project root.
 package windows
 
-import "github.com/vivaui/viva/internal/platform"
+import (
+	"errors"
+
+	"github.com/vivaui/viva/internal/platform"
+)
 
 const (
 	wmSetIcon = 0x0080
@@ -12,9 +17,21 @@ const (
 
 var sendMessage = user.NewProc("SendMessageW")
 
-// setIcons gives the window the application's picture: the small one for its
-// title bar and the big one for the taskbar button and Alt+Tab. Windows asks
-// the window for these; the executable has no icon resource of its own.
+// SetIcon queues an icon update on the event-loop thread.
+func (window *nativeWindow) SetIcon(icon platform.WindowIcon) error {
+	if window == nil || window.closed.Load() {
+		return errors.New("windows: window is closed")
+	}
+	state := window.state
+	state.application.Post(func() {
+		if !window.closed.Load() && state.window != 0 {
+			state.setIcons(icon)
+		}
+	})
+	return nil
+}
+
+// setIcons sets the small title bar icon and the larger taskbar and Alt+Tab icon.
 func (state *windowState) setIcons(icon platform.WindowIcon) {
 	if !icon.Valid() {
 		return
@@ -33,8 +50,12 @@ func (state *windowState) setIcons(icon platform.WindowIcon) {
 		if err != nil {
 			continue
 		}
-		state.icons[kind] = handle
+		previous := state.icons[kind]
 		sendMessage.Call(state.window, wmSetIcon, uintptr(kind), handle)
+		state.icons[kind] = handle
+		if previous != 0 {
+			destroyIcon.Call(previous)
+		}
 	}
 }
 

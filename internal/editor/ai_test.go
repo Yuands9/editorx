@@ -51,7 +51,7 @@ func TestAISelectionPreviewAndUndo(t *testing.T) {
 	check(s.Type(service.URL))
 	check(s.ClickLabel("模型 ID"))
 	check(s.Type("test-viva"))
-	check(s.ClickLabel("返回配置列表"))
+	check(s.ClickLabel("保存配置"))
 	check(s.ClickLabel("关闭设置"))
 	check(s.ClickLabel("选择 AI 模式"))
 	check(s.ClickLabel("menuitem:生成修改"))

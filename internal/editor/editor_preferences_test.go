@@ -76,16 +76,23 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	click("option:8 列")
 	click("combobox:Tab 键输入")
 	click("option:Tab 字符")
-	click("combobox:默认自动折行")
-	click("option:开启")
+	if plain.source.view.Snapshot.Wrap || !jsonTab.source.view.Snapshot.Wrap {
+		t.Fatal("the fresh profile should wrap only JSON")
+	}
+	click("文件类型 · 1 项")
+	click("checkbox:纯文本")
+	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
+		check(session.Screenshot(filepath.Join(preview, "editor-wrap-types.png")))
+	}
+	click("文件类型 · 2 项")
 	click("combobox:JSON 默认缩进")
 	click("option:2 个空格")
 	if !m.appSettings.open || jsonTab.jsonIndent != 2 || !plain.source.view.Snapshot.Wrap {
 		t.Fatal("settings did not take effect immediately while the settings page was open")
 	}
-	want := editorPreferences{FontFamily: fontFamily, FontSize: 18, TabWidth: 8, HardTabs: true, Wrap: wrapEnabled, JSONIndent: 2}
+	want := editorPreferences{FontFamily: fontFamily, FontSize: 18, TabWidth: 8, HardTabs: true, WrapFileTypes: []string{"纯文本", "JSON"}, JSONIndent: 2}
 	saved, err := readApplicationPreferences(store.directory)
-	if err != nil || saved.Editor != want {
+	if err != nil || !saved.Editor.equal(want) {
 		t.Fatalf("saved editor settings = %+v, %v", saved.Editor, err)
 	}
 	checkPanes := func(tab *editorTab, wrap bool) {
@@ -136,10 +143,38 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	checkPanes(reopened.windows[1].tabs[0], false)
 }
 
+func TestEditorWrapPreferencesMigrateAndPreserveEmptySelection(t *testing.T) {
+	directory := t.TempDir()
+	for _, test := range []struct {
+		json string
+		want int
+	}{
+		{`{"editor":{"wrap":"on"}}`, len(editorWrapLanguages)},
+		{`{"editor":{"wrap":"off"}}`, 0},
+		{`{"editor":{"wrapFileTypes":[]}}`, 0},
+		{`{"editor":{"wrapFileTypes":["Markdown","unknown","Markdown"]}}`, 1},
+	} {
+		if err := os.WriteFile(filepath.Join(directory, applicationSettingsFile), []byte(test.json), 0600); err != nil {
+			t.Fatal(err)
+		}
+		preferences, err := readApplicationPreferences(directory)
+		if err != nil || len(preferences.Editor.WrapFileTypes) != test.want {
+			t.Fatalf("%s produced %v, %v", test.json, preferences.Editor.WrapFileTypes, err)
+		}
+		if err := preferences.save(directory); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := readApplicationPreferences(directory)
+		if err != nil || !reopened.Editor.equal(preferences.Editor) {
+			t.Fatalf("selection did not survive restart: %v, %v", reopened.Editor.WrapFileTypes, err)
+		}
+	}
+}
+
 func TestLegacyEditorSettingsPreserveManualOverrides(t *testing.T) {
 	m := newEditorApp()
 	preferences := defaultEditorPreferences()
-	preferences.Wrap, preferences.JSONIndent = wrapDisabled, 2
+	preferences.WrapFileTypes, preferences.JSONIndent = []string{}, 2
 	m.editorPrefs = preferences
 	m.restoreSession(windowSession{Tabs: []tabSession{
 		{Name: "legacy-default.json", JSONIndent: 4, JSONWrapSet: true, Source: paneSession{Wrap: true}},
@@ -151,7 +186,7 @@ func TestLegacyEditorSettingsPreserveManualOverrides(t *testing.T) {
 		inherited.source.view.Snapshot.Wrap {
 		t.Fatal("legacy defaults did not start following the new application defaults")
 	}
-	preferences.Wrap, preferences.JSONIndent = wrapEnabled, 4
+	preferences.WrapFileTypes, preferences.JSONIndent = []string{"纯文本", "JSON"}, 4
 	m.applyEditorPreferences(preferences)
 	if !textTab.wrapOverride || !textTab.source.view.Snapshot.Wrap ||
 		!custom.indentOverride || custom.jsonIndent != 2 ||

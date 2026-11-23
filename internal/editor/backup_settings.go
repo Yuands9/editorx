@@ -1,112 +1,262 @@
 package editor
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
 )
 
-var backupFileFilters = []app.FileFilter{
-	{Name: "EditorX 会话备份", Pattern: "*.editorx-backup.json;*.json"},
-}
+const backupSessionEntry = "session.json"
 
 type editorBackupResult struct {
 	path    string
+	size    int64
 	windows []windowSession
 }
 
+type backupTabChoice struct {
+	window  *editorApp
+	tab     *editorTab
+	checked bool
+}
+
 type editorBackupState struct {
-	request *ui.EffectState[editorBackupResult, int]
-	message string
-	problem string
+	request   *ui.EffectState[editorBackupResult, int]
+	selecting bool
+	choices   []backupTabChoice
+	message   string
+	problem   string
+}
+
+func (m *editorApp) backupWindows() []*editorApp {
+	if m.store != nil {
+		return m.store.windows
+	}
+	return []*editorApp{m}
 }
 
 func (m *editorApp) backupSettings(c ui.C) {
-	working := m.backup.request != nil
+	state := &m.backup
+	working := state.request != nil
+	hasTabs := slices.ContainsFunc(m.backupWindows(), func(window *editorApp) bool {
+		return !window.windowClosed && len(window.tabs) > 0
+	})
 	m.applicationSetting(c.Part("export"), "导出会话备份",
-		"保存已打开的标签、草稿、分组和项目列表。", func() {
-			if ui.Button(c, "导出备份").Height(32).Disabled(working).Clicked() {
-				c.After(m.exportBackup)
+		"勾选要备份的文件和草稿，保存为 ZIP 压缩包。", func() {
+			if ui.Button(c, "导出备份").Height(32).Disabled(working || !hasTabs).Clicked() {
+				c.After(m.chooseBackupTabs)
 			}
 		})
 	m.applicationSetting(c.Part("restore"), "恢复会话备份",
-		"在新窗口恢复备份中的工作区。", func() {
+		"打开 ZIP 或旧版 JSON 备份，在新窗口恢复所选文件。", func() {
 			if ui.Button(c, "选择备份…").Outline().Height(32).Disabled(working || m.desktop == nil).Clicked() {
 				c.After(m.importBackup)
-			}
-		})
-	m.applicationSetting(c.Part("directory"), "本地会话数据",
-		"EditorX 会自动保存会话和草稿。", func() {
-			if ui.Button(c, "打开数据目录").Outline().Height(32).Clicked() {
-				c.After(func() {
-					if err := app.OpenPath(m.dataDirectory); err != nil {
-						m.backup.problem = "无法打开数据目录：" + err.Error()
-					}
-				})
 			}
 		})
 	switch {
 	case working:
 		ui.Text(c, "正在处理会话备份…").Muted().FontSize(12)
-	case m.backup.problem != "":
-		ui.Wrap(c, m.backup.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
-	case m.backup.message != "":
-		ui.Wrap(c, m.backup.message).FillWidth().Color(m.theme.Success).FontSize(12)
+	case state.problem != "":
+		ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
+	case state.message != "":
+		ui.Wrap(c, state.message).FillWidth().Color(m.theme.Success).FontSize(12)
+	}
+}
+
+func (m *editorApp) chooseBackupTabs() {
+	state := &m.backup
+	state.choices = nil
+	for _, window := range m.backupWindows() {
+		if window.windowClosed {
+			continue
+		}
+		for _, tab := range window.tabs {
+			state.choices = append(state.choices, backupTabChoice{
+				window: window, tab: tab, checked: window == m && tab == m.active,
+			})
+		}
+	}
+	state.selecting = len(state.choices) > 0
+}
+
+func (m *editorApp) backupSelectionDialog(c ui.C) {
+	state := &m.backup
+	if !state.selecting {
+		return
+	}
+	selected := 0
+	dismissed := ui.ModalWith(c, &state.selecting, "选择要备份的文件", ui.ModalSpec{Width: 536}, func() {
+		ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
+			if ui.Button(c.Part("all"), "全选").Ghost().Height(28).Clicked() {
+				for i := range state.choices {
+					state.choices[i].checked = true
+				}
+			}
+			if ui.Button(c.Part("none"), "清空选择").Ghost().Height(28).Clicked() {
+				for i := range state.choices {
+					state.choices[i].checked = false
+				}
+			}
+		})
+		height := min(float32(264), float32(len(state.choices))*50+8)
+		ui.Scroll(c.Part("file-list")).FillWidth().Height(height).Scrollbars().Children(func() {
+			ui.Column(c).FillWidth().Gap(3).PadRight(8).Children(func() {
+				for i := range state.choices {
+					choice := &state.choices[i]
+					tab := choice.tab
+					ui.Column(c.KeyInt(i)).FillWidth().PadX(6).PadBottom(4).Height(47).Radius(8).
+						Background(m.theme.Card).Children(func() {
+						ui.Checkbox(c, &choice.checked, tab.tabTitle()).FillWidth().Height(27).Tooltip(tab.title())
+						detail := tab.doc.path
+						if detail == "" {
+							detail = "未保存草稿"
+						}
+						ui.Text(c, detail).FillWidth().PadLeft(26).FontSize(11).Muted().Ellipsis()
+					})
+					if choice.checked {
+						selected++
+					}
+				}
+			})
+		})
+	}, func() {
+		ui.Text(c, fmt.Sprintf("已选 %d 个文件", selected)).FontSize(12).Muted()
+		if ui.Button(c.Part("save-backup"), "选择保存位置…").Disabled(selected == 0).Clicked() {
+			c.After(m.exportBackup)
+		}
+	})
+	if dismissed {
+		state.choices = nil
 	}
 }
 
 func (m *editorApp) exportBackup() {
 	path, err := app.SaveFile(app.SaveFileOptions{
-		Title:         "导出 EditorX 会话备份",
-		SuggestedName: "EditorX-" + time.Now().Format("20060102-150405") + ".editorx-backup.json",
-		Filters:       backupFileFilters,
+		Title:            "导出 EditorX 会话备份",
+		SuggestedName:    "EditorX-" + time.Now().Format("20060102-150405") + ".editorx-backup.zip",
+		DefaultExtension: "zip",
+		Filters:          []app.FileFilter{{Name: "EditorX 压缩备份", Pattern: "*.zip"}},
 	})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
 	if err != nil {
 		m.backup.problem = "无法选择备份位置：" + err.Error()
+		m.backup.selecting, m.backup.choices = false, nil
 		return
-	}
-
-	windows := []*editorApp{m}
-	if m.store != nil {
-		windows = m.store.windows
-	}
-	saved := savedSession{Version: editorSessionVersion}
-	for _, window := range windows {
-		if !window.windowClosed {
-			state := window.snapshotSession()
-			state.AI = nil
-			saved.Windows = append(saved.Windows, state)
-		}
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		m.backup.problem = "无法读取备份路径：" + err.Error()
+		m.backup.selecting, m.backup.choices = false, nil
 		return
 	}
-	m.backup = editorBackupState{request: ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
-		data, err := json.Marshal(saved)
+
+	included := make(map[*editorApp][]*editorTab)
+	for _, choice := range m.backup.choices {
+		window := choice.window
+		if choice.checked && !window.windowClosed && slices.Contains(window.tabs, choice.tab) {
+			included[window] = append(included[window], choice.tab)
+		}
+	}
+	saved := savedSession{Version: editorSessionVersion}
+	for _, window := range m.backupWindows() {
+		if tabs := included[window]; len(tabs) > 0 {
+			saved.Windows = append(saved.Windows, window.snapshotWorkspace(tabs, false))
+		}
+	}
+	m.backup = editorBackupState{}
+	if len(saved.Windows) == 0 {
+		m.backup.problem = "所选文件已关闭，请重新选择。"
+		return
+	}
+	m.backup.request = ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
+		if err := writeEditorBackup(ctx, absolute, saved); err != nil {
+			return editorBackupResult{}, err
+		}
+		info, err := os.Stat(absolute)
 		if err != nil {
 			return editorBackupResult{}, err
 		}
+		return editorBackupResult{path: absolute, size: info.Size()}, nil
+	})
+}
+
+func writeEditorBackup(ctx context.Context, path string, saved savedSession) error {
+	return writeFileAtomically(path, func(output io.Writer) error {
 		if err := ctx.Err(); err != nil {
-			return editorBackupResult{}, err
+			return err
 		}
-		return editorBackupResult{path: absolute}, writeFile(absolute, data)
-	})}
+		archive := zip.NewWriter(output)
+		entry, err := archive.Create(backupSessionEntry)
+		if err != nil {
+			return err
+		}
+		if err := json.NewEncoder(entry).Encode(saved); err != nil {
+			return err
+		}
+		if err := archive.Close(); err != nil {
+			return err
+		}
+		return ctx.Err()
+	})
+}
+
+func readEditorBackup(path string) (savedSession, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return savedSession{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return savedSession{}, err
+	}
+	archive, err := zip.NewReader(file, info.Size())
+	var source io.Reader = file
+	if err == nil {
+		entry, err := archive.Open(backupSessionEntry)
+		if err != nil {
+			return savedSession{}, fmt.Errorf("压缩包中缺少会话数据：%w", err)
+		}
+		defer entry.Close()
+		source = entry
+	} else if !errors.Is(err, zip.ErrFormat) {
+		return savedSession{}, err
+	}
+	decoder := json.NewDecoder(source)
+	var saved savedSession
+	if err := decoder.Decode(&saved); err != nil {
+		return savedSession{}, err
+	}
+	// 读取到末尾，校验 ZIP 内容并拒绝附加的 JSON 数据。
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			err = errors.New("备份包含多余的会话数据")
+		}
+		return savedSession{}, err
+	}
+	if err := saved.validateVersion(); err != nil {
+		return savedSession{}, err
+	}
+	return saved, nil
 }
 
 func (m *editorApp) importBackup() {
-	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "打开 EditorX 会话备份", Filters: backupFileFilters})
+	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "打开 EditorX 会话备份", Filters: []app.FileFilter{
+		{Name: "EditorX 会话备份", Pattern: "*.zip;*.json"},
+	}})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
@@ -119,11 +269,7 @@ func (m *editorApp) importBackup() {
 	}
 	path := paths[0]
 	m.backup = editorBackupState{request: ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return editorBackupResult{}, err
-		}
-		saved, err := decodeEditorSession(data)
+		saved, err := readEditorBackup(path)
 		if err != nil {
 			return editorBackupResult{}, err
 		}
@@ -150,7 +296,11 @@ func (m *editorApp) backupProgress(c ui.C) {
 		return
 	}
 	if result.path != "" {
-		state.message = "备份已保存到 " + result.path
+		size := fmt.Sprintf("%.1f KB", float64(result.size)/1024)
+		if result.size >= 1<<20 {
+			size = fmt.Sprintf("%.1f MB", float64(result.size)/(1<<20))
+		}
+		state.message = "备份已保存 · " + size + " · " + result.path
 		return
 	}
 	c.After(func() {
@@ -165,6 +315,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 			restored.desktop = m.desktop
 			restored.dataDirectory = m.dataDirectory
 			restored.editorPrefs = m.editorPrefs
+			restored.keyBindings = m.keyBindings
 			restored.restoreSession(window)
 			restored.applyThemePreference(m.desktop.preferences.Theme)
 			if err := openEditorWindow(m.desktop.application, restored); err != nil {

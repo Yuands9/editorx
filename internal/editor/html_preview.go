@@ -11,6 +11,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/keymap"
 	"github.com/vivaui/viva/ui"
 	htmlparser "golang.org/x/net/html"
 )
@@ -175,12 +176,16 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 	if t.html.view == nil {
 		view, err := m.webHost.Open(app.WebViewConfig{URL: address, Ephemeral: true, TopCornerRadius: 12, BridgeMainFrameOnly: true,
 			LetterShortcut: func(letter rune, modifiers gfx.Modifiers) func() {
-				if (letter != 'f' && letter != 'r') || modifiers != gfx.ModifierControl || m.active != t || m.interactionBlocked() {
+				if m.active != t || m.appSettings.open || m.interactionBlocked() {
+					return nil
+				}
+				chord, _ := keymap.FromEvent(gfx.KeyEvent{Text: string(letter), Modifiers: modifiers})
+				action := m.keyBindings.actionFor(chord)
+				if action != shortcutFind && action != shortcutReplace {
 					return nil
 				}
 				return func() {
-					if m.active == t && !m.appSettings.open && !m.interactionBlocked() {
-						t.showSearch(letter == 'r')
+					if m.active == t && m.runEditorShortcut(action) {
 						m.invalidator.Invalidate()
 					}
 				}

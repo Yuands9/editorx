@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/keymap"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/text/find"
 	"github.com/vivaui/viva/ui"
@@ -75,16 +75,19 @@ type documentSearch struct {
 	lastOptions           searchOptions
 }
 
-func (t *editorTab) initSearch() {
+func (t *editorTab) initSearch(m *editorApp) {
 	s := &t.search
 	s.query, s.replacement = text.NewEditor(""), text.NewEditor("")
 	s.field.Bind(s.query)
 	s.replaceField.Bind(s.replacement)
 	s.inputKey = func(event gfx.KeyEvent) gfx.EventResult {
-		if event.Key == gfx.KeyEnter && event.Target == s.replaceField.ID {
-			return gfx.EventResult{}
+		if result := m.searchFieldShortcut(event); result.Handled {
+			return result
 		}
-		return t.searchKey(event, nil)
+		if result := m.searchNavigation(t, event, nil); result.Handled {
+			return result
+		}
+		return m.functionShortcut(event)
 	}
 	s.target = t.source
 	s.current = -1
@@ -118,7 +121,12 @@ func (t *editorTab) initSearch() {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
-		pane.searchKey = func(event gfx.KeyEvent) gfx.EventResult { return t.searchKey(event, pane) }
+		pane.searchKey = func(event gfx.KeyEvent) gfx.EventResult {
+			if result := m.searchNavigation(t, event, pane); result.Handled {
+				return result
+			}
+			return m.functionShortcut(event)
+		}
 	}
 }
 
@@ -178,32 +186,33 @@ func (t *editorTab) searchPaneVisible(p *editorPane) bool {
 	return t.canSearchText() && (p == t.source || t.format() == "JSON" && (p == t.comparison && t.jsonCompare || p == t.result && !t.jsonCompare))
 }
 
-func (t *editorTab) searchKey(event gfx.KeyEvent, pane *editorPane) gfx.EventResult {
+func (m *editorApp) searchNavigation(t *editorTab, event gfx.KeyEvent, pane *editorPane) gfx.EventResult {
 	s := &t.search
-	if !s.open && s.query.String() == "" {
+	if event.Release || m.interactionBlocked() || !s.open && s.query.String() == "" || s.composing() {
 		return gfx.EventResult{}
 	}
-	if s.composing() {
+	if event.Key == gfx.KeyEscape && event.Modifiers == 0 && s.open {
+		s.close()
+		return gfx.EventResult{Handled: true, Repaint: true}
+	}
+	chord, ok := keymap.FromEvent(event)
+	if !ok {
 		return gfx.EventResult{}
 	}
-	command, ok := components.FindBarCommandForKey(event, pane == nil)
-	if !event.Release && event.Key == gfx.KeyEscape {
-		command, ok = components.FindBarCloseCommand, true
+	direction := 0
+	switch chord {
+	case m.keyBindings.chord(shortcutFindNext):
+		direction = 1
+	case m.keyBindings.chord(shortcutFindPrevious):
+		direction = -1
 	}
-	if !ok || command == components.FindBarOpen || command == components.FindBarOpenReplace {
+	if direction == 0 {
 		return gfx.EventResult{}
 	}
 	if pane != nil && !s.replacing && s.target != pane {
 		s.target, s.ready = pane, false
 	}
-	switch command {
-	case components.FindBarNext:
-		s.step(1)
-	case components.FindBarPrevious:
-		s.step(-1)
-	case components.FindBarCloseCommand:
-		s.close()
-	}
+	s.step(direction)
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 

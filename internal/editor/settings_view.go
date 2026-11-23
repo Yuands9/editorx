@@ -20,9 +20,9 @@ var settingSections = []struct {
 	label, topics string
 	icon          gfx.Icon
 }{
-	{settingsAppearance, "颜色主题、深浅配色、托盘、关闭窗口", themeIcon},
+	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、询问保存、不再询问", themeIcon},
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
-	{settingsBackup, "导出、恢复、会话草稿、数据目录", folderIcon},
+	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
 	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
 	{settingsAbout, "EditorX、版本、检查更新、GitHub", infoIcon},
@@ -36,6 +36,8 @@ type settingsPageState struct {
 	editorPreview    *editorPane
 	fonts            []string
 	fontRequest      *ui.EffectState[[]string, int]
+	wrapTypesOpen    bool
+	shortcutEdit     shortcutEditState
 }
 
 func (m *editorApp) openApplicationSettings() {
@@ -66,6 +68,10 @@ func (m *editorApp) showSettings(section string) {
 		}
 		m.fileMenu, m.languageMenu = false, false
 	}
+	if settings.section == settingsAI {
+		m.pauseAISettings()
+	}
+	settings.shortcutEdit = shortcutEditState{}
 	settings.section = section
 	if section == settingsAI && !m.ai.settingsEditing {
 		m.reloadAISettingsPage()
@@ -79,16 +85,10 @@ func (m *editorApp) showSettings(section string) {
 func (m *editorApp) closeSettings() {
 	returnToAI := m.appSettings.returnToAI
 	m.update.open = false
-	if m.applyAIProfileChanges() {
+	m.backup.selecting, m.backup.choices = false, nil
+	m.pauseAISettings()
+	if !m.ai.settingsEditing || !m.ai.settings.dirty() {
 		m.ai.settings, m.ai.settingsEditing = aiSettingsEditor{}, false
-	} else {
-		editor := &m.ai.settings
-		if editor.viewingSavedKey {
-			editor.toggleKeyVisibility()
-		}
-		editor.probe = nil
-		editor.providersOpen, editor.modelsOpen = false, false
-		m.status = "模型配置待修正，已保留本次输入"
 	}
 	m.appSettings = settingsPageState{}
 	if returnToAI && m.ai.open {
@@ -120,7 +120,11 @@ func (m *editorApp) settingsPage(c ui.C) {
 		}
 	}
 	if !m.update.open && ui.Shortcut(c, 0, "escape") {
-		c.After(m.closeSettings)
+		if settings.shortcutEdit.action != shortcutNone {
+			settings.shortcutEdit = shortcutEditState{}
+		} else {
+			c.After(m.closeSettings)
+		}
 	}
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Pad(10).Gap(8).Children(func() {
 		ui.Row(c.Part("heading")).FillWidth().Height(48).PadX(12).Gap(10).Items(ui.Center).Children(func() {
@@ -140,13 +144,13 @@ func (m *editorApp) settingsPage(c ui.C) {
 					if selected {
 						row.Background(m.theme.Secondary)
 					}
-					row.HitWith(ui.ID(c), section.label, gfx.HitOptions{Role: gfx.RoleButton, Selected: selected, Disabled: aiDetail}).
+					row.HitWith(ui.ID(c), section.label, gfx.HitOptions{Role: gfx.RoleButton, Selected: selected}).
 						Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Background(m.theme.Hover))
 					row.Children(func() {
 						ui.Icon(c, section.icon).Size(16, 16).Color(m.theme.MutedForeground)
 						ui.Text(c, section.label).FontSize(14).Grow(1)
 					})
-					if row.Clicked() && !aiDetail {
+					if row.Clicked() {
 						c.After(func() {
 							settings.query.SetText("")
 							m.showSettings(section.label)
@@ -162,7 +166,17 @@ func (m *editorApp) settingsPage(c ui.C) {
 						ui.TextField(c.Part("search"), &settings.query, "搜索设置", "搜索设置").Grow(1).Height(32)
 					})
 				}
-				ui.Text(c, title).FontSize(21).Bold().Height(30)
+				if aiDetail {
+					ui.Row(c.Part("ai-detail-heading")).FillWidth().MaxWidth(1012).Height(38).Gap(8).Items(ui.Center).Children(func() {
+						if ui.Button(c.Part("profiles"), "模型配置").Icon(chevronLeftIcon).Ghost().Height(32).Clicked() {
+							c.After(m.backToAIProfiles)
+						}
+						ui.Text(c, title).FontSize(21).Bold().Grow(1).MinWidth(0).Ellipsis()
+						m.aiSettingsActions(c.Part("profile-actions"))
+					})
+				} else {
+					ui.Text(c, title).FontSize(21).Bold().Height(30)
+				}
 				body := ui.Scroll(c.Part("options").Key(title)).FillWidth().Grow(1).Basis(0).MinHeight(0).Scrollbars()
 				if settings.section == settingsAI && editor.scrollTop {
 					body.ScrollState().ScrollTo(0)
@@ -195,10 +209,8 @@ func (m *editorApp) settingsPage(c ui.C) {
 				if settings.problem != "" {
 					ui.Wrap(c, settings.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 				}
-				if aiDetail {
-					ui.Row(c.Part("settings-actions")).FillWidth().MaxWidth(850).Height(40).Gap(8).Items(ui.Center).Justify(ui.End).Children(func() {
-						m.aiSettingsActions(c, submitted)
-					})
+				if submitted {
+					c.After(m.finishAIProfile)
 				}
 			})
 		})
@@ -240,12 +252,20 @@ func (m *editorApp) windowSettings(c ui.C) {
 				c.After(m.saveApplicationSettings)
 			}
 		})
+	m.applicationSetting(c.Part("save-confirmation"), "关闭标签时询问保存",
+		"关闭询问后，关闭有修改的标签会自动保存。未命名文件会先选择保存位置。", func() {
+			ask := !draft.SkipSaveConfirmation
+			if ui.Switch(c, &ask, "").Label("关闭标签时询问保存").Changed() {
+				draft.SkipSaveConfirmation = !ask
+				c.After(m.saveApplicationSettings)
+			}
+		})
 }
 
 func (m *editorApp) appearanceSettings(c ui.C) {
 	theme := m.appSettings.draft.Theme
 	m.applicationSetting(c.Part("color-theme"), "颜色主题",
-		"编辑器和支持主题切换的预览会使用此配色。", func() {
+		"编辑器和支持主题切换的预览会使用此配色。跟随系统时会随 Windows 自动切换。", func() {
 			ui.Row(c.Part("theme-options")).Gap(5).Items(ui.Center).Children(func() {
 				for _, option := range themeOptions {
 					button := ui.Button(c.Key(option.id), option.label).Ghost().MinWidth(58).Height(34)

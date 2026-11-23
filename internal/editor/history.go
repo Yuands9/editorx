@@ -62,7 +62,7 @@ func (m *editorApp) historyDialog(c ui.C) {
 }
 
 func (m *editorApp) openingPage(c ui.C, blocked bool) {
-	hint := "打开已有文件，或按 Ctrl+N 新建"
+	hint := m.shortcutHint("打开已有文件或新建文件", shortcutNewFile)
 	if m.active != nil {
 		hint = "直接输入内容，或打开已有文件"
 	}
@@ -71,7 +71,7 @@ func (m *editorApp) openingPage(c ui.C, blocked bool) {
 			ui.Text(c, "开始编辑").FontSize(22).Bold()
 			ui.Text(c, hint).FontSize(13).Muted()
 			ui.Row(c).Gap(10).MarginTop(10).MarginBottom(12).Items(ui.Center).Children(func() {
-				if ui.Button(c, "打开现有文件").Icon(fileIcon).Height(40).PadX(16).Radius(12).Disabled(blocked).Tooltip("打开文件 · Ctrl+O").Clicked() {
+				if ui.Button(c, "打开现有文件").Icon(fileIcon).Height(40).PadX(16).Radius(12).Disabled(blocked).Tooltip(m.shortcutHint("打开文件", shortcutOpenFile)).Clicked() {
 					c.After(m.open)
 				}
 				if ui.Button(c, "最近打开文件").Icon(folderIcon).Outline().Height(40).PadX(16).Radius(12).Disabled(blocked || m.store == nil).Clicked() {

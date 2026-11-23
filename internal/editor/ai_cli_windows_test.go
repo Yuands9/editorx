@@ -177,6 +177,7 @@ func main() {
 	}
 	click("CLI 路径")
 	check(s.Type(executable))
+	click("保存配置")
 	click("关闭设置")
 	if !s.HasText("CLI 默认模型") {
 		t.Fatal("the model picker did not show the CLI default")

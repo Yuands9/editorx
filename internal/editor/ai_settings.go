@@ -26,7 +26,7 @@ type aiSettingsEditor struct {
 	models                                          []string
 	probe                                           *ui.EffectState[aiSettingsProbe, int]
 	probeLabel, message, problem, suggestedName     string
-	passed                                          bool
+	passed, discardPending                          bool
 }
 
 type aiSettingsProbe struct {
@@ -304,12 +304,35 @@ func (m *editorApp) editableAIProfiles() (aiProfiles, int, error) {
 	return profiles, index, nil
 }
 
-func (m *editorApp) applyAIProfileChanges() bool {
-	if !m.ai.settingsEditing || !m.ai.settings.dirty() {
-		return true
+func (m *editorApp) pauseAISettings() {
+	editor := &m.ai.settings
+	if !editor.key.Secure {
+		editor.toggleKeyVisibility()
+	}
+	editor.probe = nil
+	editor.providersOpen, editor.modelsOpen = false, false
+	editor.removePending, editor.discardPending = false, false
+}
+
+func (m *editorApp) backToAIProfiles() {
+	editor := &m.ai.settings
+	if m.ai.settingsEditing && editor.dirty() {
+		editor.discardPending = true
+		return
+	}
+	m.reloadAISettingsPage()
+}
+
+func (m *editorApp) finishAIProfile() {
+	editor := &m.ai.settings
+	if !m.ai.settingsEditing || editor.probe != nil || editor.original.ID != 0 && !editor.dirty() {
+		return
 	}
 	m.saveAISettings()
-	return m.ai.settings.problem == ""
+	if m.ai.settings.problem == "" {
+		m.ai.settingsEditing = false
+		m.ai.settings.scrollTop = true
+	}
 }
 
 func (m *editorApp) saveAISettings() {
