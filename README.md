@@ -2,7 +2,7 @@
 
 <img src="internal/editor/assets/icon.png" width="72" height="72" alt="EditorX 图标">
 
-EditorX 是一款基于 Viva 的 Windows 多格式文本编辑器，用于日常打开、查看和编辑本地文件。使用体验参考 Notepad++、Sublime Text 和 EditPlus。
+EditorX 是一款基于 Viva 的 Windows 多格式文本编辑器，用于日常打开、查看和编辑本地文件。
 
 - 用标签页处理纯文本、无后缀文件和常见配置格式，支持中文输入、跨标签查找和语法高亮。
 - 使用 JSON 格式化与对比、Markdown 和 HTML 预览，编辑 Excel 和 Word，查看 PDF、图片和 XMind。
