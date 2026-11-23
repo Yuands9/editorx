@@ -16,6 +16,7 @@ github.com/tiendc/go-deepcopy
 # github.com/vivaui/viva v0.6.6
 ## explicit; go 1.26.0
 github.com/vivaui/viva/app
+github.com/vivaui/viva/app/proxy
 github.com/vivaui/viva/base
 github.com/vivaui/viva/components
 github.com/vivaui/viva/field

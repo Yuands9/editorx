@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/vivaui/viva/app/proxy"
 )
 
 const (
@@ -47,20 +50,27 @@ type editorRelease struct {
 	comparison                     int
 }
 
-var editorUpdateHTTP = &http.Client{
-	Timeout: 3 * time.Minute,
-	CheckRedirect: func(request *http.Request, previous []*http.Request) error {
-		if len(previous) >= 6 || request.URL.Scheme != "https" {
-			return errors.New("更新链接跳转无效")
-		}
-		switch request.URL.Host {
-		case "github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com":
-			return nil
-		default:
-			return errors.New("更新链接跳转到了未知地址")
-		}
-	},
-}
+var editorUpdateHTTP = func() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = func(request *http.Request) (*url.URL, error) {
+		return proxy.SystemProxy(request.URL)
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   3 * time.Minute,
+		CheckRedirect: func(request *http.Request, previous []*http.Request) error {
+			if len(previous) >= 6 || request.URL.Scheme != "https" {
+				return errors.New("更新链接跳转无效")
+			}
+			switch request.URL.Host {
+			case "github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com":
+				return nil
+			default:
+				return errors.New("更新链接跳转到了未知地址")
+			}
+		},
+	}
+}()
 
 func editorVersionParts(value string) ([3]int, error) {
 	var result [3]int
