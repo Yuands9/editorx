@@ -19,13 +19,14 @@ import (
 )
 
 type documentPreview struct {
-	kind, file, issue string
-	mindMap           []mindMapSheet
-	word              wordPreviewContent
-	view              *app.WebView
-	server            *http.Server
-	pdf               *os.File
-	ready             bool
+	kind, issue string
+	mindMap     []mindMapSheet
+	word        wordPreviewContent
+	view        *app.WebView
+	server      *http.Server
+	pdf         *os.File
+	pdfBytes    []byte
+	ready       bool
 }
 
 type mindMapSheet struct {
@@ -101,18 +102,28 @@ func readDocumentPreview(path string) (*documentPreview, error) {
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return preview, err
 	}
-	if !bytes.Contains(head[:n], []byte("%PDF-")) {
-		return preview, errors.New("文件缺少 PDF 标识")
+	return preview, validatePDFHeader(head[:n])
+}
+
+func validatePDFHeader(data []byte) error {
+	if !bytes.Contains(data[:min(len(data), 1024)], []byte("%PDF-")) {
+		return errors.New("文件缺少 PDF 标识")
 	}
-	return preview, nil
+	return nil
 }
 
 func readMindMap(path string) ([]mindMapSheet, error) {
 	book, err := zip.OpenReader(path)
+	if book != nil {
+		defer book.Close()
+	}
 	if err != nil {
 		return nil, errors.New("无法读取 XMind 压缩包")
 	}
-	defer book.Close()
+	return decodeMindMap(&book.Reader)
+}
+
+func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 	var modern, legacy *zip.File
 	for _, file := range book.File {
 		switch file.Name {
@@ -235,10 +246,6 @@ func (preview *documentPreview) close() {
 		_ = preview.pdf.Close()
 		preview.pdf = nil
 	}
-	if preview.file != "" {
-		_ = os.Remove(preview.file)
-		preview.file = ""
-	}
 }
 
 func (m *editorApp) openDocumentPreview(t *editorTab) {
@@ -259,16 +266,19 @@ func (m *editorApp) openDocumentPreview(t *editorTab) {
 	} else {
 		err = xmindTemplate.Execute(&html, struct{ Sheets []mindMapSheet }{preview.mindMap})
 	}
-	if err == nil {
-		preview.file, err = m.writePreviewFile("document-*.html", html.String())
-	}
 	if err != nil {
 		preview.issue = "无法生成 " + preview.kind + " 预览：" + err.Error()
 		return
 	}
-	location := fileURL(preview.file)
+	const location = "editorx-document://local/index.html"
 	view, err := m.webHost.Open(app.WebViewConfig{
 		URL: location, Ephemeral: true, BridgeMainFrameOnly: true, TopCornerRadius: 12,
+		Scheme: &app.WebScheme{Name: "editorx-document", Serve: func(path string) (string, []byte, bool) {
+			if path != "index.html" {
+				return "", nil, false
+			}
+			return "text/html; charset=utf-8", html.Bytes(), true
+		}},
 		LetterShortcut: m.openLinkWebShortcut,
 		Navigate: func(nav app.WebNavigation) bool {
 			address, _, _ := strings.Cut(nav.URL, "#")

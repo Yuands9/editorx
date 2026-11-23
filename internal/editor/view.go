@@ -50,6 +50,7 @@ func (m *editorApp) page(c ui.C) {
 	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
 	m.linkedFileDialog(c.Part("link-dialog"))
+	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.dialogs(c)
 }
 

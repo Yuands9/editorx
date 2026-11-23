@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -50,7 +51,6 @@ func TestLinkedFileWithHTTPSRedirectAndDifferentFormats(t *testing.T) {
 		w.Write(item.data)
 	}))
 	defer server.Close()
-	directory := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for route, item := range files {
@@ -62,12 +62,13 @@ func TestLinkedFileWithHTTPSRedirectAndDifferentFormats(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			file, err := readLinkedFile(ctx, server.Client(), address, directory)
+			result, err := readLinkedFile(ctx, server.Client(), address)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if filepath.Base(file.doc.path) != item.name || !gitPathWithin(directory, file.doc.path) {
-				t.Fatalf("unexpected download path: %q", file.doc.path)
+			file := result.file
+			if file.name != item.name || file.doc.path != "" || !bytes.Equal(result.data, item.data) {
+				t.Fatalf("unexpected temporary file: name=%q path=%q", file.name, file.doc.path)
 			}
 			switch filepath.Ext(item.name) {
 			case ".png":
@@ -75,8 +76,8 @@ func TestLinkedFileWithHTTPSRedirectAndDifferentFormats(t *testing.T) {
 					t.Fatal("image preview was not loaded")
 				}
 			case ".pdf":
-				if file.preview == nil || file.preview.kind != "PDF" {
-					t.Fatal("PDF preview was not loaded")
+				if file.preview == nil || file.preview.kind != "PDF" || !bytes.Equal(file.preview.pdfBytes, item.data) {
+					t.Fatal("PDF preview did not load its file in memory")
 				}
 			case ".docx":
 				if hasWordEditor {
@@ -98,13 +99,9 @@ func TestLinkedFileWithHTTPSRedirectAndDifferentFormats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := readLinkedFile(ctx, server.Client(), address, directory); err == nil {
+		if _, err := readLinkedFile(ctx, server.Client(), address); err == nil {
 			t.Fatalf("invalid response accepted: %s", route)
 		}
-	}
-	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != len(files) {
-		t.Fatalf("failed requests left files behind: %v, %v", entries, err)
 	}
 	for _, raw := range []string{"file:///test", "://", "https://name:password@example.invalid/a.txt"} {
 		if _, err := linkedFileURL(raw); err == nil {
@@ -113,7 +110,7 @@ func TestLinkedFileWithHTTPSRedirectAndDifferentFormats(t *testing.T) {
 	}
 }
 
-func TestLinkedFileShortcutOpensEditableLocalCopy(t *testing.T) {
+func TestLinkedFileShortcutOpensTemporaryTabAndSavesOnRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprint(w, "# 从链接打开\n")
@@ -165,13 +162,67 @@ func TestLinkedFileShortcutOpensEditableLocalCopy(t *testing.T) {
 		t.Fatalf("the link did not open an editable Markdown tab: %q", m.linkedFile.problem)
 	}
 	tab := m.active
-	tab.source.replace("# 本地修改\n")
-	if !m.saveTab(tab, false) {
-		t.Fatal("the local copy did not save")
+	if tab.doc.path != "" || len(m.snapshotSession().Tabs) != 0 {
+		t.Fatal("browsing a link left a local file or put its content into session recovery")
 	}
-	saved, err := os.ReadFile(tab.doc.path)
+	if _, err := os.Stat(filepath.Join(store.directory, "downloads")); !os.IsNotExist(err) {
+		t.Fatal("browsing a link created a download directory")
+	}
+	tab.source.replace("# 本地修改\n")
+	if len(m.snapshotSession().Tabs) != 1 {
+		t.Fatal("session recovery missed an edited draft")
+	}
+	destination := filepath.Join(store.directory, "已保存的说明.md")
+	check(s.Driver().QueueSaveFile(destination, nil))
+	if !m.saveTab(tab, false) {
+		t.Fatal("saving the edited text did not create a local copy")
+	}
+	saved, err := os.ReadFile(destination)
 	check(err)
-	if !strings.Contains(string(saved), "本地修改") || !gitPathWithin(filepath.Join(store.directory, "downloads"), tab.doc.path) {
-		t.Fatal("editing did not save to the local copy")
+	if string(saved) != "# 本地修改\n" || tab.doc.path != destination {
+		t.Fatal("editing did not save to the selected location")
+	}
+}
+
+func TestLinkedFileSaveChoiceKeepsOriginalBytes(t *testing.T) {
+	original := previewFixturePDF()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write(original)
+	}))
+	defer server.Close()
+	directory := t.TempDir()
+	m := newEditorApp()
+	m.dataDirectory = directory
+	s := openTestSession(t, m)
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(s.Keys("ctrl+shift+l"))
+	check(s.ClickLabel("文件链接"))
+	check(s.Type(server.URL + "/resource"))
+	check(s.Driver().QueueSaveFile("", app.ErrCanceled))
+	check(s.ClickLabel("保存并打开…"))
+	check(s.WaitFor(func(app.Snapshot) bool { return m.linkedFile.request == nil }, 5*time.Second))
+	entries, err := os.ReadDir(directory)
+	check(err)
+	if !m.linkedFile.open || m.active != nil || len(entries) != 0 {
+		t.Fatal("canceling the save picker left a file or opened a tab")
+	}
+
+	destination := filepath.Join(directory, "保存后的.pdf")
+	check(s.Driver().QueueSaveFile(destination, nil))
+	check(s.ClickLabel("保存并打开…"))
+	check(s.WaitFor(func(app.Snapshot) bool { return m.active != nil || m.linkedFile.problem != "" }, 5*time.Second))
+	if m.active == nil || m.active.doc.path != destination || m.active.preview.kind != "PDF" || m.active.preview.pdfBytes != nil {
+		t.Fatalf("saving did not open the selected local PDF: %q", m.linkedFile.problem)
+	}
+	saved, err := os.ReadFile(destination)
+	check(err)
+	if !bytes.Equal(saved, original) || len(m.snapshotSession().Tabs) != 1 {
+		t.Fatal("saving changed the original bytes or skipped the saved tab")
 	}
 }

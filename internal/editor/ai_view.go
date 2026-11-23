@@ -193,7 +193,7 @@ func (m *editorApp) aiComposer(c ui.C, blocked bool) {
 		a.prompt.Hint = "Enter 发送，Shift+Enter 换行"
 		input := ui.TextArea(c, &a.prompt, "AI 指令", hint).
 			FillWidth().Grow(1).Basis(0).MinHeight(48).FontSize(float32(a.profiles.chatFontSize())).
-			Background(m.theme.Background).Border(0, gfx.Color{}).Shadow(gfx.ShadowNone).Disabled(blocked)
+			Background(m.theme.Background).Focus(ui.Look{}.Background(m.theme.Muted)).Disabled(blocked)
 		if a.focusPrompt && !blocked {
 			input.AutoFocus()
 			a.focusPrompt = false

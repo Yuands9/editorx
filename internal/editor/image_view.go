@@ -53,7 +53,11 @@ func readImage(path string) (*imageDocument, error) {
 	if err != nil {
 		return nil, err
 	}
-	config, kind, err := image.DecodeConfig(file)
+	return decodeImage(file, info.Size())
+}
+
+func decodeImage(source io.ReadSeeker, size int64) (*imageDocument, error) {
+	config, kind, err := image.DecodeConfig(source)
 	if err != nil {
 		return nil, fmt.Errorf("无法识别图片或图片已损坏：%w", err)
 	}
@@ -61,16 +65,16 @@ func readImage(path string) (*imageDocument, error) {
 	if config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 16384 || int64(config.Width)*int64(config.Height) > 40_000_000 {
 		return nil, fmt.Errorf("图片尺寸 %d × %d 超出查看范围（最多 4000 万像素，单边不超过 16384）", config.Width, config.Height)
 	}
-	if _, err = file.Seek(0, io.SeekStart); err != nil {
+	if _, err = source.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	decoded, _, err := image.Decode(file)
+	decoded, _, err := image.Decode(source)
 	if err != nil {
 		return nil, fmt.Errorf("图片解码失败：%w", err)
 	}
 	picture := &imageDocument{
 		bitmap: imageToVivaBitmap(decoded),
-		kind:   strings.ToUpper(kind), bytes: info.Size(), scale: 1,
+		kind:   strings.ToUpper(kind), bytes: size, scale: 1,
 	}
 	picture.handlers.Pointer = picture.pointer
 	picture.handlers.Scroll = func(event gfx.ScrollEvent) gfx.EventResult {

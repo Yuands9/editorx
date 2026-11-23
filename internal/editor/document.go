@@ -30,6 +30,10 @@ func readDocument(path string) (document, error) {
 	if err != nil {
 		return document{}, err
 	}
+	return decodeDocument(path, data)
+}
+
+func decodeDocument(path string, data []byte) (document, error) {
 	doc := document{path: path, diskHash: sha256.Sum256(data), eol: "LF"}
 	doc.bom = bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf})
 	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})

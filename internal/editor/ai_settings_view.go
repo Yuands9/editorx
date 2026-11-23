@@ -388,8 +388,8 @@ func (m *editorApp) aiSettingTextField(c ui.C, label, placeholder string, field 
 }
 
 func (m *editorApp) aiSettingsField(c ui.C, label, placeholder string, field *ui.Field, disabled bool, submitted *bool) ui.Box {
-	input := ui.TextFieldBase(c, field, label, placeholder).FillWidth().MinWidth(0).Height(36).PadX(11).
-		Radius(9).Background(m.theme.Background).Border(1, m.theme.Border).Focus(ui.Look{}.Border(m.theme.Ring)).Disabled(disabled)
+	input := ui.TextField(c, field, label, placeholder).FillWidth().MinWidth(0).Height(36).PadX(11).
+		Radius(9).Disabled(disabled)
 	if !disabled && input.Submitted() {
 		*submitted = true
 	}

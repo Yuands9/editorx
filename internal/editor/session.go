@@ -226,7 +226,11 @@ func (m *editorApp) snapshotSession() windowSession {
 	if m.closedSession != nil {
 		return *m.closedSession
 	}
-	return m.snapshotWorkspace(m.tabs, true)
+	tabs := m.tabs
+	if slices.ContainsFunc(tabs, (*editorTab).isTemporaryLink) {
+		tabs = slices.DeleteFunc(slices.Clone(tabs), (*editorTab).isTemporaryLink)
+	}
+	return m.snapshotWorkspace(tabs, true)
 }
 
 func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowSession {
@@ -234,7 +238,7 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 		FilesWidth: m.filesSplit.Pos, OutlineRatio: 1 - m.outlineSplit.Ratio,
 		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, Frame: m.windowFrame, Maximized: m.maximized}
 	if includeAI {
-		state.AI = m.snapshotAI()
+		state.AI = m.snapshotAI(tabs)
 	}
 	if m.workspace != nil {
 		for _, root := range m.workspace.roots {

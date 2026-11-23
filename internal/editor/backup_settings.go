@@ -58,7 +58,7 @@ func (m *editorApp) backupSettings(c ui.C) {
 	state := &m.backup
 	working := state.request != nil
 	hasTabs := slices.ContainsFunc(m.backupWindows(), func(window *editorApp) bool {
-		return !window.windowClosed && len(window.tabs) > 0
+		return !window.windowClosed && slices.ContainsFunc(window.tabs, func(tab *editorTab) bool { return !tab.isTemporaryLink() })
 	})
 	m.applicationSetting(c.Part("export"), "导出会话备份",
 		"勾选要备份的文件和草稿，保存为 ZIP 压缩包。", func() {
@@ -117,6 +117,9 @@ func (m *editorApp) chooseBackupTabs() {
 			continue
 		}
 		for _, tab := range window.tabs {
+			if tab.isTemporaryLink() {
+				continue
+			}
 			state.choices = append(state.choices, backupTabChoice{
 				window: window, tab: tab, checked: window == m && tab == m.active,
 			})

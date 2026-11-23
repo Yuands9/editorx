@@ -138,8 +138,7 @@ func (m *editorApp) aiProfilePicker(c ui.C, blocked bool) {
 }
 
 func (m *editorApp) aiModelInput(c ui.C, field *ui.Field, label, placeholder string) ui.Box {
-	return ui.TextFieldBase(c, field, label, placeholder).
-		FillWidth().Height(34).PadX(9).Radius(9).Background(m.theme.Background).Border(1, m.theme.Border)
+	return ui.TextField(c, field, label, placeholder).FillWidth().Height(34).PadX(9).Radius(9)
 }
 
 func (m *editorApp) aiReasoningChoices(c ui.C, profile aiSettings) {

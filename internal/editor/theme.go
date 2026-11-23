@@ -14,6 +14,13 @@ var themeOptions = []struct{ id, label string }{
 }
 
 var editorControlStyles = ui.Styles{
+	TextEntry: func(theme gfx.Theme, state gfx.State) components.TextEntryLook {
+		fill := theme.Muted
+		if state.Focused && !state.Disabled {
+			fill = theme.Hover
+		}
+		return components.TextEntryLook{Fill: fill, Radius: theme.Metrics.RadiusControl}
+	},
 	Checkbox: func(theme gfx.Theme, state gfx.State) components.CheckboxLook {
 		theme.Input = theme.MutedForeground
 		theme.Input.Alpha = .7

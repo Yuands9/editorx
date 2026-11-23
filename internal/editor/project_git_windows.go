@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -48,23 +49,32 @@ func (status gitStatus) hasStaged() bool {
 type gitAction string
 
 const (
-	gitRefresh   gitAction = "刷新"
-	gitInit      gitAction = "初始化"
-	gitStage     gitAction = "暂存"
-	gitStageAll  gitAction = "全部暂存"
-	gitUnstage   gitAction = "取消暂存"
-	gitCommit    gitAction = "提交"
-	gitFetch     gitAction = "获取"
-	gitPull      gitAction = "拉取"
-	gitPush      gitAction = "推送"
-	gitAddRemote gitAction = "添加远程"
+	gitRefresh      gitAction = "刷新"
+	gitInit         gitAction = "初始化"
+	gitStage        gitAction = "暂存"
+	gitStageAll     gitAction = "全部暂存"
+	gitUnstage      gitAction = "取消暂存"
+	gitCommit       gitAction = "提交"
+	gitFetch        gitAction = "获取"
+	gitPull         gitAction = "拉取"
+	gitPush         gitAction = "推送"
+	gitAddRemote    gitAction = "添加远程"
+	gitListBranches gitAction = "读取分支"
+	gitCreateBranch gitAction = "新建分支"
+	gitSwitchBranch gitAction = "切换分支"
 )
 
+func (action gitAction) updatesOpenFiles() bool {
+	return action == gitPull || action == gitSwitchBranch
+}
+
 type gitResult struct {
-	status  gitStatus
-	action  gitAction
-	updated map[string]document
-	fail    string
+	status   gitStatus
+	action   gitAction
+	updated  map[string]document
+	missing  []string
+	branches []string
+	fail     string
 }
 
 func runGitCommand(ctx context.Context, git, directory string, args ...string) (string, error) {
@@ -197,6 +207,15 @@ func runProjectGit(ctx context.Context, directory string, action gitAction, inpu
 	}
 	branch := result.status.branch
 	repo := result.status.root
+	if action == gitListBranches {
+		names, err := runGitCommand(ctx, git, repo, "for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads")
+		if err != nil {
+			result.fail = err.Error()
+		} else {
+			result.branches = strings.Fields(names)
+		}
+		return result
+	}
 	if action == gitInit {
 		repo = directory
 	}
@@ -206,6 +225,18 @@ func runProjectGit(ctx context.Context, directory string, action gitAction, inpu
 		if result.status.root == "" {
 			args = []string{"init"}
 		}
+	case gitCreateBranch:
+		if input == "" || strings.HasPrefix(input, "-") || strings.HasPrefix(input, "@{") {
+			result.fail = "请输入有效的新分支名称"
+			return result
+		}
+		args = []string{"switch", "-c", input}
+	case gitSwitchBranch:
+		if input == "" || strings.HasPrefix(input, "-") {
+			result.fail = "请选择要切换的本地分支"
+			return result
+		}
+		args = []string{"switch", "--no-guess", "--", input}
 	case gitStage, gitUnstage:
 		for _, name := range paths {
 			if filepath.IsAbs(name) || !gitPathWithin(repo, filepath.Join(repo, name)) {
@@ -271,7 +302,7 @@ func runProjectGit(ctx context.Context, directory string, action gitAction, inpu
 	} else if result.fail == "" {
 		result.fail = "操作完成，刷新状态失败：" + refreshErr.Error()
 	}
-	if action == gitPull && result.fail == "" {
+	if action.updatesOpenFiles() && result.fail == "" {
 		result.updated = make(map[string]document)
 		for _, file := range openFiles {
 			if !gitPathWithin(repo, file) {
@@ -279,6 +310,8 @@ func runProjectGit(ctx context.Context, directory string, action gitAction, inpu
 			}
 			if doc, err := readDocument(file); err == nil {
 				result.updated[file] = doc
+			} else if action == gitSwitchBranch && errors.Is(err, os.ErrNotExist) {
+				result.missing = append(result.missing, file)
 			}
 		}
 	}

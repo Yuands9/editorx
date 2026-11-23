@@ -53,6 +53,10 @@ func readWordPreview(filename string) (wordPreviewContent, error) {
 	if err != nil {
 		return wordPreviewContent{}, err
 	}
+	return decodeWordPreview(&book.Reader)
+}
+
+func decodeWordPreview(book *zip.Reader) (wordPreviewContent, error) {
 	reader := wordPreviewReader{
 		parts: make(map[string]*zip.File, len(book.File)), styles: make(map[string]int),
 		images: make(map[string]*zip.File), imageBytes: 20 << 20,

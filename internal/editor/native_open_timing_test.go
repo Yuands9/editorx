@@ -171,6 +171,11 @@ const checkPDFPreviewJS = `(async () => {
 		}
 		document.querySelector("#find-toggle").click();
 		const field = document.querySelector("#find-query");
+		field.focus();
+		const input = getComputedStyle(field);
+		if (input.borderTopWidth !== "0px" || input.outlineStyle !== "none") {
+			throw new Error("the focused PDF input still has an outline");
+		}
 		field.value = "Viva PDF preview";
 		field.dispatchEvent(new Event("input"));
 		const deadline = Date.now() + 3000;

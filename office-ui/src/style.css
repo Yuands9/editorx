@@ -53,6 +53,14 @@ body {
   display: flex;
   flex-direction: column;
 }
+input:is(:not([type]), [type="text"], [type="search"], [type="number"], [type="password"], [type="url"]), textarea {
+  border: 0;
+  box-shadow: none;
+}
+input:is(:not([type]), [type="text"], [type="search"], [type="number"], [type="password"], [type="url"]):focus, textarea:focus {
+  outline: 0;
+  background-color: var(--viva-hover);
+}
 body > header {
   display: flex;
   flex-wrap: wrap;

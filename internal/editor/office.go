@@ -21,6 +21,8 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
+var errLegacyOfficeFormat = errors.New("请先用 Office 将旧格式另存为 .xlsx 或 .docx 后打开")
+
 type officeSession struct {
 	Kind     string
 	Original []byte
@@ -62,11 +64,19 @@ func readOffice(path string) (document, *officeDocument, error) {
 	if err != nil {
 		return document{}, nil, err
 	}
-	office, err := restoreOffice(officeSession{Kind: officeKind(path), Original: data}, filepath.Base(path))
+	doc, office, err := decodeOffice(filepath.Base(path), data)
+	if err == nil {
+		doc.path = path
+	}
+	return doc, office, err
+}
+
+func decodeOffice(name string, data []byte) (document, *officeDocument, error) {
+	office, err := restoreOffice(officeSession{Kind: officeKind(name), Original: data}, name)
 	if err != nil {
 		return document{}, nil, err
 	}
-	return document{path: path, diskHash: sha256.Sum256(data)}, office, nil
+	return document{diskHash: sha256.Sum256(data)}, office, nil
 }
 func restoreOffice(state officeSession, name string) (*officeDocument, error) {
 	// Older sessions stored the original DOCX plus a full exported ZIP. The latest ZIP is

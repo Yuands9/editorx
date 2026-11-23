@@ -2,7 +2,7 @@ package editor
 
 import (
 	"archive/zip"
-	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +10,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -66,10 +65,15 @@ var linkIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.J
 }}
 
 type linkedFileState struct {
-	open, focus bool
-	address     ui.Field
-	request     *ui.EffectState[openedEditorFile, int]
-	problem     string
+	open, focus, save bool
+	address           ui.Field
+	request           *ui.EffectState[linkedFileResult, int]
+	problem           string
+}
+
+type linkedFileResult struct {
+	file openedEditorFile
+	data []byte
 }
 
 func linkedFileURL(value string) (*url.URL, error) {
@@ -120,18 +124,20 @@ func (m *editorApp) linkedFileDialog(c ui.C) {
 	busy := state.request != nil
 	submitted := false
 	dismissed := ui.ModalWith(c, &state.open, "打开链接文件", ui.ModalSpec{Width: 520}, func() {
-		field := ui.TextFieldBase(c, &state.address, "文件链接", "粘贴 HTTP 或 HTTPS 链接").
-			FillWidth().Height(38).PadX(12).Radius(9).Background(m.theme.Background).Disabled(busy)
+		field := ui.TextField(c, &state.address, "文件链接", "粘贴 HTTP 或 HTTPS 链接").
+			FillWidth().Height(38).PadX(12).Radius(9).Disabled(busy)
 		if state.focus {
 			field.AutoFocus()
 			state.focus = false
 		}
 		submitted = field.Submitted()
 		if busy {
-			ui.Text(c, "正在下载并打开文件…").Muted().FontSize(12)
+			ui.Text(c, "正在打开链接文件…").Muted().FontSize(12)
 			ui.Progress(c.Part("progress"), 0).FillWidth().Indeterminate()
 		} else if state.problem != "" {
 			ui.Wrap(c, state.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
+		} else {
+			ui.Text(c, "直接打开时只在内存中保留文件。").Muted().FontSize(12)
 		}
 	}, func() {
 		if ui.Button(c, "取消").Ghost().Clicked() {
@@ -139,8 +145,11 @@ func (m *editorApp) linkedFileDialog(c ui.C) {
 		}
 		_, composing := state.address.GetEditor().Composition()
 		ready := !busy && !composing && strings.TrimSpace(state.address.Text()) != ""
+		if ui.Button(c, "保存并打开…").Outline().Disabled(!ready).Clicked() {
+			c.After(func() { m.startLinkedFile(true) })
+		}
 		if ui.Button(c, "打开").Icon(linkIcon).Disabled(!ready).Clicked() || ready && submitted {
-			c.After(m.startLinkedFile)
+			c.After(func() { m.startLinkedFile(false) })
 		}
 	})
 	if dismissed {
@@ -148,24 +157,20 @@ func (m *editorApp) linkedFileDialog(c ui.C) {
 	}
 }
 
-func (m *editorApp) startLinkedFile() {
+func (m *editorApp) startLinkedFile(save bool) {
 	state := &m.linkedFile
 	address, err := linkedFileURL(state.address.Text())
 	if err != nil {
 		state.problem = err.Error()
 		return
 	}
-	directory := m.dataDirectory
-	if directory == "" {
-		directory, err = editorDataDirectory()
-		if err != nil {
-			state.problem = err.Error()
-			return
+	state.save, state.problem = save, ""
+	state.request = ui.NewEffect[linkedFileResult, int](func(ctx context.Context) (linkedFileResult, error) {
+		result, err := readLinkedFile(ctx, linkedFileHTTP, address)
+		if !save {
+			result.data = nil
 		}
-	}
-	state.problem = ""
-	state.request = ui.NewEffect[openedEditorFile, int](func(ctx context.Context) (openedEditorFile, error) {
-		return readLinkedFile(ctx, linkedFileHTTP, address, filepath.Join(directory, "downloads"))
+		return result, err
 	})
 }
 
@@ -176,7 +181,7 @@ func (m *editorApp) updateLinkedFile(c ui.C) {
 	}
 	request := state.request
 	ui.Effect(c, request, 0)
-	file, err, done := request.Take()
+	result, err, done := request.Take()
 	if !done {
 		return
 	}
@@ -186,17 +191,23 @@ func (m *editorApp) updateLinkedFile(c ui.C) {
 	}
 	open := func() {
 		if state.request != request || m.windowClosed || (m.desktop != nil && m.desktop.exiting) {
-			_ = os.Remove(file.doc.path)
-			_ = os.Remove(filepath.Dir(file.doc.path))
+			return
+		}
+		defer m.invalidator.Invalidate()
+		if state.save {
+			m.saveLinkedFile(result)
 			return
 		}
 		m.closeLinkedFileDialog()
-		tab := m.openLoadedFile(file)
+		tab := m.openLoadedFile(result.file)
 		if tab.format() == "HTML" {
 			tab.htmlMode = "编辑"
 		}
-		m.status = "已打开链接文件 · " + tab.title()
-		m.invalidator.Invalidate()
+		if tab.doc.path == "" {
+			m.status = "已临时打开链接文件 · " + tab.title()
+		} else {
+			m.status = "已保存并打开 · " + tab.title()
+		}
 	}
 	if m.post != nil {
 		m.post(open)
@@ -205,10 +216,53 @@ func (m *editorApp) updateLinkedFile(c ui.C) {
 	}
 }
 
-func readLinkedFile(ctx context.Context, client *http.Client, address *url.URL, directory string) (openedEditorFile, error) {
+func (m *editorApp) saveLinkedFile(result linkedFileResult) {
+	state := &m.linkedFile
+	state.request, state.save, state.focus = nil, false, true
+	name := result.file.name
+	path, err := app.SaveFile(app.SaveFileOptions{
+		Title: "保存链接文件", SuggestedName: name, DefaultExtension: strings.TrimPrefix(filepath.Ext(name), "."),
+		Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}},
+	})
+	if errors.Is(err, app.ErrCanceled) {
+		return
+	}
+	if err == nil {
+		path, err = filepath.Abs(path)
+	}
+	if err != nil {
+		state.problem = err.Error()
+		return
+	}
+	if m.tabAtPath(path) != nil {
+		state.problem = "该文件已在编辑器中打开，请选择其他保存位置"
+		return
+	}
+	state.request = ui.NewEffect[linkedFileResult, int](func(ctx context.Context) (linkedFileResult, error) {
+		err := writeFileAtomically(path, func(output io.Writer) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if _, err := output.Write(result.data); err != nil {
+				return err
+			}
+			return ctx.Err()
+		})
+		if err != nil {
+			return linkedFileResult{}, fmt.Errorf("无法保存链接文件：%w", err)
+		}
+		result.data, result.file.doc.path = nil, path
+		if result.file.preview != nil {
+			result.file.preview.pdfBytes = nil
+		}
+		return result, nil
+	})
+}
+
+func readLinkedFile(ctx context.Context, client *http.Client, address *url.URL) (linkedFileResult, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address.String(), nil)
 	if err != nil {
-		return openedEditorFile{}, err
+		return linkedFileResult{}, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -216,68 +270,72 @@ func readLinkedFile(ctx context.Context, client *http.Client, address *url.URL, 
 		if errors.As(err, &requestError) {
 			err = requestError.Err
 		}
-		return openedEditorFile{}, fmt.Errorf("下载文件失败：%w", err)
+		return linkedFileResult{}, fmt.Errorf("无法读取链接文件：%w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return openedEditorFile{}, fmt.Errorf("链接返回 HTTP %d", response.StatusCode)
+		return linkedFileResult{}, fmt.Errorf("链接返回 HTTP %d", response.StatusCode)
 	}
 	if response.ContentLength > linkedFileLimit {
-		return openedEditorFile{}, errors.New("链接文件超过 128 MiB")
+		return linkedFileResult{}, errors.New("链接文件超过 128 MiB")
 	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, linkedFileLimit+1))
+	if err != nil {
+		return linkedFileResult{}, fmt.Errorf("无法读取链接文件：%w", err)
+	}
+	if len(data) > linkedFileLimit {
+		return linkedFileResult{}, errors.New("链接文件超过 128 MiB")
+	}
+	if err := ctx.Err(); err != nil {
+		return linkedFileResult{}, err
+	}
+	name := linkedFileName(address, response, data[:min(len(data), 512)])
+	if ext := filepath.Ext(name); (ext == "" || strings.EqualFold(ext, ".bin")) && bytes.HasPrefix(data, []byte("PK")) {
+		if kind := linkedOfficeExtension(data); kind != "" {
+			name = strings.TrimSuffix(name, ext) + kind
+		}
+	}
+	file, err := decodeLinkedFile(name, data)
+	if err != nil {
+		return linkedFileResult{}, fmt.Errorf("无法打开链接文件：%w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return linkedFileResult{}, err
+	}
+	return linkedFileResult{file: file, data: data}, nil
+}
 
-	stream := bufio.NewReader(response.Body)
-	firstBytes, _ := stream.Peek(512)
-	name := linkedFileName(address, response, firstBytes)
-	isZIP := len(firstBytes) >= 2 && firstBytes[0] == 'P' && firstBytes[1] == 'K'
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return openedEditorFile{}, err
-	}
-	folder, err := os.MkdirTemp(directory, "link-")
-	if err != nil {
-		return openedEditorFile{}, err
-	}
-	filename := filepath.Join(folder, name)
-	keep := false
-	defer func() {
-		if !keep {
-			_ = os.Remove(filename)
-			_ = os.Remove(folder)
+func decodeLinkedFile(name string, data []byte) (openedEditorFile, error) {
+	file := openedEditorFile{name: name}
+	var err error
+	kind := previewFormat(name)
+	ext := strings.ToLower(filepath.Ext(name))
+	switch {
+	case kind == "PDF":
+		file.preview = &documentPreview{kind: kind, pdfBytes: data}
+		err = validatePDFHeader(data)
+	case kind == "Word" || kind == "XMind":
+		var book *zip.Reader
+		book, err = zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return openedEditorFile{}, err
 		}
-	}()
-	file, err := os.Create(filename)
-	if err != nil {
-		return openedEditorFile{}, err
-	}
-	size, err := io.Copy(file, io.LimitReader(stream, linkedFileLimit+1))
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
-		return openedEditorFile{}, errors.Join(err, closeErr)
-	}
-	if size > linkedFileLimit {
-		return openedEditorFile{}, errors.New("链接文件超过 128 MiB")
-	}
-	if ext := strings.ToLower(filepath.Ext(name)); (ext == "" || ext == ".bin") && isZIP {
-		if kind := linkedOfficeExtension(filename); kind != "" {
-			typed := strings.TrimSuffix(filename, filepath.Ext(filename)) + kind
-			if err := os.Rename(filename, typed); err != nil {
-				return openedEditorFile{}, err
-			}
-			filename = typed
+		file.preview = &documentPreview{kind: kind}
+		if kind == "Word" {
+			file.preview.word, err = decodeWordPreview(book)
+		} else {
+			file.preview.mindMap, err = decodeMindMap(book)
 		}
+	case officeKind(name) != "":
+		file.doc, file.office, err = decodeOffice(name, data)
+	case ext == ".xls" || ext == ".doc":
+		err = errLegacyOfficeFormat
+	case isImageFile(name):
+		file.picture, err = decodeImage(bytes.NewReader(data), int64(len(data)))
+	default:
+		file.doc, err = decodeDocument("", data)
 	}
-	if err := ctx.Err(); err != nil {
-		return openedEditorFile{}, err
-	}
-	result, err := readEditorFile(filename)
-	if err != nil {
-		return openedEditorFile{}, fmt.Errorf("无法打开下载的文件：%w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return openedEditorFile{}, err
-	}
-	keep = true
-	return result, nil
+	return file, err
 }
 
 func linkedFileName(address *url.URL, response *http.Response, firstBytes []byte) string {
@@ -326,11 +384,8 @@ func linkedFileName(address *url.URL, response *http.Response, firstBytes []byte
 	return string(stem[:min(len(stem), 100)]) + ext
 }
 
-func linkedOfficeExtension(filename string) string {
-	archive, err := zip.OpenReader(filename)
-	if archive != nil {
-		defer archive.Close()
-	}
+func linkedOfficeExtension(data []byte) string {
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return ""
 	}

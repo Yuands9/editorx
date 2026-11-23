@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,22 +12,32 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/vivaui/viva/app"
 )
 
 func (m *editorApp) openPDFPreview(t *editorTab) {
 	preview := t.preview
-	file, err := os.Open(t.doc.path)
-	if err != nil {
-		preview.issue = err.Error()
-		return
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		preview.issue = err.Error()
-		return
+	var source io.ReaderAt
+	var size int64
+	var modified time.Time
+	if preview.pdfBytes != nil {
+		source, size = bytes.NewReader(preview.pdfBytes), int64(len(preview.pdfBytes))
+	} else {
+		file, err := os.Open(t.doc.path)
+		if err != nil {
+			preview.issue = err.Error()
+			return
+		}
+		info, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			preview.issue = err.Error()
+			return
+		}
+		preview.pdf = file
+		source, size, modified = file, info.Size(), info.ModTime()
 	}
 	assets, _ := fs.Sub(officeAssets, officeAssetDirectory)
 	server, address, err := serveLocalDocument(assets, func(w http.ResponseWriter, r *http.Request, path string) bool {
@@ -41,19 +52,22 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 			serveEditorPage(w, r, assets, "pdf.html")
 		case "document.pdf":
 			w.Header().Set("Content-Type", "application/pdf")
-			http.ServeContent(w, r, "document.pdf", info.ModTime(), io.NewSectionReader(file, 0, info.Size()))
+			http.ServeContent(w, r, "document.pdf", modified, io.NewSectionReader(source, 0, size))
 		default:
 			return false
 		}
 		return true
 	})
 	if err != nil {
-		_ = file.Close()
+		preview.close()
 		preview.issue = err.Error()
 		return
 	}
-	preview.server, preview.pdf = server, file
+	preview.server = server
 	options := url.Values{"title": {t.title()}}
+	if t.doc.path == "" {
+		options.Set("temporary", "1")
+	}
 	if m.light {
 		options.Set("theme", "light")
 	}
@@ -82,11 +96,13 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 				preview.issue = message.Text
 				m.status = "PDF：" + message.Text
 			case "external":
-				if err := app.OpenPath(t.doc.path); err != nil {
-					m.fail(err)
+				if t.doc.path != "" {
+					if err := app.OpenPath(t.doc.path); err != nil {
+						m.fail(err)
+					}
 				}
 			case "save-copy":
-				m.savePDFCopy(t, file, info.Size())
+				m.savePDFCopy(t, source, size)
 			}
 		},
 	})

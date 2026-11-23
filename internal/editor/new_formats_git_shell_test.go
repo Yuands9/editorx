@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 )
 
 func previewFixturePDF() []byte {
@@ -115,7 +116,7 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	if err != nil {
 		t.Skip("Git for Windows is required for the local integration test")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	root := t.TempDir()
 	// 在项目目录下生成临时文件时，Git 也只发现本次测试创建的仓库。
@@ -184,6 +185,20 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	}
 	waitForGit()
 	click("提交说明")
+	entry, err := session.Locate("提交说明")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, primitive := range session.Snapshot().Primitives {
+		if primitive.Bounds == entry.Bounds && primitive.Color == m.theme.Primary {
+			t.Fatal("the focused commit description shows a bright border")
+		}
+	}
+	if directory := os.Getenv("VIVA_PREVIEW_DIR"); directory != "" {
+		if err := session.Screenshot(filepath.Join(directory, "git-no-input-border.png")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := session.Type("first fixture commit"); err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +227,89 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	waitForGit()
 	click("button:拉取")
 	waitForGit()
-	if m.active.source.text.CommittedString() != "second\n" || len(m.tools.git.snapshot.changes) != 0 {
+	mainFile := m.active
+	if mainFile.source.text.CommittedString() != "second\n" || len(m.tools.git.snapshot.changes) != 0 {
 		t.Fatal("the pull button did not reload the changed file in the editor")
+	}
+
+	click("button:新建分支")
+	click("分支名称")
+	if err := session.Type("feature/local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Driver().Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	waitForGit()
+	if m.tools.git.snapshot.branch != "feature/local" || m.tools.git.branches.creating {
+		t.Fatal("the new branch was not created and selected")
+	}
+	click("button:切换分支")
+	waitForGit()
+	if _, err := session.Locate("button:main"); err != nil {
+		t.Fatal(err)
+	}
+	if directory := os.Getenv("VIVA_PREVIEW_DIR"); directory != "" {
+		if err := session.Screenshot(filepath.Join(directory, "git-branch-picker.png")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	click("button:main")
+	waitForGit()
+
+	click("button:切换分支")
+	waitForGit()
+	click("button:feature/local")
+	waitForGit()
+	branchOnly := filepath.Join(work, "feature-only.txt")
+	if err := os.WriteFile(branchOnly, []byte("only on this branch\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("feature branch\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(work, "add", "-A")
+	git(work, "commit", "-m", "feature change")
+	m.load(branchOnly)
+	branchTab := m.active
+	click("button:切换分支")
+	waitForGit()
+	click("button:main")
+	waitForGit()
+	if branchTab.doc.path != "" || !branchTab.modified() || branchTab.source.text.String() != "only on this branch\n" {
+		t.Fatal("a file missing on the new branch was not kept as a draft")
+	}
+	if mainFile.source.text.String() != "second\n" {
+		t.Fatal("switching to main changed its file")
+	}
+
+	click("button:切换分支")
+	waitForGit()
+	click("button:feature/local")
+	waitForGit()
+	if mainFile.source.text.String() != "feature branch\n" {
+		t.Fatal("switching branches did not reload an unmodified tab")
+	}
+	mainFile.source.replace("uncommitted editor draft\n")
+	click("button:切换分支")
+	waitForGit()
+	click("button:main")
+	waitForGit()
+	if !mainFile.modified() || mainFile.source.text.String() != "uncommitted editor draft\n" {
+		t.Fatal("switching branches overwrote an unsaved draft")
+	}
+	if err := os.WriteFile(file, []byte("unstaged disk modification\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	click("button:切换分支")
+	waitForGit()
+	click("button:feature/local")
+	if err := session.WaitFor(func(app.Snapshot) bool { return m.tools.git.request == nil }, 12*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(file)
+	if err != nil || m.tools.git.issue == "" || m.tools.git.snapshot.branch != "main" || string(content) != "unstaged disk modification\n" {
+		t.Fatalf("switching branches did not preserve a conflicting working copy: %v", err)
 	}
 }
 

@@ -64,7 +64,9 @@ button, input {
 button:not(:disabled) { cursor: pointer; }
 button:not(:disabled):hover { background: var(--hover); }
 button:disabled { opacity: .45; }
-button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+button:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+#page, #find-query, #password { border: 0; background: var(--paper); }
+#page:focus, #find-query:focus, #password:focus { outline: none; background: var(--hover); }
 #page { width: 42px; text-align: center; }
 #total, #find-count { color: var(--muted); min-width: 38px; }
 #find, #password-form {

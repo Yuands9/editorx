@@ -24,6 +24,7 @@ type editorTab struct {
 	displayName       string
 	languageOverride  string
 	doc               document
+	linked            bool
 	picture           *imageDocument
 	preview           *documentPreview
 	office            *officeDocument
@@ -154,6 +155,11 @@ func documentFormat(name string) string {
 }
 
 func (t *editorTab) readOnlyPreview() bool { return t.picture != nil || t.preview != nil }
+
+func (t *editorTab) isTemporaryLink() bool {
+	return t.linked && t.doc.path == "" && !t.modified() && !t.hasResultDraft() &&
+		(!t.jsonCompare || t.comparison.text.CommittedString() == "")
+}
 
 func (t *editorTab) modified() bool {
 	if t.office != nil {
@@ -523,6 +529,7 @@ func (m *editorApp) load(path string) {
 }
 
 type openedEditorFile struct {
+	name    string
 	doc     document
 	picture *imageDocument
 	office  *officeDocument
@@ -539,7 +546,7 @@ func readEditorFile(path string) (openedEditorFile, error) {
 	case officeKind(path) != "":
 		file.doc, file.office, err = readOffice(path)
 	case strings.EqualFold(filepath.Ext(path), ".xls") || strings.EqualFold(filepath.Ext(path), ".doc"):
-		err = errors.New("请先用 Office 将旧格式另存为 .xlsx 或 .docx 后打开")
+		err = errLegacyOfficeFormat
 	case isImageFile(path):
 		file.picture, err = readImage(path)
 		file.doc.path = path
@@ -550,8 +557,12 @@ func readEditorFile(path string) (openedEditorFile, error) {
 }
 
 func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
-	path := file.doc.path
-	tab := m.addTab(file.doc, filepath.Base(path))
+	path, name := file.doc.path, file.name
+	if path != "" {
+		name = filepath.Base(path)
+	}
+	tab := m.addTab(file.doc, name)
+	tab.linked = path == "" && file.name != ""
 	tab.picture, tab.office, tab.preview = file.picture, file.office, file.preview
 	if tab.office != nil && m.webReady {
 		m.openOffice(tab)
@@ -563,8 +574,10 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 		tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = true, true
 		tab.source.focus = false
 	}
-	m.rememberPath(path, false)
-	m.status = "已打开 " + filepath.Base(path)
+	if path != "" {
+		m.rememberPath(path, false)
+	}
+	m.status = "已打开 " + tab.title()
 	return tab
 }
 
@@ -852,6 +865,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 
 func (m *editorApp) interactionBlocked() bool {
 	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
+		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
 }

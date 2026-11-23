@@ -6,7 +6,8 @@ import { readPDFOutline } from "./pdf-outline.js";
 const element = (name) => document.getElementById(name);
 const send = (kind, text = "") => window.viva?.postMessage(JSON.stringify({kind, text}));
 const name = element("name");
-const title = new URLSearchParams(location.search).get("title") || name.textContent;
+const options = new URLSearchParams(location.search);
+const title = options.get("title") || name.textContent;
 name.textContent = name.title = document.title = title;
 const message = element("message");
 const page = element("page");
@@ -48,7 +49,9 @@ window.addEventListener("pagehide", () => {
   viewer?.setDocument(null);
   void task.destroy();
 }, {once: true});
-element("external").onclick = () => send("external");
+const external = element("external");
+external.hidden = options.has("temporary");
+external.onclick = () => send("external");
 element("save-copy").onclick = () => send("save-copy");
 
 try {

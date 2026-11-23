@@ -49,14 +49,14 @@ type aiChangeSession struct {
 	SourceHash                [32]byte
 }
 
-func (m *editorApp) snapshotAI() *aiWindowSession {
+func (m *editorApp) snapshotAI(tabs []*editorTab) *aiWindowSession {
 	a := &m.ai
 	current := a.currentConversation()
 	if !a.conversationStarted && !a.open && !current.hasContent() && len(a.history) == 0 {
 		return nil
 	}
-	tabPositions := make(map[int]int, len(m.tabs))
-	for index, tab := range m.tabs {
+	tabPositions := make(map[int]int, len(tabs))
+	for index, tab := range tabs {
 		tabPositions[tab.id] = index + 1
 	}
 	profile := a.profiles.active(a.profileID)

@@ -52,6 +52,8 @@ type gitPanelState struct {
 	request                           *ui.EffectState[gitResult, int]
 	commit, address                   ui.Field
 	list                              ui.ListState
+	branches                          gitBranchDialogs
+	fileHashes                        map[string][32]byte
 }
 
 func (m *editorApp) toolDirectories() []string {
@@ -132,10 +134,12 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 	}
 	directory := git.directory
 	var openFiles []string
-	if action == gitPull {
+	if action.updatesOpenFiles() {
+		git.fileHashes = make(map[string][32]byte)
 		for _, tab := range m.tabs {
-			if aiTextTab(tab) && !tab.modified() && tab.doc.path != "" {
+			if aiTextTab(tab) && !tab.modified() && !tab.hasResultDraft() && tab.doc.path != "" {
 				openFiles = append(openFiles, tab.doc.path)
+				git.fileHashes[tab.doc.path] = tab.doc.diskHash
 			}
 		}
 	}
@@ -156,12 +160,19 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 		return
 	}
 	git.request = nil
+	fileHashes := git.fileHashes
+	git.fileHashes = nil
 	if err != nil {
 		git.issue = err.Error()
 		return
 	}
-	git.snapshot = result.status
 	git.issue, git.message = result.fail, ""
+	if result.action == gitListBranches {
+		git.branches.available = result.branches
+		git.branches.list = ui.ListState{}
+		return
+	}
+	git.snapshot = result.status
 	if !slices.Contains(git.snapshot.remotes, git.remote) {
 		git.remote = ""
 		if len(git.snapshot.remotes) > 0 {
@@ -180,29 +191,14 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 	if result.action == gitAddRemote {
 		git.address.SetText("")
 	}
-	if result.action == gitPull {
-		for path, doc := range result.updated {
-			tab := m.tabAtPath(path)
-			if !aiTextTab(tab) || tab.modified() || doc.diskHash == tab.doc.diskHash {
-				continue
-			}
-			if _, composing := tab.source.text.Composition(); composing {
-				continue
-			}
-			caret := tab.source.text.Caret()
-			tab.doc = doc
-			tab.source.replace(doc.saved)
-			tab.source.text.MoveTo(min(caret, tab.source.text.RuneCount()), false)
-			tab.search.refresh()
-			m.results.dirty = true
-		}
-		if m.workspace != nil {
-			for _, root := range m.workspace.roots {
-				if root.loaded && gitPathWithin(git.snapshot.root, root.path) {
-					m.refreshProject(root)
-				}
-			}
-		}
+	if result.action == gitCreateBranch {
+		git.branches.creating = false
+	}
+	if result.action == gitSwitchBranch {
+		git.branches.switching = false
+	}
+	if result.action.updatesOpenFiles() {
+		m.refreshGitFiles(result, fileHashes)
 	}
 	if result.action != gitRefresh {
 		git.message = string(result.action) + "完成"
@@ -240,6 +236,46 @@ func (m *editorApp) projectToolsPanel(c ui.C, blocked bool) {
 	})
 }
 
+func (m *editorApp) refreshGitFiles(result gitResult, fileHashes map[string][32]byte) {
+	unchangedTab := func(path string) *editorTab {
+		tab := m.tabAtPath(path)
+		hash, tracked := fileHashes[path]
+		if !tracked || !aiTextTab(tab) || tab.doc.diskHash != hash || tab.modified() || tab.hasResultDraft() {
+			return nil
+		}
+		if _, composing := tab.source.text.Composition(); composing {
+			return nil
+		}
+		return tab
+	}
+	for path, doc := range result.updated {
+		tab := unchangedTab(path)
+		if tab == nil || doc.diskHash == tab.doc.diskHash {
+			continue
+		}
+		caret := tab.source.text.Caret()
+		tab.doc = doc
+		tab.source.replace(doc.saved)
+		tab.source.text.MoveTo(min(caret, tab.source.text.RuneCount()), false)
+		tab.search.refresh()
+		m.results.dirty = true
+	}
+	for _, path := range result.missing {
+		if tab := unchangedTab(path); tab != nil {
+			tab.name = tab.title()
+			tab.doc.path, tab.doc.saved, tab.doc.diskHash = "", "", [32]byte{}
+			m.results.dirty = true
+		}
+	}
+	if m.workspace != nil {
+		for _, root := range m.workspace.roots {
+			if root.loaded && (gitPathWithin(result.status.root, root.path) || gitPathWithin(root.path, result.status.root)) {
+				m.refreshProject(root)
+			}
+		}
+	}
+}
+
 func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 	git := &m.tools.git
 	busy := blocked || git.request != nil
@@ -262,12 +298,13 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			return
 		}
 		ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-			ui.Icon(c, gitBranchIcon).Size(17, 17).Color(m.theme.Ring)
 			selected := git.directory
 			if ui.Select(c, &selected, paths, filepath.Base).Label("Git 项目").Width(175).Height(28).Disabled(busy).Changed() {
 				c.After(func() { m.openProjectGit(selected) })
 			}
-			ui.Text(c, snapshot.branch).FontSize(12).Bold()
+			if snapshot.root != "" {
+				m.gitBranchControls(c.Part("branches"), busy)
+			}
 			ui.Text(c, snapshot.tracking).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
 			if ui.Button(c, "刷新 Git 状态").Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Disabled(busy).Clicked() {
 				c.After(func() { m.startGit(gitRefresh, "", nil) })
