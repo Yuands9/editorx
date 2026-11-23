@@ -163,12 +163,12 @@ func (m *editorApp) settingsPage(c ui.C) {
 					ui.Row(c.Part("search-bar")).FillWidth().MaxWidth(1020).Height(36).PadX(10).Gap(5).
 						Items(ui.Center).Radius(10).Background(m.theme.Card).Children(func() {
 						ui.Icon(c, searchIcon).Size(16, 16).Color(m.theme.MutedForeground)
-						ui.TextField(c.Part("search"), &settings.query, "搜索设置", "搜索设置").Grow(1).Height(32)
+						ui.TextFieldBase(c.Part("search"), &settings.query, "搜索设置", "搜索设置").Grow(1).Height(32)
 					})
 				}
 				if aiDetail {
 					ui.Row(c.Part("ai-detail-heading")).FillWidth().MaxWidth(1012).Height(38).Gap(8).Items(ui.Center).Children(func() {
-						if ui.Button(c.Part("profiles"), "模型配置").Icon(chevronLeftIcon).Ghost().Height(32).Clicked() {
+						if ui.Button(c.Part("profiles"), "模型配置").Icon(chevronLeftIcon).IconOnly().Ghost().Size(32, 32).Tooltip("返回模型配置").Clicked() {
 							c.After(m.backToAIProfiles)
 						}
 						ui.Text(c, title).FontSize(21).Bold().Grow(1).MinWidth(0).Ellipsis()
@@ -246,9 +246,9 @@ func (m *editorApp) windowSettings(c ui.C) {
 				c.After(m.saveApplicationSettings)
 			}
 		})
-	m.applicationSetting(c.Part("close-action"), "关闭窗口时退出程序",
-		"关闭此项后，窗口会隐藏到后台。再次打开 EditorX 可以唤回窗口。", func() {
-			if ui.Switch(c, &draft.ExitOnClose, "").Label("关闭窗口时退出程序").Changed() {
+	m.applicationSetting(c.Part("close-action"), "关闭最后一个窗口时退出程序",
+		"关闭此项后，关闭最后一个窗口会隐藏到后台。再次打开 EditorX 可以唤回窗口。", func() {
+			if ui.Switch(c, &draft.ExitOnClose, "").Label("关闭最后一个窗口时退出程序").Changed() {
 				c.After(m.saveApplicationSettings)
 			}
 		})

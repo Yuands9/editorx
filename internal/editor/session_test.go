@@ -2,6 +2,7 @@ package editor
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -447,5 +448,96 @@ func TestSessionInactiveTabsAcrossRepeatedRestarts(t *testing.T) {
 	session := openTestSession(t, missing.windows[0])
 	if err := session.Frame(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLegacySessionRestoresImportedWindowsIntoTheMainWindow(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "shared.txt")
+	if err := os.WriteFile(path, []byte("on disk"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first := newEditorApp()
+	first.load(path)
+	other := newEditorApp()
+	other.load(path)
+	other.active.source.replace("uncommitted text from the backup")
+	other.newTabGroup(other.active)
+	other.addProjects(directory)
+	other.ai.draft = "unfinished question"
+	other.ai.attachments = []aiAttachment{{tabID: other.active.id}}
+	saved := savedSession{
+		Version: editorSessionVersion, Windows: []windowSession{first.snapshotSession(), other.snapshotSession()},
+	}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "session.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		store, err := openSessionStore(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(store.windows) != 1 {
+			t.Fatalf("opening the legacy session showed %d windows", len(store.windows))
+		}
+		main := store.windows[0]
+		if len(main.tabs) != 2 || main.active.doc.path != path || main.active.source.text.String() != "on disk" ||
+			main.tabs[1].doc.path != "" || main.tabs[1].source.text.String() != "uncommitted text from the backup" ||
+			!main.tabs[1].modified() || main.tabs[1].group == nil || main.workspace.project(directory) == nil {
+			t.Fatal("merging the session changed the active file or lost the backup draft, group, or project")
+		}
+		if len(main.ai.history) != 1 || main.ai.history[0].draft != "unfinished question" ||
+			len(main.ai.history[0].attachments) != 1 || main.ai.history[0].attachments[0].tabID != main.tabs[1].id {
+			t.Fatal("the merged window's AI draft lost its link to the recovered tab")
+		}
+		if err := store.save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDesktopClosesOnlyRequestedWindowAndPersistsRemainingSession(t *testing.T) {
+	store, err := openSessionStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktop := &editorDesktop{store: store, preferences: applicationPreferences{ExitOnClose: true}}
+	for _, text := range []string{"keep this window", "close this window"} {
+		window := newTestEditorWithDocument()
+		window.active.source.replace(text)
+		store.attach(window)
+		window.desktop = desktop
+	}
+
+	first, second := store.windows[0], store.windows[1]
+	closed := false
+	closeSecond := func() {
+		closed = true
+		second.releaseWindowState()
+	}
+	desktop.close(second, closeSecond)
+	if !second.confirm || closed {
+		t.Fatal("closing a window with a draft did not ask for confirmation")
+	}
+	second.clearSaveConfirmation()
+	if len(store.windows) != 2 || second.active.source.text.String() != "close this window" {
+		t.Fatal("canceling the close changed the session")
+	}
+
+	desktop.close(second, closeSecond)
+	second.finishSaveConfirmation()
+	if !closed || desktop.exiting || len(store.windows) != 1 || store.windows[0] != first || first.windowClosed {
+		t.Fatal("closing one window also closed the application or the other window")
+	}
+	reopened, err := openSessionStore(store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.windows) != 1 || reopened.windows[0].active.source.text.String() != "keep this window" {
+		t.Fatal("opening the saved session brought back a window the user closed")
 	}
 }

@@ -181,6 +181,9 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 				}
 				chord, _ := keymap.FromEvent(gfx.KeyEvent{Text: string(letter), Modifiers: modifiers})
 				action := m.keyBindings.actionFor(chord)
+				if action == shortcutOpenLink {
+					return m.openLinkWebShortcut(letter, modifiers)
+				}
 				if action != shortcutFind && action != shortcutReplace {
 					return nil
 				}

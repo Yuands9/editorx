@@ -93,7 +93,7 @@ func TestTabHeaderAndPin(t *testing.T) {
 		m.setLightMode(light)
 		m.newDocument()
 		pinTarget := m.active
-		m.newDocument()
+		m.addTab(document{saved: "用于检查编辑区布局", eol: "LF"}, "布局.txt")
 		s := openTestSession(t, m)
 		check := func(err error) {
 			t.Helper()
@@ -715,12 +715,12 @@ func TestGroupDropBeforeOrInsideAndCloseThroughUI(t *testing.T) {
 	header = hit(group.label()).Bounds
 	check(s.Move(header.X+33, y))
 	check(s.ClickLabel("关闭分组 " + group.Name))
-	if m.confirmTab != mover || !slices.Contains(m.tabs, first) || slices.Contains(m.tabs, second) {
-		t.Fatal("closing the group did not honor pins and unsaved changes")
+	if m.confirmTab != mover || slices.Contains(m.tabs, first) || slices.Contains(m.tabs, second) {
+		t.Fatal("closing the group missed a member or skipped the save prompt")
 	}
 	check(s.ClickLabel("取消"))
-	if mover.group != group || !mover.modified() || first.group != group {
-		t.Fatal("canceling the close lost a protected tab or unsaved changes")
+	if mover.group != group || !mover.modified() || !slices.Contains(m.tabs, mover) {
+		t.Fatal("canceling the close lost the remaining draft")
 	}
 }
 

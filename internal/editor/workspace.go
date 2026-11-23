@@ -113,6 +113,25 @@ func (tree *folderTree) toggle(node *fileNode) error {
 	return nil
 }
 
+func (tree *folderTree) mergeProjects(source *folderTree) {
+	var rekey func(*fileNode)
+	rekey = func(node *fileNode) {
+		tree.nextID++
+		node.id = tree.nextID
+		for _, child := range node.children {
+			rekey(child)
+		}
+	}
+	for _, root := range source.roots {
+		if tree.project(root.path) != nil {
+			continue
+		}
+		rekey(root)
+		tree.roots = append(tree.roots, root)
+	}
+	tree.flatten()
+}
+
 func (tree *folderTree) flatten() {
 	clear(tree.rows)
 	tree.rows = tree.rows[:0]

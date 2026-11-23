@@ -149,11 +149,12 @@ func TestOfficeSessionAndConflict(t *testing.T) {
 	path := filepath.Join(directory, "文档.docx")
 	original := sampleDocx(t)
 	os.WriteFile(path, original, 0600)
-	m := newEditorApp()
-	m.load(path)
-	if m.showError || m.active.office == nil {
-		t.Fatal(m.errorText)
+	doc, office, err := readOffice(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	m := newEditorApp()
+	m.openLoadedFile(openedEditorFile{doc: doc, office: office})
 	m.active.office.state.Dirty = true
 	m.active.office.state.Snapshot = original
 	restored := newEditorApp()

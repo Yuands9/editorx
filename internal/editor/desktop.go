@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -97,18 +98,73 @@ func (d *editorDesktop) present(paths []string) *editorApp {
 	return target
 }
 
-func (d *editorDesktop) close(window *editorApp) {
-	if d.exiting {
+func (d *editorDesktop) close(window *editorApp, allow func()) {
+	if d.exiting || window.windowClosed || window.windowClosePending || window.confirm {
 		return
 	}
+	d.lastActive = window
+	if len(d.store.windows) == 1 {
+		d.closeLastWindow(window)
+		return
+	}
+	if window.appSettings.open {
+		window.closeSettings()
+	}
+	window.windowClosePending = true
+	window.flushOfficeTabs(0, func(err error) {
+		window.windowClosePending = false
+		if err != nil {
+			window.fail(err)
+			window.invalidator.Invalidate()
+			return
+		}
+		d.closeWindowAfterDrafts(window, slices.Clone(window.tabs), allow)
+		window.invalidator.Invalidate()
+	})
+}
+
+func (d *editorDesktop) closeLastWindow(window *editorApp) {
 	d.lastActive = window
 	if d.preferences.ExitOnClose {
 		d.quit()
 		return
 	}
-	for _, other := range d.store.windows {
-		other.nativeWindow.Hide()
+	window.nativeWindow.Hide()
+}
+
+func (d *editorDesktop) closeWindowAfterDrafts(window *editorApp, remaining []*editorTab, allow func()) {
+	if d.exiting || window.windowClosed {
+		return
 	}
+	for index, tab := range remaining {
+		if tab.modified() && slices.Contains(window.tabs, tab) {
+			window.requestTab(tab, func() {
+				d.closeWindowAfterDrafts(window, remaining[index+1:], allow)
+			})
+			return
+		}
+	}
+
+	previous := d.store.windows
+	index := slices.Index(previous, window)
+	if index < 0 {
+		return
+	}
+	if len(previous) == 1 {
+		d.closeLastWindow(window)
+		return
+	}
+	d.store.windows = slices.Delete(slices.Clone(previous), index, index+1)
+	if err := d.store.save(); err != nil {
+		d.store.windows = previous
+		window.fail(fmt.Errorf("无法保存本次会话，窗口保持打开：%w", err))
+		window.invalidator.Invalidate()
+		return
+	}
+	if d.lastActive == window {
+		d.lastActive = nil
+	}
+	allow()
 }
 
 func (d *editorDesktop) restartForUpdate(path string) {

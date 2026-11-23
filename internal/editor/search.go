@@ -80,15 +80,6 @@ func (t *editorTab) initSearch(m *editorApp) {
 	s.query, s.replacement = text.NewEditor(""), text.NewEditor("")
 	s.field.Bind(s.query)
 	s.replaceField.Bind(s.replacement)
-	s.inputKey = func(event gfx.KeyEvent) gfx.EventResult {
-		if result := m.searchFieldShortcut(event); result.Handled {
-			return result
-		}
-		if result := m.searchNavigation(t, event, nil); result.Handled {
-			return result
-		}
-		return m.functionShortcut(event)
-	}
 	s.target = t.source
 	s.current = -1
 	s.wrap = true
@@ -119,6 +110,20 @@ func (t *editorTab) initSearch(m *editorApp) {
 			return gfx.EventResult{}
 		}
 		return gfx.EventResult{Handled: true, Repaint: true}
+	}
+	t.bindSearchWindow(m)
+}
+
+func (t *editorTab) bindSearchWindow(m *editorApp) {
+	s := &t.search
+	s.inputKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if result := m.searchFieldShortcut(event); result.Handled {
+			return result
+		}
+		if result := m.searchNavigation(t, event, nil); result.Handled {
+			return result
+		}
+		return m.functionShortcut(event)
 	}
 	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
 		pane.searchKey = func(event gfx.KeyEvent) gfx.EventResult {

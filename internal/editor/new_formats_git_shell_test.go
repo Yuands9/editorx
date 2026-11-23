@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vivaui/viva/app"
 )
 
 func previewFixturePDF() []byte {
@@ -161,9 +163,42 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 		t.Fatal("Git file was not unstaged on the initial branch")
 	}
 	action(gitStageAll, "", nil, nil)
-	action(gitCommit, "first fixture commit", nil, nil)
-	action(gitAddRemote, remote, nil, nil)
-	action(gitPush, "origin", nil, nil)
+	m := newEditorApp()
+	m.load(file)
+	m.openProjectGit(work)
+	session := openTestSession(t, m)
+	waitForGit := func() {
+		t.Helper()
+		if err := session.WaitFor(func(app.Snapshot) bool { return m.tools.git.request == nil }, 12*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if m.tools.git.issue != "" {
+			t.Fatal(m.tools.git.issue)
+		}
+	}
+	click := func(label string) {
+		t.Helper()
+		if err := session.ClickLabel(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitForGit()
+	click("提交说明")
+	if err := session.Type("first fixture commit"); err != nil {
+		t.Fatal(err)
+	}
+	click("button:提交")
+	waitForGit()
+	if m.tools.git.snapshot.hasStaged() || m.tools.git.commit.Text() != "" {
+		t.Fatal("the commit button did not commit and clear the description")
+	}
+	m.startGit(gitAddRemote, remote, nil)
+	waitForGit()
+	click("button:推送")
+	waitForGit()
+	if m.tools.git.snapshot.tracking == "" {
+		t.Fatal("the push button did not publish the branch")
+	}
 	git(root, "clone", remote, peer)
 	git(peer, "config", "user.name", "Viva Peer")
 	git(peer, "config", "user.email", "viva-test@example.invalid")
@@ -173,10 +208,12 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	git(peer, "add", "--", name)
 	git(peer, "commit", "-m", "second fixture commit")
 	git(peer, "push")
-	action(gitFetch, "", nil, nil)
-	pulled := action(gitPull, "", nil, []string{file})
-	if pulled.updated[file].saved != "second\n" || len(pulled.status.changes) != 0 {
-		t.Fatalf("pull did not reload the changed fixture: %+v", pulled)
+	click("button:获取")
+	waitForGit()
+	click("button:拉取")
+	waitForGit()
+	if m.active.source.text.CommittedString() != "second\n" || len(m.tools.git.snapshot.changes) != 0 {
+		t.Fatal("the pull button did not reload the changed file in the editor")
 	}
 }
 

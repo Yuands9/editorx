@@ -21,6 +21,7 @@ import (
 type documentPreview struct {
 	kind, file, issue string
 	mindMap           []mindMapSheet
+	word              wordPreviewContent
 	view              *app.WebView
 	server            *http.Server
 	pdf               *os.File
@@ -70,13 +71,21 @@ func previewFormat(path string) string {
 		return "PDF"
 	case ".xmind":
 		return "XMind"
-	default:
-		return ""
+	case ".docx":
+		if !hasWordEditor {
+			return "Word"
+		}
 	}
+	return ""
 }
 
 func readDocumentPreview(path string) (*documentPreview, error) {
 	preview := &documentPreview{kind: previewFormat(path)}
+	if preview.kind == "Word" {
+		word, err := readWordPreview(path)
+		preview.word = word
+		return preview, err
+	}
 	if preview.kind == "XMind" {
 		mindMap, err := readMindMap(path)
 		preview.mindMap = mindMap
@@ -242,17 +251,25 @@ func (m *editorApp) openDocumentPreview(t *editorTab) {
 		return
 	}
 	var html bytes.Buffer
-	err := xmindTemplate.Execute(&html, struct{ Sheets []mindMapSheet }{preview.mindMap})
+	var err error
+	if preview.kind == "Word" {
+		content := preview.word
+		content.Title, content.Light = t.title(), m.light
+		err = wordPreviewTemplate.Execute(&html, content)
+	} else {
+		err = xmindTemplate.Execute(&html, struct{ Sheets []mindMapSheet }{preview.mindMap})
+	}
 	if err == nil {
-		preview.file, err = m.writePreviewFile("xmind-*.html", html.String())
+		preview.file, err = m.writePreviewFile("document-*.html", html.String())
 	}
 	if err != nil {
-		preview.issue = "无法生成 XMind 预览：" + err.Error()
+		preview.issue = "无法生成 " + preview.kind + " 预览：" + err.Error()
 		return
 	}
 	location := fileURL(preview.file)
 	view, err := m.webHost.Open(app.WebViewConfig{
 		URL: location, Ephemeral: true, BridgeMainFrameOnly: true, TopCornerRadius: 12,
+		LetterShortcut: m.openLinkWebShortcut,
 		Navigate: func(nav app.WebNavigation) bool {
 			address, _, _ := strings.Cut(nav.URL, "#")
 			return strings.EqualFold(address, location)

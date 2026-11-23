@@ -77,6 +77,10 @@ func (m *editorApp) openingPage(c ui.C, blocked bool) {
 				if ui.Button(c, "最近打开文件").Icon(folderIcon).Outline().Height(40).PadX(16).Radius(12).Disabled(blocked || m.store == nil).Clicked() {
 					m.showHistory = true
 				}
+				if ui.Button(c, "打开链接文件").Icon(linkIcon).IconOnly().Outline().Size(40, 40).Radius(12).
+					Disabled(blocked).Tooltip(m.shortcutHint("打开链接文件", shortcutOpenLink)).Clicked() {
+					c.After(m.openLinkedFileDialog)
+				}
 			})
 			count := 0
 			if m.store != nil {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/vivaui/viva/app"
@@ -22,7 +23,7 @@ const backupSessionEntry = "session.json"
 type editorBackupResult struct {
 	path    string
 	size    int64
-	windows []windowSession
+	windows []*editorApp
 }
 
 type backupTabChoice struct {
@@ -31,8 +32,15 @@ type backupTabChoice struct {
 	checked bool
 }
 
+type backupImportProgress struct {
+	total     atomic.Int64
+	completed atomic.Int64
+}
+
 type editorBackupState struct {
 	request   *ui.EffectState[editorBackupResult, int]
+	progress  *backupImportProgress
+	applying  bool
 	selecting bool
 	choices   []backupTabChoice
 	message   string
@@ -59,18 +67,45 @@ func (m *editorApp) backupSettings(c ui.C) {
 			}
 		})
 	m.applicationSetting(c.Part("restore"), "恢复会话备份",
-		"打开 EditorX 导出的 ZIP 备份，在新窗口恢复所选文件。", func() {
-			if ui.Button(c, "选择备份…").Outline().Height(32).Disabled(working || m.desktop == nil).Clicked() {
+		"打开 EditorX 导出的 ZIP 备份，将文件和项目恢复到当前窗口。", func() {
+			if ui.Button(c, "选择备份…").Outline().Height(32).Disabled(working || m.post == nil).Clicked() {
 				c.After(m.importBackup)
 			}
 		})
 	switch {
+	case working && state.progress != nil:
+		m.backupImportProgress(c.Part("import-progress"))
 	case working:
-		ui.Text(c, "正在处理会话备份…").Muted().FontSize(12)
+		ui.Text(c, "正在导出会话备份…").Muted().FontSize(12)
 	case state.problem != "":
 		ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
 	case state.message != "":
 		ui.Wrap(c, state.message).FillWidth().Color(m.theme.Success).FontSize(12)
+	}
+}
+
+func (m *editorApp) backupImportProgress(c ui.C) {
+	state := &m.backup
+	fraction := float32(-1)
+	label := "正在读取 ZIP 备份…"
+	if total := state.progress.total.Load(); total > 0 {
+		fraction = float32(state.progress.completed.Load()) / float32(total)
+		label = fmt.Sprintf("正在恢复文件和项目 · %.0f%%", fraction*100)
+	}
+	if state.applying {
+		label = "正在恢复到当前窗口…"
+	}
+	ui.Row(c.Part("status")).FillWidth().Gap(8).Items(ui.Center).Children(func() {
+		ui.Text(c, label).Grow(1).Muted().FontSize(12)
+		if !state.applying && ui.Button(c.Part("cancel"), "取消导入").Ghost().Height(26).Clicked() {
+			c.After(func() {
+				m.backup = editorBackupState{message: "已取消备份导入"}
+			})
+		}
+	})
+	bar := ui.Progress(c.Part("bar"), fraction).FillWidth().Height(6)
+	if fraction < 0 {
+		bar.Indeterminate()
 	}
 }
 
@@ -262,8 +297,10 @@ func (m *editorApp) importBackup() {
 	if len(paths) == 0 {
 		return
 	}
-	path := paths[0]
-	m.backup = editorBackupState{request: ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
+	path, preferences := paths[0], m.editorPrefs
+	progress := &backupImportProgress{}
+	repaint := m.invalidator.Invalidate
+	request := ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
 		saved, err := readEditorBackup(path)
 		if err != nil {
 			return editorBackupResult{}, err
@@ -271,8 +308,34 @@ func (m *editorApp) importBackup() {
 		if len(saved.Windows) == 0 {
 			return editorBackupResult{}, errors.New("备份中没有可恢复的窗口")
 		}
-		return editorBackupResult{windows: saved.Windows}, ctx.Err()
-	})}
+		total := len(saved.Windows)
+		for _, window := range saved.Windows {
+			total += len(window.Tabs)
+		}
+		progress.total.Store(int64(total))
+		repaint()
+
+		// Prepare detached windows in the worker, including disk reads and editor buffers.
+		windows := make([]*editorApp, 0, len(saved.Windows))
+		tabRestored := func() {
+			progress.completed.Add(1)
+			repaint()
+		}
+		for _, window := range saved.Windows {
+			if err := ctx.Err(); err != nil {
+				return editorBackupResult{}, err
+			}
+			window.AI = nil
+			restored := newEditorApp()
+			restored.editorPrefs = preferences
+			if err := restored.restoreSessionWithProgress(ctx, window, tabRestored); err != nil {
+				return editorBackupResult{}, err
+			}
+			windows = append(windows, restored)
+		}
+		return editorBackupResult{windows: windows}, ctx.Err()
+	})
+	m.backup = editorBackupState{request: request, progress: progress}
 }
 
 func (m *editorApp) backupProgress(c ui.C) {
@@ -286,7 +349,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 		return
 	}
 	if err != nil {
-		state.request = nil
+		state.request, state.progress = nil, nil
 		state.problem = "会话备份操作失败：" + err.Error()
 		return
 	}
@@ -299,33 +362,87 @@ func (m *editorApp) backupProgress(c ui.C) {
 		state.message = "备份已保存 · " + size + " · " + result.path
 		return
 	}
-	// ZIP 读取在后台完成。将窗口创建投递给事件循环，普通重绘也能触发恢复。
+	request := state.request
+	state.applying = true
 	m.post(func() {
+		if state.request != request {
+			return
+		}
 		defer func() {
-			state.request = nil
+			state.request, state.progress, state.applying = nil, nil, false
 			m.invalidator.Invalidate()
 		}()
-		if m.desktop.exiting {
+		if m.windowClosed || (m.desktop != nil && m.desktop.exiting) {
 			state.problem = "EditorX 正在退出，请稍后恢复备份。"
 			return
 		}
-		count := 0
-		for _, window := range result.windows {
-			window.AI = nil
-			restored := newEditorApp()
-			restored.desktop = m.desktop
-			restored.dataDirectory = m.dataDirectory
-			restored.editorPrefs = m.editorPrefs
-			restored.keyBindings = m.keyBindings
-			restored.restoreSession(window)
-			restored.applyThemePreference(m.desktop.preferences.Theme)
-			if err := openEditorWindow(m.desktop.application, restored); err != nil {
-				state.problem = fmt.Sprintf("已恢复 %d 个窗口，无法打开其余窗口：%v", count, err)
-				return
+		var active *editorTab
+		for _, restored := range result.windows {
+			tab := m.mergeRestoredWindow(restored, nil)
+			if active == nil {
+				active = tab
 			}
-			m.store.attach(restored)
-			count++
+			state.progress.completed.Add(1)
 		}
-		state.message = fmt.Sprintf("已在 %d 个新窗口中恢复备份", count)
+		m.sortPinnedTabs()
+		if active != nil {
+			m.activate(active)
+		}
+		state.message = "已将备份恢复到当前窗口"
+		m.status = state.message
+		if m.appSettings.open && m.appSettings.section == settingsBackup {
+			m.closeSettings()
+		}
 	})
+}
+
+func (m *editorApp) mergeRestoredWindow(restored *editorApp, conversations *aiWindowSession) *editorTab {
+	groups := make(map[*tabGroup]bool)
+	var active *editorTab
+	for index, tab := range restored.tabs {
+		if existing := m.tabAtPath(tab.doc.path); existing != nil {
+			sameContent := tab.source.text.CommittedString() == existing.source.text.CommittedString()
+			if tab.readOnlyPreview() || (sameContent && !tab.modified() && !tab.hasResultDraft()) {
+				if tab == restored.active {
+					active = existing
+				}
+				restored.tabs[index] = existing
+				continue
+			}
+			// 同一路径已有标签时，保留备份版本为可另存的副本。
+			tab.name = tab.title()
+			tab.displayName = tab.tabTitle() + "（备份）"
+			tab.doc.path = ""
+		}
+		if tab.group != nil && !groups[tab.group] {
+			m.nextGroupID++
+			tab.group.ID = m.nextGroupID
+			groups[tab.group] = true
+		}
+		m.nextID++
+		tab.id = m.nextID
+		tab.source.light, tab.result.light, tab.comparison.light = m.light, m.light, m.light
+		if !m.editorPrefs.equal(restored.editorPrefs) {
+			tab.applyEditorPreferences(m.editorPrefs)
+		}
+		tab.bindSearchWindow(m)
+		m.tabs = append(m.tabs, tab)
+		if tab == restored.active {
+			active = tab
+		}
+	}
+	if m.workspace == nil {
+		m.workspace = restored.workspace
+	} else if restored.workspace != nil {
+		m.workspace.mergeProjects(restored.workspace)
+	}
+	if conversations != nil {
+		for _, record := range conversations.History {
+			m.ai.history = append(m.ai.history, record.restore(restored.tabs))
+		}
+		if current := conversations.Current.restore(restored.tabs); current.hasContent() {
+			m.ai.history = append(m.ai.history, current)
+		}
+	}
+	return active
 }

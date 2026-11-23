@@ -212,6 +212,8 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 	return nil
 }
 
+const updateBackupSuffix = ".editorx-previous"
+
 type installedEditorUpdate struct {
 	path, backup string
 }
@@ -233,7 +235,7 @@ func replaceEditorExecutable(path, staged string) (installedEditorUpdate, error)
 	if err := os.Rename(staged, path); err != nil {
 		return installedEditorUpdate{}, errors.Join(err, os.Rename(update.backup, path))
 	}
-	previous := path + ".editorx-previous"
+	previous := path + updateBackupSuffix
 	if err := os.Rename(update.backup, previous); err == nil {
 		update.backup = previous
 	}
@@ -249,4 +251,25 @@ func (update installedEditorUpdate) restart() error {
 	}
 	process.Process.Release()
 	return nil
+}
+
+// A running Windows process can hold the old image briefly after the replacement starts.
+func cleanupPreviousEditorExecutable(executable string) {
+	path := executable + updateBackupSuffix
+	previous, err := os.Lstat(path)
+	if err != nil || !previous.Mode().IsRegular() {
+		return
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		if attempt > 0 {
+			time.Sleep(250 * time.Millisecond)
+			current, err := os.Lstat(path)
+			if err != nil || !os.SameFile(previous, current) {
+				return
+			}
+		}
+		if err := os.Remove(path); err == nil || errors.Is(err, os.ErrNotExist) {
+			return
+		}
+	}
 }

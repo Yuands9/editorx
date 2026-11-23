@@ -75,4 +75,11 @@ func TestUpdateDownloadsVerifiedExecutableAndPreservesPrevious(t *testing.T) {
 	if prior, err := os.ReadFile(update.backup); err != nil || string(prior) != "previous" {
 		t.Fatal("failed install removed the previous backup")
 	}
+	cleanupPreviousEditorExecutable(current)
+	if _, err := os.Stat(update.backup); !os.IsNotExist(err) {
+		t.Fatalf("a successful startup kept the previous executable: %v", err)
+	}
+	if currentData, err := os.ReadFile(current); err != nil || sha256.Sum256(currentData) != checksum {
+		t.Fatal("cleanup changed the current executable")
+	}
 }

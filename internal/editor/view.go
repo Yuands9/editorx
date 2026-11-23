@@ -24,6 +24,7 @@ func (m *editorApp) page(c ui.C) {
 	m.aiUpdate(c)
 	m.updateProjectGit(c)
 	m.updateLocalShell()
+	m.updateLinkedFile(c.Part("link-download"))
 	blocked := m.interactionBlocked()
 	if !blocked && m.appSettings.shortcutEdit.action == shortcutNone && m.shortcutPressed(c, shortcutOpenSettings) {
 		c.After(m.toggleApplicationSettings)
@@ -48,6 +49,7 @@ func (m *editorApp) page(c ui.C) {
 	m.backupSelectionDialog(c.Part("backup-selection"))
 	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
+	m.linkedFileDialog(c.Part("link-dialog"))
 	m.dialogs(c)
 }
 
@@ -230,6 +232,9 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		if m.shortcutMenu(menu.Item("打开…").Icon(fileIcon), shortcutOpenFile).Clicked() {
 			c.After(m.open)
 		}
+		if m.shortcutMenu(menu.Item("打开链接文件…").Icon(linkIcon), shortcutOpenLink).Clicked() {
+			c.After(m.openLinkedFileDialog)
+		}
 		if m.shortcutMenu(menu.Item("添加项目…").Icon(folderIcon), shortcutOpenProject).Clicked() {
 			c.After(m.openFolder)
 		}
@@ -244,7 +249,7 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			if m.shortcutMenu(menu.Item("另存为…").Disabled(t.readOnlyPreview()), shortcutSaveAs).Clicked() {
 				c.After(func() { m.saveTab(t, true) })
 			}
-			if m.shortcutMenu(menu.Item("关闭当前标签"), shortcutCloseTab).Disabled(t.isPinned()).Clicked() {
+			if m.shortcutMenu(menu.Item("关闭当前标签"), shortcutCloseTab).Clicked() {
 				c.After(func() { m.closeTab(t) })
 			}
 			menu.Separator()
@@ -448,7 +453,7 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 			m.htmlView(c, t, blocked)
 		case "图片":
 			m.imageView(c, t)
-		case "PDF", "XMind":
+		case "PDF", "XMind", "Word":
 			m.documentPreviewView(c, t, blocked)
 		case "JSON":
 			m.jsonToolbar(c, t, blocked)

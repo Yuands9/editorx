@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -110,13 +111,19 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 		t.Fatal("JSON renamed to ZIP was accepted")
 	}
 
+	legacyBackup := filepath.Join(store.directory, "multiple-windows.editorx-backup.zip")
+	saved.Windows = append(saved.Windows, windowSession{
+		Tabs: []tabSession{{Name: "来自旧版第二个窗口.md", Source: paneSession{Content: "# 第二个窗口"}}},
+	})
+	if err := writeEditorBackup(context.Background(), legacyBackup, saved); err != nil {
+		t.Fatal(err)
+	}
 	var restoreOnUI func()
-	m.desktop = &editorDesktop{exiting: true}
 	m.post = func(callback func()) { restoreOnUI = callback }
 	if err := s.Frame(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Driver().QueueOpenFiles([]string{destination}, nil); err != nil {
+	if err := s.Driver().QueueOpenFiles([]string{legacyBackup}, nil); err != nil {
 		t.Fatal(err)
 	}
 	click("选择备份…")
@@ -124,17 +131,36 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 		t.Fatalf("backup picker must offer only ZIP files: %+v", request)
 	}
 	if err := s.WaitFor(func(app.Snapshot) bool { return restoreOnUI != nil || m.backup.problem != "" }, 3*time.Second); err != nil {
-		t.Fatal("ZIP import did not schedule window restoration after reading: ", err)
+		t.Fatal("ZIP import did not schedule restoration in the current window: ", err)
 	}
 	if restoreOnUI == nil {
 		t.Fatal(m.backup.problem)
+	}
+	if !m.backup.applying || m.backup.progress.total.Load() != 4 || m.backup.progress.completed.Load() != 2 {
+		t.Fatal("the import did not report the prepared file while waiting to apply the restored tabs")
+	}
+	if !s.HasText("正在恢复到当前窗口…") {
+		t.Fatal("the import progress was not visible in settings")
 	}
 	restoreOnUI()
 	if m.backup.request != nil {
 		t.Fatal("backup import is still pending after the restore callback")
 	}
-	m.desktop, m.post = nil, nil
-
+	if len(store.windows) != 1 || len(m.tabs) != 4 || m.active == included ||
+		m.active.source.text.String() != draft || !m.active.modified() {
+		t.Fatal("ZIP import did not restore the draft in the existing window")
+	}
+	if m.tabs[0] != included || m.tabs[1].source.text.String() != "未勾选的草稿" {
+		t.Fatal("import changed one of the existing tabs")
+	}
+	if m.tabs[3].source.text.String() != "# 第二个窗口" {
+		t.Fatal("a second window in the ZIP was not imported into the current window")
+	}
+	m.post = nil
+	if err := s.Frame(); err != nil {
+		t.Fatal(err)
+	}
+	click("设置")
 	click("关于")
 	if !s.HasText("版本 " + version.Number) {
 		t.Fatal("About does not display the executable version")
@@ -168,5 +194,34 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 	click("稍后")
 	if m.update.open || !m.appSettings.open {
 		t.Fatal("closing the update dialog should return to About")
+	}
+}
+
+func TestMergeBackupKeepsSeparateDraftsAndGroupIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "configuration.txt")
+	current := newEditorApp()
+	first := current.addTab(document{path: path, saved: "saved", eol: "LF"}, "configuration.txt")
+	first.source.replace("current draft")
+	current.newTabGroup(first)
+
+	for _, text := range []string{"first imported draft", "second imported draft"} {
+		backup := newEditorApp()
+		imported := backup.addTab(document{path: path, saved: "saved", eol: "LF"}, "configuration.txt")
+		imported.source.replace(text)
+		backup.newTabGroup(imported)
+		if active := current.mergeRestoredWindow(backup, nil); active != imported || imported.doc.path != "" ||
+			imported.source.text.String() != text || !imported.modified() {
+			t.Fatal("a conflicting backup did not remain editable as a separate draft")
+		}
+	}
+
+	if len(current.tabs) != 3 || current.tabs[0] != first ||
+		first.source.text.String() != "current draft" || current.tabAtPath(path) != first {
+		t.Fatal("an existing file or draft was replaced")
+	}
+	for index, tab := range current.tabs {
+		if tab.id != index+1 || tab.group == nil || tab.group.ID != index+1 {
+			t.Fatal("a restored tab or group collided with another tab's identity")
+		}
 	}
 }

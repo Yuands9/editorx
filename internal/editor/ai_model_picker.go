@@ -143,9 +143,12 @@ func (m *editorApp) aiModelInput(c ui.C, field *ui.Field, label, placeholder str
 }
 
 func (m *editorApp) aiReasoningChoices(c ui.C, profile aiSettings) {
-	if ui.Button(c.Part("back"), "返回模型列表").Icon(chevronLeftIcon).Ghost().Height(32).FontSize(12).Clicked() {
-		c.After(func() { m.ai.modelPicker.reasoning = false })
-	}
+	ui.Row(c.Part("heading")).FillWidth().Height(32).Gap(6).Items(ui.Center).Children(func() {
+		if ui.Button(c, "返回模型列表").Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip("返回模型列表").Clicked() {
+			c.After(func() { m.ai.modelPicker.reasoning = false })
+		}
+		ui.Text(c, "思考水平").FontSize(13).Bold()
+	})
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	for index, level := range profile.reasoningLevels() {
 		label := aiReasoningLabel(level)
@@ -239,7 +242,12 @@ func (m *editorApp) fetchAIModels(profile aiSettings) {
 func (m *editorApp) aiManualModel(c ui.C, profile aiSettings) {
 	a := &m.ai
 	picker := &a.modelPicker
-	ui.Text(c, "模型 ID · "+profile.Name).FillWidth().Ellipsis().FontSize(12)
+	ui.Row(c.Part("heading")).FillWidth().Height(32).Gap(6).Items(ui.Center).Children(func() {
+		if ui.Button(c, "返回模型列表").Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip("返回模型列表").Clicked() {
+			c.After(func() { picker.manualID = 0 })
+		}
+		ui.Text(c, "模型 ID · "+profile.Name).Grow(1).MinWidth(0).Ellipsis().FontSize(13).Bold()
+	})
 	input := m.aiModelInput(c.Part("manual-model"), &picker.manualModel, "手动输入模型 ID", "输入模型 ID")
 	if picker.focusInput {
 		input.AutoFocus()
@@ -249,10 +257,7 @@ func (m *editorApp) aiManualModel(c ui.C, profile aiSettings) {
 	_, composing := picker.manualModel.GetEditor().Composition()
 	canSelect := validAIModelID(model) && !composing
 	submitted := input.Submitted()
-	ui.Row(c).FillWidth().Items(ui.Center).Justify(ui.Between).Children(func() {
-		if ui.Button(c, "返回列表").Ghost().Height(30).FontSize(12).Clicked() {
-			c.After(func() { picker.manualID = 0 })
-		}
+	ui.Row(c).FillWidth().Items(ui.Center).Justify(ui.End).Children(func() {
 		use := ui.Button(c, "使用此模型").Height(30).FontSize(12).Disabled(!canSelect)
 		if canSelect && (submitted || use.Clicked()) {
 			c.After(func() { a.selectModel(profile, model) })

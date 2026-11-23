@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"{{if .Light}} class="light"{{end}}>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+:root{color-scheme:dark;--surface:#181818;--panel:#212224;--paper:#26272a;--text:#e4e7ec;--muted:#a6adba;--line:#3b3e43;--hover:#363a42;--link:#a8c9ff}
+:root.light{color-scheme:light;--surface:#f5f5f6;--panel:#fff;--paper:#fff;--text:#22262d;--muted:#5d6673;--line:#d8dce2;--hover:#e7edf5;--link:#295ab5}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;color:var(--text);background:var(--surface);font:14px "Segoe UI","Microsoft YaHei UI",sans-serif}
+header{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+strong{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+button{font:inherit;color:inherit;background:transparent;border:0;border-radius:7px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+button:hover,button[aria-expanded="true"],nav a:hover{background:var(--hover)}
+button:focus-visible,nav a:focus-visible{outline:2px solid var(--link)}
+.layout{display:flex;flex:1;min-height:0}
+[hidden]{display:none!important}
+nav{width:clamp(152px,25%,260px);flex:none;overflow:auto;padding:8px;border-right:1px solid var(--line);background:var(--panel)}
+nav a{display:block;padding:6px 8px 6px calc(8px + 9px * var(--depth));overflow-wrap:anywhere;border-radius:6px;color:var(--text);text-decoration:none}
+nav p{color:var(--muted);padding:4px 8px}
+main{flex:1;min-width:0;overflow:auto}
+article{width:min(840px,calc(100% - 26px));margin:14px auto;padding:clamp(14px,4vw,42px);min-height:calc(100% - 28px);background:var(--paper);border-radius:9px;overflow-wrap:anywhere;font-size:var(--size,16px);line-height:1.6;tab-size:4}
+article p,article h1,article h2,article h3,article h4,article h5,article h6{white-space:pre-wrap;margin:0 0 .75em}
+article p:empty{min-height:.7em}
+article h1,article h2,article h3{margin-top:.8em}
+article h1:first-child{margin-top:0}
+article table{border-collapse:collapse;margin:.5em 0 1em}
+article td{border:1px solid var(--line);padding:.3em .6em;vertical-align:top}
+article td>p:last-child{margin-bottom:0}
+article img{max-width:100%;height:auto;display:block}
+</style>
+</head>
+<body>
+<header>
+<strong title="{{.Title}}">{{.Title}}</strong>
+<button id="outline-toggle" type="button" aria-controls="outline" aria-expanded="false">标题</button>
+<button id="smaller" type="button" aria-label="缩小">−</button>
+<button id="fit" type="button" title="还原缩放">100%</button>
+<button id="larger" type="button" aria-label="放大">＋</button>
+</header>
+<div class="layout">
+<nav id="outline" aria-label="文档标题" hidden>
+{{range .Headings}}<a href="#heading-{{.ID}}" style="--depth:{{.Depth}}">{{.Text}}</a>{{else}}<p>这份文档没有标题。</p>{{end}}
+</nav>
+<main><article>{{.Body}}</article></main>
+</div>
+<script>
+const outline=document.getElementById("outline");
+const toggle=document.getElementById("outline-toggle");
+const article=document.querySelector("article");
+const fit=document.getElementById("fit");
+let zoom=100;
+toggle.addEventListener("click",()=>{
+  outline.hidden=!outline.hidden;
+  toggle.setAttribute("aria-expanded",String(!outline.hidden));
+});
+function setZoom(value){
+  zoom=Math.max(50,Math.min(200,value));
+  article.style.setProperty("--size",16*zoom/100+"px");
+  fit.textContent=zoom+"%";
+}
+document.getElementById("smaller").addEventListener("click",()=>setZoom(zoom-10));
+document.getElementById("larger").addEventListener("click",()=>setZoom(zoom+10));
+fit.addEventListener("click",()=>setZoom(100));
+</script>
+</body>
+</html>

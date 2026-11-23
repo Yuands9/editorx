@@ -51,7 +51,7 @@ func TestPinnedTabCanJoinAGroupByMenuAndDrag(t *testing.T) {
 	}
 }
 
-func TestPinnedGroupProtectsAllMembersAndRestoresBothPins(t *testing.T) {
+func TestPinnedGroupRestoresPinsAndAllowsExplicitClose(t *testing.T) {
 	m := newTestEditorWithDocument()
 	outside := m.active
 	member := m.addTab(document{eol: "LF"}, "组内普通.txt")
@@ -74,25 +74,6 @@ func TestPinnedGroupProtectsAllMembersAndRestoresBothPins(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	disabled := func(label string) gfx.Hit {
-		t.Helper()
-		for _, hit := range s.Snapshot().Hits {
-			if hit.Label == label && hit.Disabled && hit.Bounds.Width > 0 {
-				return hit
-			}
-		}
-		t.Fatalf("%s is missing or still enabled", label)
-		return gfx.Hit{}
-	}
-	closeShortcut := func(hint string) {
-		t.Helper()
-		handled, err := s.Driver().ShortcutChord(gfx.ModifierControl, 'w')
-		check(err)
-		if !handled || m.confirm || m.status != hint {
-			t.Fatalf("Ctrl+W was not blocked with the correct reason: %q", m.status)
-		}
-	}
-
 	check(s.ClickLabel("固定分组 " + group.Name))
 	if !group.Pinned || !member.isPinned() || member.pinned || !personal.pinned || !slices.Equal(m.tabs, []*editorTab{member, personal, outside}) {
 		t.Fatal("pinning the group did not move the block or incorrectly changed individual pins")
@@ -103,19 +84,6 @@ func TestPinnedGroupProtectsAllMembersAndRestoresBothPins(t *testing.T) {
 	check(s.Frame())
 	if !newMember.isPinned() || newMember.pinned {
 		t.Fatal("a tab added after the group was pinned did not inherit protection")
-	}
-
-	close := disabled("关闭 " + member.title())
-	check(s.Click(close.Bounds.X+close.Bounds.Width/2, close.Bounds.Y+close.Bounds.Height/2))
-	check(s.RightClickLabel(member.title()))
-	disabled("关闭标签")
-	check(s.Keys("escape"))
-	check(s.ClickLabel("主菜单"))
-	disabled("关闭当前标签")
-	check(s.Keys("escape"))
-	closeShortcut("请先取消固定分组")
-	if !slices.Contains(m.tabs, member) {
-		t.Fatal("a close entry point removed a protected group member")
 	}
 
 	check(s.ClickLabel(group.label()))
@@ -137,26 +105,33 @@ func TestPinnedGroupProtectsAllMembersAndRestoresBothPins(t *testing.T) {
 	if !slices.Equal(m.tabs, []*editorTab{member, personal, newMember}) || m.confirm {
 		t.Fatal("close all did not skip the pinned group")
 	}
-	check(s.RightClickLabel(group.label()))
-	disabled("关闭整个分组")
-	check(s.ClickLabel("取消固定分组"))
-	if group.Pinned || member.isPinned() || !personal.isPinned() {
-		t.Fatal("unpinning the group removed its member's individual protection")
+	m.activate(member)
+	check(s.Frame())
+	check(s.RightClickLabel(member.title()))
+	check(s.ClickLabel("关闭标签"))
+	if slices.Contains(m.tabs, member) || !group.Pinned || !personal.pinned {
+		t.Fatal("the tab menu could not close a member of the pinned group")
 	}
-	check(s.RightClickLabel(group.label()))
-	check(s.ClickLabel("关闭分组内未固定标签"))
-	if !slices.Equal(m.tabs, []*editorTab{personal}) || personal.source.text.String() != "固定的未保存草稿" || m.confirm {
-		t.Fatal("group close removed or prompted to save an individually pinned draft")
+	m.activate(personal)
+	check(s.Frame())
+	handled, err := s.Driver().ShortcutChord(gfx.ModifierControl, 'w')
+	check(err)
+	if !handled || !m.confirm || m.confirmTab != personal {
+		t.Fatal("Ctrl+W did not ask to save the pinned draft")
 	}
-	closeShortcut("请先取消固定标签")
-	check(s.ClickLabel("取消固定 " + personal.title()))
-	check(s.ClickLabel("关闭 " + personal.title()))
+	check(s.ClickLabel("取消"))
+	if !slices.Contains(m.tabs, personal) || !personal.modified() || !personal.isPinned() {
+		t.Fatal("canceling the close lost a pinned draft")
+	}
+
+	check(s.RightClickLabel(group.label()))
+	check(s.ClickLabel("关闭整个分组"))
 	if !m.confirm || m.confirmTab != personal {
-		t.Fatal("unpinning the tab did not restore its regular close and save confirmation")
+		t.Fatal("closing a pinned group did not ask to save its draft")
 	}
 	check(s.ClickLabel("放弃修改"))
-	if slices.Contains(m.tabs, personal) {
-		t.Fatal("unpinned tab could not be closed")
+	if len(m.tabs) != 0 {
+		t.Fatal("closing the pinned group did not remove its tabs")
 	}
 }
 

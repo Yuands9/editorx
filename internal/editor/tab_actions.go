@@ -21,7 +21,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 		if menu.Item(label).Icon(pinStateIcon(tab.pinned)).Clicked() {
 			c.After(func() { m.togglePin(tab) })
 		}
-		if menu.Item("关闭标签").Icon(closeIcon).Disabled(tab.isPinned()).Clicked() {
+		if menu.Item("关闭标签").Icon(closeIcon).Clicked() {
 			c.After(func() { m.closeTab(tab) })
 		}
 		if aiTextTab(tab) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
@@ -61,15 +61,15 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 			{"关闭左侧全部标签页", m.tabs[:index]},
 			{"关闭右侧全部标签页", m.tabs[index+1:]},
 		} {
-			if menu.Item(action.label).Disabled(!hasClosableTab(action.tabs)).Clicked() {
+			if menu.Item(action.label).Disabled(!hasUnpinnedTab(action.tabs)).Clicked() {
 				tabs := slices.Clone(action.tabs)
-				c.After(func() { m.closeTabs(tabs) })
+				c.After(func() { m.closeTabs(tabs, true) })
 			}
 		}
 	})
 }
 
-func hasClosableTab(tabs []*editorTab) bool {
+func hasUnpinnedTab(tabs []*editorTab) bool {
 	return slices.ContainsFunc(tabs, func(tab *editorTab) bool { return !tab.isPinned() })
 }
 

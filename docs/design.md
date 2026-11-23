@@ -10,7 +10,7 @@ EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。�
 | --- | --- | --- |
 | 应用与窗口 | `editor.go`、`view.go`、`theme.go` | 原生窗口配置、打开路径分派、快捷键、主题和页面布局 |
 | 编辑与文件 | `pane.go`、`document.go`、`format.go`、`syntax_languages.go` | 文本模型、输入法、语法检测、编码、保存与磁盘冲突检查 |
-| 标签和项目 | `tab_strip.go`、`tab_actions.go`、`tab_groups.go`、`workspace.go` | 标签、拖放、分组、固定保护、项目树与目录操作 |
+| 标签和项目 | `tab_strip.go`、`tab_actions.go`、`tab_groups.go`、`workspace.go` | 标签、拖放、分组、固定与批量关闭、项目树与目录操作 |
 | 搜索与 JSON | `search.go`、`search_replace.go`、`search_results.go`、`json_tools.go`、`json_diff.go` | 多行查找、匹配定位、跨文件替换、JSON 转换和结构对比 |
 | 预览 | `html_preview.go`、`markdown.go`、`document_preview.go`、`pdf_preview.go`、`image_view.go` | 文本及媒体预览、资源加载、生命周期和主题 |
 | Office | `office.go`、`office_workbook.go`、`document_server.go`、`office-ui/src` | 工作簿转换、文档桥接、按需加载、编辑快照与原格式保存 |
@@ -27,6 +27,8 @@ EditorX 使用 Go 和 Viva 管理 Windows 窗口、编辑区及应用状态。�
 保存文本时先核对磁盘基线，再用同目录临时文件替换目标。Office 保存前等待最近一次编辑快照。Excel 保存会基于原工作簿应用改动。Word 由编辑组件导出 DOCX。PDF 原件另存沿用原始字节流。退出程序前把已提交编辑写入会话，后台也按间隔自动保存。主题、关闭行为、托盘开关和编辑器默认值保存在数据目录的 `application-settings.json`。重复启动通过 Windows 消息唤起同一数据目录的 EditorX，命令行中的文件和目录交给已打开的窗口。
 
 ## 嵌入页面与本地数据
+
+HTTP 或 HTTPS 链接由后台请求下载到数据目录的 `downloads` 下，再通过相应的文件格式处理器打开。ZIP 会话备份先在后台准备文件和项目，再合并到当前窗口。
 
 Office 和 PDF 使用独立的回环地址，并通过文档会话限制请求路径。前端资源在构建时嵌入 EXE。关闭相关标签会终止本地服务并释放 WebView。HTML 预览执行页面脚本，终端前端从嵌入资源加载，PowerShell 由 ConPTY 提供。
 
@@ -60,4 +62,4 @@ EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 
 | 本地 Word 构建中的 SuperDoc 与 DOCX Engine | npm 包内声明及各自的许可文档 |
 | 终端和助手服务商标识 | `internal/editor/assets/terminal` 与 `internal/editor/assets/ai-providers` 的许可文件 |
 
-Word 编辑使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。合规的本地构建可使用 `./dev.ps1 build` 加载此组件。分发包含 Word 编辑的 EXE 时，需要同时满足两项许可。公开版中，Word 标签提供交由系统关联程序打开的入口。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)
+Word 编辑使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。合规的本地构建可使用 `./dev.ps1 build` 加载此组件。分发包含 Word 编辑的 EXE 时，需要同时满足两项许可。公开版用自有的 DOCX 只读预览渲染正文、表格、嵌入图片和标题。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)

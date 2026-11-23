@@ -18,6 +18,21 @@ var gitBranchIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: 
 	gfx.MoveTo(19, 5), gfx.QuadTo(17, 1, 15, 5), gfx.QuadTo(17, 9, 19, 5),
 }}
 
+var gitFetchIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(5, 4), gfx.LineTo(19, 4),
+	gfx.MoveTo(12, 8), gfx.LineTo(12, 19), gfx.MoveTo(7, 14), gfx.LineTo(12, 19), gfx.LineTo(17, 14),
+}}
+
+var gitPullIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(12, 3), gfx.LineTo(12, 14), gfx.MoveTo(8, 10), gfx.LineTo(12, 14), gfx.LineTo(16, 10),
+	gfx.MoveTo(4, 15), gfx.LineTo(4, 20), gfx.LineTo(20, 20), gfx.LineTo(20, 15),
+}}
+
+var gitCommitIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(3, 12), gfx.LineTo(8, 12), gfx.MoveTo(16, 12), gfx.LineTo(21, 12),
+	gfx.MoveTo(16, 12), gfx.CubicTo(16, 17.3, 8, 17.3, 8, 12), gfx.CubicTo(8, 6.7, 16, 6.7, 16, 12),
+}}
+
 var shellIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
 	gfx.MoveTo(3, 5), gfx.LineTo(21, 5), gfx.LineTo(21, 19), gfx.LineTo(3, 19), gfx.ClosePath(),
 	gfx.MoveTo(6, 9), gfx.LineTo(9, 12), gfx.LineTo(6, 15), gfx.MoveTo(12, 15), gfx.LineTo(17, 15),
@@ -311,30 +326,46 @@ func (m *editorApp) gitToolbar(c ui.C, busy bool) {
 	git := &m.tools.git
 	status := git.snapshot
 	ui.Row(c).FillWidth().Gap(5).Items(ui.Center).Children(func() {
-		if len(status.remotes) > 0 {
-			if len(status.remotes) > 1 {
-				ui.Select(c, &git.remote, status.remotes, func(s string) string { return s }).Label("Git 远程").Width(114).Height(27).Disabled(busy)
-			}
-			for _, action := range []gitAction{gitFetch, gitPull, gitPush} {
-				if ui.Button(c.Key(string(action)), string(action)).Outline().Height(27).FontSize(12).Disabled(busy).Clicked() {
-					c.After(func() { m.startGit(action, git.remote, nil) })
-				}
-			}
-		} else {
-			link := ui.TextField(c, &git.address, "远程仓库地址", "远程仓库地址").Height(27).Width(204).Disabled(busy)
-			if button := ui.Button(c, "添加远程").Outline().Height(27).FontSize(12).Disabled(busy || strings.TrimSpace(git.address.Text()) == ""); button.Clicked() || !busy && link.Submitted() {
-				c.After(func() { m.startGit(gitAddRemote, git.address.Text(), nil) })
-			}
-		}
-		if ui.Button(c, "全部暂存").Outline().Height(27).FontSize(12).Disabled(busy || len(status.changes) == 0).Clicked() {
+		if ui.Button(c, "全部暂存").Icon(plusIcon).IconOnly().Ghost().Size(30, 29).Shrink(0).
+			Tooltip("全部暂存").Disabled(busy || len(status.changes) == 0).Clicked() {
 			c.After(func() { m.startGit(gitStageAll, "", nil) })
 		}
 		message := ui.TextField(c, &git.commit, "提交说明", "提交说明").Height(27).Grow(1).MinWidth(85).Disabled(busy)
 		canCommit := !busy && status.hasStaged() && strings.TrimSpace(git.commit.Text()) != ""
-		submit := ui.Button(c, "提交").Height(27).FontSize(12).Disabled(!canCommit)
+		submit := ui.Button(c, "提交").Icon(gitCommitIcon).IconOnly().Size(30, 29).Shrink(0).
+			Tooltip("提交已暂存的变更").Disabled(!canCommit)
 		if canCommit && (submit.Clicked() || message.Submitted()) {
 			c.After(func() { m.startGit(gitCommit, git.commit.Text(), nil) })
 		}
 		ui.Text(c, fmt.Sprintf("%d 个变更", len(status.changes))).Muted().FontSize(11)
+		if len(status.remotes) > 1 {
+			ui.Select(c, &git.remote, status.remotes, func(s string) string { return s }).Label("Git 远程").Width(106).Height(29).Disabled(busy)
+		}
+		for _, command := range []struct {
+			action   gitAction
+			icon     gfx.Icon
+			hint     string
+			disabled bool
+		}{
+			{gitFetch, gitFetchIcon, "获取远程更新", len(status.remotes) == 0},
+			{gitPull, gitPullIcon, "拉取并快进合并", status.tracking == ""},
+			{gitPush, exportIcon, "推送当前分支", git.remote == "" || status.branch == "" || strings.HasPrefix(status.branch, "HEAD ")},
+		} {
+			label := string(command.action)
+			if ui.Button(c.Key(label), label).Icon(command.icon).IconOnly().Ghost().Size(30, 29).Shrink(0).
+				Tooltip(command.hint).Disabled(busy || command.disabled).Clicked() {
+				c.After(func() { m.startGit(command.action, git.remote, nil) })
+			}
+		}
 	})
+	if len(status.remotes) == 0 {
+		ui.Row(c.Part("add-remote")).FillWidth().Gap(7).Items(ui.Center).Children(func() {
+			link := ui.TextField(c, &git.address, "远程仓库地址", "远程仓库地址").Height(27).Grow(1).MinWidth(70).Disabled(busy)
+			canAdd := !busy && strings.TrimSpace(git.address.Text()) != ""
+			button := ui.Button(c, "添加远程").Outline().Height(27).FontSize(12).Disabled(!canAdd)
+			if canAdd && (button.Clicked() || link.Submitted()) {
+				c.After(func() { m.startGit(gitAddRemote, git.address.Text(), nil) })
+			}
+		})
+	}
 }

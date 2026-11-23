@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -24,7 +25,7 @@ type localShell struct {
 	view             *app.WebView
 	process          *terminalProcess
 	starting, exited bool
-	viewReady        bool
+	viewReady        atomic.Bool
 	size             terminalSize
 	wantFocus        bool
 	mu               sync.Mutex
@@ -43,7 +44,7 @@ func (shell *localShell) appendOutput(data []byte) {
 }
 
 func (shell *localShell) flushOutput() {
-	if !shell.viewReady || shell.view == nil {
+	if !shell.viewReady.Load() || shell.view == nil {
 		return
 	}
 	shell.mu.Lock()
@@ -78,6 +79,7 @@ func (m *editorApp) openLocalShell(directory string) {
 	if m.webReady {
 		m.mountShell(shell)
 	}
+	m.startShellProcess(shell)
 }
 
 func (m *editorApp) closeLocalShell(shell *localShell) {
@@ -118,7 +120,7 @@ func (m *editorApp) mountShell(shell *localShell) {
 			if letter == 't' && modifiers == gfx.ModifierControl|gfx.ModifierAlt {
 				return func() { m.useTool("终端"); m.invalidator.Invalidate() }
 			}
-			return nil
+			return m.openLinkWebShortcut(letter, modifiers)
 		},
 		OnMessage: func(raw string) {
 			m.handleShellMessage(shell, raw)
@@ -129,7 +131,6 @@ func (m *editorApp) mountShell(shell *localShell) {
 		return
 	}
 	shell.view = view
-	m.startShellProcess(shell)
 }
 
 func serveTerminalAsset(path string) (string, []byte, bool) {
@@ -149,7 +150,7 @@ func serveTerminalAsset(path string) (string, []byte, bool) {
 }
 
 func (m *editorApp) startShellProcess(shell *localShell) {
-	if shell.starting || shell.process != nil || shell.exited {
+	if m.post == nil || shell.starting || shell.process != nil || shell.exited {
 		return
 	}
 	shell.starting = true
@@ -179,7 +180,9 @@ func (m *editorApp) startShellProcess(shell *localShell) {
 		}
 		process.run(func(data []byte) {
 			shell.appendOutput(data)
-			m.invalidator.Invalidate()
+			if shell.viewReady.Load() {
+				m.invalidator.Invalidate()
+			}
 		}, func() {
 			m.post(func() {
 				if shell.process == process {
@@ -206,7 +209,7 @@ func (m *editorApp) handleShellMessage(shell *localShell, raw string) {
 	switch message.Kind {
 	case "ready", "resize":
 		if message.Kind == "ready" {
-			shell.viewReady = true
+			shell.viewReady.Store(true)
 			shell.view.Eval(previewThemeJS(m.light))
 			shell.flushOutput()
 		}
@@ -247,10 +250,6 @@ func (m *editorApp) updateLocalShell() {
 func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 	shell := m.tools.terminal
 	if shell == nil {
-		if m.webReady && !blocked {
-			c.After(func() { m.openLocalShell(m.toolDirectory()) })
-		}
-		ui.Text(c, "正在准备本地终端…").Pad(10).Muted().FontSize(12)
 		return
 	}
 	if shell.issue != "" {
@@ -258,7 +257,6 @@ func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 		return
 	}
 	if shell.view == nil {
-		c.After(func() { m.mountShell(shell) })
 		ui.Text(c, "正在准备本地终端…").Pad(10).Muted().FontSize(12)
 		return
 	}
@@ -289,14 +287,14 @@ func (m *editorApp) shellActions(c ui.C, blocked bool) {
 		ui.Text(c, fmt.Sprintf("PowerShell · %s", shell.directory)).Grow(1).MinWidth(0).Ellipsis().Muted().FontSize(11)
 	}
 	if shell.exited || shell.issue != "" {
-		if ui.Button(c, "重启终端").Ghost().Height(27).FontSize(12).Disabled(blocked).Clicked() {
+		if ui.Button(c, "重启终端").Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Tooltip("重启终端").Disabled(blocked).Clicked() {
 			c.After(func() {
 				m.closeLocalShell(shell)
 				m.openLocalShell(shell.directory)
 			})
 		}
 	}
-	if ui.Button(c, "结束终端").Ghost().Height(27).FontSize(12).Disabled(blocked).Clicked() {
+	if ui.Button(c, "结束终端").Icon(aiStopIcon).IconOnly().Ghost().Size(28, 28).Tooltip("结束终端").Disabled(blocked).Clicked() {
 		c.After(func() {
 			m.closeLocalShell(shell)
 			if m.tools.terminal == nil {

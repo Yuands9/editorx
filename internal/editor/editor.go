@@ -163,61 +163,63 @@ func (t *editorTab) modified() bool {
 }
 
 type editorApp struct {
-	theme         gfx.Theme
-	light         bool
-	tabs          []*editorTab
-	active        *editorTab
-	nextID        int
-	status        string
-	errorText     string
-	showError     bool
-	confirm       bool
-	confirmFocus  bool
-	dontAskToSave bool
-	confirmTab    *editorTab
-	pending       func()
-	workspace     *folderTree
-	showFiles     bool
-	showOutline   bool
-	filesSplit    ui.SplitterState
-	outlineSplit  ui.SplitterState
-	aiEditorSplit ui.SplitterState
-	aiPromptSplit ui.SplitterState
-	newWindow     func()
-	tabReveal     bool
-	tabDrag       ui.DragState
-	tabScrollAt   time.Duration
-	tabEndHit     gfx.ID
-	tabGhost      *editorTab
-	groupGhost    *tabGroup
-	tabGrabX      float32
-	nextGroupID   int
-	groupClick    tabGroupClick
-	rename        tabRenameState
-	fileMenu      bool
-	languageMenu  bool
-	results       searchResults
-	ai            aiAssistant
-	tools         projectTools
-	browser       *ui.EffectState[string, int]
-	desktop       *editorDesktop
-	nativeWindow  *app.Window
-	appSettings   settingsPageState
-	backup        editorBackupState
-	update        editorUpdateState
-	editorPrefs   editorPreferences
-	keyBindings   shortcutOverrides
-	store         *sessionStore
-	dataDirectory string
-	showHistory   bool
-	webHost       app.WebHost
-	webReady      bool
-	invalidator   app.Invalidator
-	post          func(func())
-	windowFrame   gfx.Rect
-	maximized     bool
-	windowClosed  bool
-	closedSession *windowSession
+	linkedFile         linkedFileState
+	theme              gfx.Theme
+	light              bool
+	tabs               []*editorTab
+	active             *editorTab
+	nextID             int
+	status             string
+	errorText          string
+	showError          bool
+	confirm            bool
+	confirmFocus       bool
+	dontAskToSave      bool
+	confirmTab         *editorTab
+	pending            func()
+	workspace          *folderTree
+	showFiles          bool
+	showOutline        bool
+	filesSplit         ui.SplitterState
+	outlineSplit       ui.SplitterState
+	aiEditorSplit      ui.SplitterState
+	aiPromptSplit      ui.SplitterState
+	newWindow          func()
+	tabReveal          bool
+	tabDrag            ui.DragState
+	tabScrollAt        time.Duration
+	tabEndHit          gfx.ID
+	tabGhost           *editorTab
+	groupGhost         *tabGroup
+	tabGrabX           float32
+	nextGroupID        int
+	groupClick         tabGroupClick
+	rename             tabRenameState
+	fileMenu           bool
+	languageMenu       bool
+	results            searchResults
+	ai                 aiAssistant
+	tools              projectTools
+	browser            *ui.EffectState[string, int]
+	desktop            *editorDesktop
+	nativeWindow       *app.Window
+	appSettings        settingsPageState
+	backup             editorBackupState
+	update             editorUpdateState
+	editorPrefs        editorPreferences
+	keyBindings        shortcutOverrides
+	store              *sessionStore
+	dataDirectory      string
+	showHistory        bool
+	webHost            app.WebHost
+	webReady           bool
+	invalidator        app.Invalidator
+	post               func(func())
+	windowFrame        gfx.Rect
+	maximized          bool
+	windowClosePending bool
+	windowClosed       bool
+	closedSession      *windowSession
 }
 
 func newEditorApp() *editorApp {
@@ -363,17 +365,13 @@ func (m *editorApp) finishSaveConfirmation() {
 }
 
 func (m *editorApp) closeTab(t *editorTab) {
-	if t.isPinned() {
-		m.status = t.pinnedCloseHint()
-		return
-	}
-	m.closeTabs([]*editorTab{t})
+	m.closeTabs([]*editorTab{t}, false)
 }
 
 // tabs is a copy of the selected range, so removing a tab does not move the remaining targets.
-func (m *editorApp) closeTabs(tabs []*editorTab) {
+func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 	for index, tab := range tabs {
-		if tab.isPinned() || !slices.Contains(m.tabs, tab) {
+		if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
 			continue
 		}
 		waitingForOffice := tab.office != nil && tab.office.view != nil && tab.office.ready
@@ -382,13 +380,15 @@ func (m *editorApp) closeTabs(tabs []*editorTab) {
 			continue
 		}
 		proceed := func() {
-			m.removeTab(tab)
-			m.closeTabs(tabs[index+1:])
+			if !keepPinned || !tab.isPinned() {
+				m.removeTab(tab)
+			}
+			m.closeTabs(tabs[index+1:], keepPinned)
 		}
 		if waitingForOffice {
 			tab.office.flush(func(err error) {
-				if tab.isPinned() || !slices.Contains(m.tabs, tab) {
-					m.closeTabs(tabs[index+1:])
+				if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
+					m.closeTabs(tabs[index+1:], keepPinned)
 					return
 				}
 				if err != nil {
@@ -405,9 +405,6 @@ func (m *editorApp) closeTabs(tabs []*editorTab) {
 }
 
 func (m *editorApp) removeTab(t *editorTab) {
-	if t.isPinned() {
-		return
-	}
 	index := slices.Index(m.tabs, t)
 	if index < 0 {
 		return
@@ -517,42 +514,58 @@ func (m *editorApp) load(path string) {
 		m.rememberPath(path, false)
 		return
 	}
-	var doc document
-	var picture *imageDocument
-	var office *officeDocument
-	var preview *documentPreview
-	if previewFormat(path) != "" {
-		preview, err = readDocumentPreview(path)
-		doc.path = path
-	} else if officeKind(path) != "" {
-		doc, office, err = readOffice(path)
-	} else if strings.EqualFold(filepath.Ext(path), ".xls") || strings.EqualFold(filepath.Ext(path), ".doc") {
-		err = errors.New("请先用 Office 将旧格式另存为 .xlsx 或 .docx 后打开")
-	} else if isImageFile(path) {
-		picture, err = readImage(path)
-		doc.path = path
-	} else {
-		doc, err = readDocument(path)
-	}
+	file, err := readEditorFile(path)
 	if err != nil {
 		m.fail(fmt.Errorf("打开 %s 失败\n%w", path, err))
 		return
 	}
+	m.openLoadedFile(file)
+}
 
-	tab := m.addTab(doc, filepath.Base(path))
-	tab.picture, tab.office, tab.preview = picture, office, preview
-	if office != nil && m.webReady {
+type openedEditorFile struct {
+	doc     document
+	picture *imageDocument
+	office  *officeDocument
+	preview *documentPreview
+}
+
+func readEditorFile(path string) (openedEditorFile, error) {
+	var file openedEditorFile
+	var err error
+	switch {
+	case previewFormat(path) != "":
+		file.preview, err = readDocumentPreview(path)
+		file.doc.path = path
+	case officeKind(path) != "":
+		file.doc, file.office, err = readOffice(path)
+	case strings.EqualFold(filepath.Ext(path), ".xls") || strings.EqualFold(filepath.Ext(path), ".doc"):
+		err = errors.New("请先用 Office 将旧格式另存为 .xlsx 或 .docx 后打开")
+	case isImageFile(path):
+		file.picture, err = readImage(path)
+		file.doc.path = path
+	default:
+		file.doc, err = readDocument(path)
+	}
+	return file, err
+}
+
+func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
+	path := file.doc.path
+	tab := m.addTab(file.doc, filepath.Base(path))
+	tab.picture, tab.office, tab.preview = file.picture, file.office, file.preview
+	if tab.office != nil && m.webReady {
 		m.openOffice(tab)
 	}
-	if preview != nil && m.webReady {
+	if tab.preview != nil && m.webReady {
 		m.openDocumentPreview(tab)
 	}
-	if tab.readOnlyPreview() || office != nil {
+	if tab.readOnlyPreview() || tab.office != nil {
 		tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = true, true
 		tab.source.focus = false
 	}
 	m.rememberPath(path, false)
 	m.status = "已打开 " + filepath.Base(path)
+	return tab
 }
 
 func (m *editorApp) saveTab(t *editorTab, saveAs bool) bool {
@@ -656,15 +669,23 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		next.setLightMode(m.light)
 		next.editorPrefs = m.editorPrefs
 		next.keyBindings = m.keyBindings
-		if m.store != nil {
-			m.store.attach(next)
-		}
+		next.store, next.dataDirectory = m.store, m.dataDirectory
 		if err := openEditorWindow(application, next); err != nil {
 			m.fail(err)
+			return
+		}
+		if m.store != nil {
+			m.store.attach(next)
 		}
 	}
 	m.webHost.OnReady = func() {
 		m.webReady = true
+		for _, shell := range m.tools.terminals {
+			m.mountShell(shell)
+		}
+		if len(m.tools.terminals) > 0 {
+			m.invalidator.Invalidate()
+		}
 		t := m.active
 		if t == nil {
 			return
@@ -702,7 +723,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 				m.requestClose(allow)
 				return
 			}
-			m.desktop.close(m)
+			m.desktop.close(m, allow)
 		},
 		OnFrameChange: func(frame gfx.Rect) { m.windowFrame = frame },
 		OnMaximize:    func(value bool) { m.maximized = value },
@@ -790,6 +811,9 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 		if err := desktop.syncTray(); err != nil {
 			store.windows[0].status = "无法显示系统托盘图标：" + err.Error()
 		}
+		if executable, err := os.Executable(); err == nil {
+			go cleanupPreviousEditorExecutable(executable)
+		}
 		go func() {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
@@ -827,7 +851,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 }
 
 func (m *editorApp) interactionBlocked() bool {
-	return m.windowClosed || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
+	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
 }
@@ -895,6 +919,7 @@ func (m *editorApp) releaseWindowState() {
 		os.Remove(m.update.staged)
 	}
 	m.update, m.backup = editorUpdateState{}, editorBackupState{}
+	m.linkedFile = linkedFileState{}
 	m.tabDrag = ui.DragState{}
 	m.tabGhost, m.groupGhost = nil, nil
 	m.rename = tabRenameState{}

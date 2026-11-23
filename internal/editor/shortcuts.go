@@ -15,6 +15,7 @@ const (
 	shortcutNewFile
 	shortcutNewWindow
 	shortcutOpenFile
+	shortcutOpenLink
 	shortcutOpenProject
 	shortcutSave
 	shortcutSaveAs
@@ -42,6 +43,7 @@ var editorShortcutSpecs = [editorShortcutCount]struct {
 	shortcutNewFile:       {"newFile", "新建文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'n'}},
 	shortcutNewWindow:     {"newWindow", "新建窗口", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'n'}},
 	shortcutOpenFile:      {"openFile", "打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'o'}},
+	shortcutOpenLink:      {"openLink", "打开链接文件", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'l'}},
 	shortcutOpenProject:   {"openProject", "添加项目", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'o'}},
 	shortcutSave:          {"save", "保存", keymap.Chord{Modifiers: ui.Ctrl, Char: 's'}},
 	shortcutSaveAs:        {"saveAs", "另存为", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 's'}},
@@ -173,6 +175,8 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 		m.newWindow()
 	case shortcutOpenFile:
 		m.open()
+	case shortcutOpenLink:
+		m.openLinkedFileDialog()
 	case shortcutOpenProject:
 		m.openFolder()
 	case shortcutFiles:

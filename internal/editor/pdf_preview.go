@@ -60,6 +60,7 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 	location := address + "?" + options.Encode()
 	view, err := m.webHost.Open(app.WebViewConfig{
 		URL: location, Ephemeral: true, BridgeMainFrameOnly: true, TopCornerRadius: 12,
+		LetterShortcut: m.openLinkWebShortcut,
 		Navigate: func(nav app.WebNavigation) bool {
 			page, _, _ := strings.Cut(nav.URL, "#")
 			return page == location

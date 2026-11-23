@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -94,9 +95,10 @@ type windowSession struct {
 const editorSessionVersion = 1
 
 type savedSession struct {
-	Version int
-	Windows []windowSession
-	History []recentPath
+	Version         int
+	Windows         []windowSession
+	History         []recentPath
+	SeparateWindows bool `json:",omitempty"` // 旧版未标记的额外窗口可能来自 ZIP 导入。
 }
 type sessionStore struct {
 	directory           string
@@ -154,16 +156,36 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		store.history = store.history[:30]
 	}
 	preferences, _ := readApplicationPreferences(directory)
+	merged := false
 	for _, state := range saved.Windows {
 		m := newEditorApp()
 		m.editorPrefs = preferences.Editor
 		m.keyBindings = preferences.Shortcuts
 		m.store, m.dataDirectory = store, directory
+		if len(store.windows) > 0 && !saved.SeparateWindows {
+			conversations := state.AI
+			state.AI = nil
+			m.restoreSession(state)
+			main := store.windows[0]
+			active := main.mergeRestoredWindow(m, conversations)
+			if main.active == nil {
+				main.activate(active)
+			}
+			merged = true
+			continue
+		}
 		m.restoreSession(state)
 		if recovered {
 			m.status = "主会话记录损坏，已从上一份备份恢复"
 		}
 		store.windows = append(store.windows, m)
+	}
+	if merged {
+		main := store.windows[0]
+		main.sortPinnedTabs()
+		if !recovered {
+			main.status = "已将旧会话的文件和项目恢复到当前窗口"
+		}
 	}
 	return store, nil
 }
@@ -281,6 +303,10 @@ func restorePane(p *editorPane, state paneSession) {
 }
 
 func (m *editorApp) restoreSession(state windowSession) {
+	_ = m.restoreSessionWithProgress(context.Background(), state, nil)
+}
+
+func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state windowSession, restoredTab func()) error {
 	m.tabs, m.active = nil, nil
 	m.setLightMode(state.Light)
 	m.showFiles, m.showOutline = state.ShowFiles, state.ShowOutline
@@ -305,6 +331,9 @@ func (m *editorApp) restoreSession(state windowSession) {
 		m.nextGroupID = max(m.nextGroupID, group.ID)
 	}
 	for _, item := range state.Tabs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if item.SavedMatchesSource {
 			item.Saved = item.Source.Content
 		}
@@ -395,7 +424,7 @@ func (m *editorApp) restoreSession(state windowSession) {
 			tab.wrapOverride = true
 			tab.setWrap(item.Source.Wrap)
 		}
-		if previewKind != "" {
+		if previewKind != "" && item.Office == nil {
 			preview, err := readDocumentPreview(item.Path)
 			if err != nil {
 				issues++
@@ -424,6 +453,9 @@ func (m *editorApp) restoreSession(state windowSession) {
 		tab.search.options, tab.search.wrap, tab.search.bounds = options, item.SearchWrap, item.SearchBounds
 		tab.search.open = item.SearchOpen && !tab.readOnlyPreview() && item.Office == nil
 		tab.search.refresh()
+		if restoredTab != nil {
+			restoredTab()
+		}
 	}
 	if state.Active >= 0 && len(m.tabs) > 0 {
 		m.activate(m.tabs[min(state.Active, len(m.tabs)-1)])
@@ -434,12 +466,19 @@ func (m *editorApp) restoreSession(state windowSession) {
 		m.active.search.focus = true
 		m.active.source.focus = false
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	issues += m.restoreProjects(state)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.restoreAI(state.AI)
 	m.status = "已恢复上次会话"
 	if issues > 0 {
 		m.status = fmt.Sprintf("已恢复会话；%d 个文件或目录暂时无法读取，文本副本已保留", issues)
 	}
+	return nil
 }
 
 func (m *editorApp) restoreProjects(state windowSession) int {
@@ -481,7 +520,9 @@ func (m *editorApp) restoreProjects(state windowSession) int {
 
 func (store *sessionStore) capture() (savedSession, uint64) {
 	store.generation++
-	saved := savedSession{Version: editorSessionVersion, History: append([]recentPath(nil), store.history...)}
+	saved := savedSession{
+		Version: editorSessionVersion, History: slices.Clone(store.history), SeparateWindows: len(store.windows) > 1,
+	}
 	for _, m := range store.windows {
 		saved.Windows = append(saved.Windows, m.snapshotSession())
 	}

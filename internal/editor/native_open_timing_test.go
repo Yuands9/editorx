@@ -48,13 +48,16 @@ func TestNativeOpenTiming(t *testing.T) {
 			return m.active.office.ready, m.active.office.errorText
 		}},
 		{"Word", func() { m.load(word) }, func() (bool, string) {
+			if preview := m.active.preview; preview != nil {
+				return preview.ready, preview.issue
+			}
 			return m.active.office.ready, m.active.office.errorText
 		}},
 		{"PDF", func() { m.load(pdf) }, func() (bool, string) {
 			return m.active.preview.ready, m.active.preview.issue
 		}},
 		{"PowerShell", func() { m.openLocalShell(directory) }, func() (bool, string) {
-			return m.tools.terminal.viewReady && m.tools.terminal.process != nil, m.tools.terminal.issue
+			return m.tools.terminal.viewReady.Load() && m.tools.terminal.process != nil, m.tools.terminal.issue
 		}},
 		{"Git", func() { m.openProjectGit(directory) }, func() (bool, string) {
 			return m.tools.git.request == nil && m.tools.git.snapshot.root != "", m.tools.git.issue

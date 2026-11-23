@@ -48,16 +48,6 @@ func (t *editorTab) isPinned() bool {
 	return t.pinned || (t.group != nil && t.group.Pinned)
 }
 
-func (t *editorTab) pinnedCloseHint() string {
-	if t.group != nil && t.group.Pinned {
-		if t.pinned {
-			return "请先取消固定标签和分组"
-		}
-		return "请先取消固定分组"
-	}
-	return "请先取消固定标签"
-}
-
 // 分组作为整体排序，组员单独固定时仍留在原组内。
 func (t *editorTab) pinnedInTabStrip() bool {
 	if t.group != nil {
@@ -255,7 +245,7 @@ func (m *editorApp) toggleTabGroup(group *tabGroup) {
 func (m *editorApp) closeTabGroup(group *tabGroup) {
 	first, end := m.groupTabs(group)
 	if first >= 0 {
-		m.closeTabs(slices.Clone(m.tabs[first:end]))
+		m.closeTabs(slices.Clone(m.tabs[first:end]), false)
 	}
 }
 
@@ -291,13 +281,7 @@ func (m *editorApp) groupContextMenu(c ui.C, target ui.Box, group *tabGroup) {
 				m.tabReveal = true
 			})
 		}
-		first, end := m.groupTabs(group)
-		members := m.tabs[first:end]
-		closeLabel := "关闭整个分组"
-		if !group.Pinned && slices.ContainsFunc(members, (*editorTab).isPinned) {
-			closeLabel = "关闭分组内未固定标签"
-		}
-		if menu.Item(closeLabel).Icon(closeIcon).Disabled(!hasClosableTab(members)).Clicked() {
+		if menu.Item("关闭整个分组").Icon(closeIcon).Clicked() {
 			c.After(func() { m.closeTabGroup(group) })
 		}
 	})

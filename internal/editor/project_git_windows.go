@@ -93,6 +93,17 @@ func runGitCommand(ctx context.Context, git, directory string, args ...string) (
 	return stdout.String(), nil
 }
 
+func gitRepositoryRoot(ctx context.Context, git, directory string) (string, error) {
+	root, err := runGitCommand(ctx, git, directory, "rev-parse", "--show-toplevel")
+	if err != nil {
+		if strings.Contains(err.Error(), "not a git repository") {
+			return "", nil
+		}
+		return "", err
+	}
+	return filepath.Clean(strings.TrimSpace(root)), nil
+}
+
 func readGitStatus(ctx context.Context, git, directory string) (gitStatus, error) {
 	var status gitStatus
 	ctx, cancel := context.WithCancel(ctx)
@@ -108,15 +119,17 @@ func readGitStatus(ctx context.Context, git, directory string) (gitStatus, error
 		changes <- statusOutput{text: output, err: err}
 	}()
 
-	root, err := runGitCommand(ctx, git, directory, "rev-parse", "--show-toplevel")
-	if err != nil {
-		if strings.Contains(err.Error(), "not a git repository") {
-			return status, nil
-		}
+	remotes := make(chan statusOutput, 1)
+	go func() {
+		output, err := runGitCommand(ctx, git, directory, "remote")
+		remotes <- statusOutput{text: output, err: err}
+	}()
+
+	root, err := gitRepositoryRoot(ctx, git, directory)
+	if err != nil || root == "" {
 		return status, err
 	}
-	status.root = filepath.Clean(strings.TrimSpace(root))
-	remote, remoteErr := runGitCommand(ctx, git, status.root, "remote")
+	status.root = root
 	output := <-changes
 	if output.err != nil {
 		return status, output.err
@@ -141,10 +154,11 @@ func readGitStatus(ctx context.Context, git, directory string) (gitStatus, error
 		}
 		status.changes = append(status.changes, change)
 	}
-	if remoteErr != nil {
-		return status, remoteErr
+	remote := <-remotes
+	if remote.err != nil {
+		return status, remote.err
 	}
-	status.remotes = strings.Fields(remote)
+	status.remotes = strings.Fields(remote.text)
 	return status, nil
 }
 
@@ -165,7 +179,11 @@ func runProjectGit(ctx context.Context, directory string, action gitAction, inpu
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	result.status, err = readGitStatus(ctx, git, directory)
+	if action == gitRefresh || action == gitPull || action == gitPush {
+		result.status, err = readGitStatus(ctx, git, directory)
+	} else {
+		result.status.root, err = gitRepositoryRoot(ctx, git, directory)
+	}
 	if err != nil {
 		result.fail = err.Error()
 		return result

@@ -133,7 +133,7 @@ func (m *editorApp) tabStrip(c ui.C, scroll ui.Box, blocked bool) {
 					group.afterDrop = ui.ID(c.Part("insert-after"))
 					if group != dragged.group {
 						headerOffset = tabSlide(c, group.hit, dragged, dropSlot, 2*index, dragWidth)
-						m.drawTabGroupHeader(c, group, members, width, headerOffset, hasClosableTab(m.tabs[index:end]), joining, blocked)
+						m.drawTabGroupHeader(c, group, members, width, headerOffset, joining, blocked)
 					}
 				})
 				if group != dragged.group {
@@ -294,12 +294,9 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 				c.After(func() { m.togglePin(tab) })
 			}
 			closeHint := m.shortcutHint("关闭", shortcutCloseTab)
-			if tab.isPinned() {
-				closeHint = tab.pinnedCloseHint()
-			}
 			closeButton := ui.Button(c, "关闭 "+title).Icon(closeIcon).IconOnly().Ghost().
 				Size(tabStripButtonSize, tabStripButtonSize).Shrink(0).ButtonRecipe(buttonRecipe).
-				Tooltip(closeHint).Disabled(blocked || tab.isPinned())
+				Tooltip(closeHint).Disabled(blocked)
 			showClose, hoveringControl := tabStripCloseVisible(c.Canvas(), tab.tabHit, pin.N().ID, closeButton.N().ID, blocked || m.tabDrag.Dragging())
 			if hoveringControl {
 				target.Background(m.theme.Hover)
@@ -335,7 +332,7 @@ func tabGroupHeaderWidth(canvas *gfx.Canvas, group *tabGroup, members int) float
 	return min(tabStripMaxGroupWidth, float32(math.Ceil(float64(width))))
 }
 
-func (m *editorApp) drawTabGroupHeader(c ui.C, group *tabGroup, members int, width, dx float32, closable, joining, blocked bool) {
+func (m *editorApp) drawTabGroupHeader(c ui.C, group *tabGroup, members int, width, dx float32, joining, blocked bool) {
 	header := ui.Row(c).Absolute().Left(tabStripInset+dx).Top(tabStripItemTop).Size(width-2*tabStripInset, tabStripItemSize).
 		PadLeft(tabStripPaddingLeft).PadRight(tabStripPaddingRight).Gap(tabStripGap).Items(ui.Center)
 	if joining {
@@ -376,15 +373,9 @@ func (m *editorApp) drawTabGroupHeader(c ui.C, group *tabGroup, members int, wid
 		if pin.Clicked() {
 			c.After(func() { m.toggleGroupPin(group) })
 		}
-		closeHint := "关闭分组"
-		if group.Pinned {
-			closeHint = "请先取消固定分组"
-		} else if !closable {
-			closeHint = "分组中的标签均已固定"
-		}
 		closeButton := ui.Button(c, "关闭分组 "+group.Name).Icon(closeIcon).IconOnly().Ghost().
 			Size(tabStripButtonSize, tabStripButtonSize).Shrink(0).ButtonRecipe(groupedTabButtonRecipe).
-			Tooltip(closeHint).Disabled(blocked || !closable)
+			Tooltip("关闭分组").Disabled(blocked)
 		showClose, _ := tabStripCloseVisible(c.Canvas(), group.hit, pin.N().ID, closeButton.N().ID, blocked || m.tabDrag.Dragging())
 		if !showClose {
 			closeButton.Opacity(0)

@@ -245,7 +245,8 @@ func (m *editorApp) openOffice(t *editorTab) {
 		address += "?theme=light"
 	}
 	view, err := m.webHost.Open(app.WebViewConfig{URL: address, Ephemeral: true, TopCornerRadius: 12, BridgeMainFrameOnly: true,
-		Navigate: func(n app.WebNavigation) bool { return strings.HasPrefix(n.URL, office.url) },
+		LetterShortcut: m.openLinkWebShortcut,
+		Navigate:       func(n app.WebNavigation) bool { return strings.HasPrefix(n.URL, office.url) },
 		OnMessage: func(raw string) {
 			defer m.invalidator.Invalidate()
 			var message struct {
