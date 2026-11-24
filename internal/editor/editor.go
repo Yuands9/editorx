@@ -40,7 +40,6 @@ type editorTab struct {
 	jsonAction        string
 	jsonIndent        int
 	jsonMenu          bool
-	resultMenu        bool
 	jsonCompare       bool
 	comparison        *editorPane
 	diffMenus         [2]bool
@@ -58,7 +57,6 @@ type editorTab struct {
 	resultSource      string
 	resultOutput      string
 	resultDraft       bool
-	resultAction      string
 	resultError       string
 	resultReady       bool
 	resultKind        string
@@ -452,6 +450,7 @@ func (m *editorApp) removeTab(t *editorTab) {
 		m.results = searchResults{}
 		m.status = "就绪"
 	}
+	m.releaseClosedTabText(t)
 }
 
 func (m *editorApp) requestClose(allow func()) {

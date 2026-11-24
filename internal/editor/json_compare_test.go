@@ -19,12 +19,28 @@ func TestJSONComparisonToolsTargetTheirOwnSide(t *testing.T) {
 	if err := s.Resize(900, 560); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.Locate("button:右侧操作"); err == nil {
+		t.Fatal("the result pane displayed the comparison menu")
+	}
 	click := func(labels ...string) {
 		t.Helper()
 		for _, label := range labels {
 			if err := s.ClickLabel(label); err != nil {
 				t.Fatalf("%s: %v", label, err)
 			}
+		}
+	}
+	clickMenuLabel := func(label string) {
+		t.Helper()
+		trigger, err := s.Locate("button:" + label)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Click(trigger.Bounds.X+14, trigger.Bounds.Y+trigger.Bounds.Height/2); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Locate("menuitem:格式化"); err != nil {
+			t.Fatalf("clicking the text of %s did not open its menu: %v", label, err)
 		}
 	}
 	click("对比")
@@ -36,25 +52,35 @@ func TestJSONComparisonToolsTargetTheirOwnSide(t *testing.T) {
 		hit, err := s.Locate("2 空格")
 		t.Fatalf("compare indentation control ignored click: indent=%d, hit=%+v, error=%v", tab.jsonIndent, hit, err)
 	}
-	click("右侧 JSON 菜单", "menuitem:格式化")
+	clickMenuLabel("右侧操作")
+	click("menuitem:格式化")
 	wantRight, _, _ := transformJSON(right, "格式化", 2)
 	if tab.source.text.String() != left || tab.comparison.text.String() != wantRight || !tab.jsonCompare {
 		t.Fatalf("right format left=%q right=%q compare=%t want=%q status=%q error=%q", tab.source.text.String(), tab.comparison.text.String(), tab.jsonCompare, wantRight, m.status, m.errorText)
 	}
-	click("格式化左侧")
+	clickMenuLabel("左侧操作")
+	click("menuitem:格式化")
 	wantLeft, _, _ := transformJSON(left, "格式化", 2)
 	if tab.source.text.String() != wantLeft || tab.comparison.text.String() != wantRight || !tab.jsonCompare || len(tab.differences) != 2 {
-		t.Fatal("left shortcut changed the other input or structural differences")
+		t.Fatal("left format changed the other input or structural differences")
 	}
-	click("右侧 JSON 菜单", "menuitem:压缩", "左侧 JSON 菜单", "menuitem:键排序")
+	click("button:右侧操作", "menuitem:压缩", "button:左侧操作", "menuitem:键排序")
 	sorted, _, _ := transformJSON(left, "键排序", 2)
 	if !tab.jsonCompare || tab.source.text.String() != sorted || tab.comparison.text.String() != right {
 		t.Fatal("pane menus targeted the wrong input")
 	}
-	click("右侧 JSON 菜单", "menuitem:转 XML")
+	click("button:右侧操作", "menuitem:转 XML")
 	xml, _, _ := transformJSON(right, "转 XML", 2)
 	if m.active == tab || m.active.source.text.String() != xml || tab.source.text.String() != sorted || tab.comparison.text.String() != right || !tab.jsonCompare {
 		t.Fatal("right conversion did not produce a separate tab from the correct input")
+	}
+	m.activate(tab)
+	if err := s.Frame(); err != nil {
+		t.Fatal(err)
+	}
+	click("对比")
+	if _, err := s.Locate("button:右侧操作"); tab.jsonCompare || err == nil {
+		t.Fatal("the comparison menu remained after leaving comparison")
 	}
 }
 

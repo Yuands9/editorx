@@ -307,14 +307,14 @@ func (m *editorApp) copyResult(t *editorTab) {
 	m.status = "已复制完整结果"
 }
 
-func (t *editorTab) jsonResultApplyLabel() string {
+func (t *editorTab) jsonResultApplyLabel(resultMatchesSource bool) string {
 	if t.resultError != "" || t.resultKind == "" {
 		return ""
 	}
 	if t.resultKind != "JSON" {
 		return "在新标签打开结果"
 	}
-	if t.result.text.CommittedString() == t.source.text.CommittedString() {
+	if resultMatchesSource {
 		return ""
 	}
 	return "应用到原文"
@@ -341,7 +341,7 @@ func (m *editorApp) applyResult(t *editorTab) {
 		// 写回后恢复同步，避免对刚写入的 JSON 再转换一次。
 		if !t.jsonLiveResult() || t.resultDraft {
 			t.jsonAction, t.resultDraft, t.resultReady = "格式化", false, false
-			t.resultAction, t.resultOutput = "", value
+			t.resultOutput = value
 			t.updateResult()
 			t.result.text.ClearHistory()
 		}

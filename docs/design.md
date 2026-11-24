@@ -63,9 +63,9 @@ EditorX 是一个 Windows 多格式文本编辑器。Go 和 Viva 负责窗口、
 
 ## 发布范围
 
-EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。公开发行文件位于 [GitHub Releases](https://github.com/Yuands9/editorx/releases/latest)，提供 Windows x64 免安装 EXE 和第三方许可声明。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
+EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 和前端源码、依赖锁、vendored Go 源码、补丁、文档和示例。公开发行文件位于 [GitHub Releases](https://github.com/Yuands9/editorx/releases/latest)，提供 Windows x64 免安装 EXE。构建输出、生成的 Web 资源、`node_modules`、工具缓存及会话数据由本地流程管理。
 
-公开版使用 `-PublicRelease` 构建，使用独立的 Office 前端资源和 `editorx_public` 标签。发布时将版本标签指向对应源码，并上传带版本号的 EXE 和内容相同的 `EditorX.exe`。带版本号的下载文件名有助于 Windows 刷新图标缓存。发布前执行公开版测试和 Excel、Word 预览、PDF 的原生检查。
+公开版使用 `-PublicRelease` 构建，使用独立的 Office 前端资源和 `editorx_public` 标签。发布时将版本标签指向对应源码，只上传 `EditorX.exe`。GitHub 为该标签自动生成 ZIP 和 TAR.GZ 源码包。EXE 内嵌汇总的第三方许可文本 `THIRD-PARTY-NOTICES.txt`，构建目录也提供明文副本。发布前执行公开版测试和 Excel、Word 预览、PDF 的原生检查。
 
 客户端读取固定 GitHub 最新稳定版 API，界面没有更新源选择。复用现有 5 秒维护节拍，启动延后 10 秒，后续间隔 6 小时；`update-state.json` 保存最近检查时间、ETag、发布说明与跳过的版本。启动读取缓存并校验版本、下载路径和摘要，条件请求收到 304 时复用说明。应用偏好 `disableAutoUpdate` 缺省为 false，关闭后停止自动检查及进行中的自动请求，手动检查仍可用。自动失败静默，手动失败显示原因。
 

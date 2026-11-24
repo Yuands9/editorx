@@ -244,6 +244,30 @@ func (cache *Cache[V]) drop(value V) {
 	}
 }
 
+// TrimLargeText releases entries with long keys until their combined text fits the
+// byte budget, keeping at least keepRecent long entries when available.
+func (cache *Cache[V]) TrimLargeText(minBytes, budget, keepRecent int) {
+	total, count := 0, 0
+	for key := range cache.index {
+		if len(key.value) >= minBytes {
+			total += len(key.value)
+			count++
+		}
+	}
+	for _, segment := range [...]queue{cache.main, cache.protected, cache.window} {
+		for index := segment.tail; index != 0 && total > budget && count > keepRecent; {
+			entry := &cache.entries[index]
+			previous := entry.prev
+			if size := len(entry.key.value); size >= minBytes {
+				total -= size
+				count--
+				cache.evict(index)
+			}
+			index = previous
+		}
+	}
+}
+
 // Clear releases every entry: the font set or the display scale changed and no
 // shaped line is valid.
 func (cache *Cache[V]) Clear() {

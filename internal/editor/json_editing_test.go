@@ -183,8 +183,8 @@ func TestJSONWorkbenchPastesEditsAndCopiesBothPanes(t *testing.T) {
 	paste("JSON 处理结果", extraEscapes)
 	original := formatJSONPaste(extraEscapes, 2)
 	expectBoth(original)
-	click("右侧 JSON 菜单")
-	click("去转义")
+	click("button:更多")
+	click("menuitem:去转义")
 	unescaped := tab.result.text.String()
 	if !strings.Contains(unescaped, `"bizContent": {`) || !strings.Contains(unescaped, `"body": {`) ||
 		tab.source.text.String() != original {
@@ -198,86 +198,40 @@ func TestJSONWorkbenchPastesEditsAndCopiesBothPanes(t *testing.T) {
 		restoredTab.source.text.String() != original {
 		t.Fatal("the current conversion preview did not survive session restore")
 	}
-	click("右侧 JSON 菜单")
-	click("menuitem:应用到原文")
+	click("button:应用到原文")
 	expectBoth(unescaped)
 }
 
-func TestJSONResultMenuShowsCurrentMode(t *testing.T) {
-	m := newEditorApp()
-	tab := m.addTab(document{saved: `{"body":"{\"name\":\"示例\"}"}`}, "预览.json")
-	s := openTestSession(t, m)
-	original := tab.source.text.CommittedString()
-	formatted := tab.result.text.CommittedString()
-	click := func(label string) {
-		t.Helper()
-		if err := s.ClickLabel(label); err != nil {
-			t.Fatal(err)
-		}
-	}
-	lookUp := func(label string) gfx.Hit {
-		t.Helper()
-		hit, err := s.Locate("menuitem:" + label)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return hit
-	}
-	highlighted := func(hit gfx.Hit) bool {
-		fill := m.theme.Selection
-		for _, primitive := range s.Snapshot().Primitives {
-			if primitive.Layer == hit.Layer && primitive.Bounds == hit.Bounds &&
-				primitive.Color.Red == fill.Red && primitive.Color.Green == fill.Green && primitive.Color.Blue == fill.Blue {
-				return true
-			}
-		}
-		return false
-	}
-	if _, err := s.Locate("button:应用"); err == nil {
-		t.Fatal("the redundant apply arrow is still in the toolbar")
-	}
-	click("右侧 JSON 菜单")
-	format, unescape := lookUp("格式化"), lookUp("去转义")
-	if err := s.Move(unescape.Bounds.X+35, unescape.Bounds.Y+unescape.Bounds.Height/2); err != nil {
+func TestJSONRestoresDraftFromResultMenu(t *testing.T) {
+	const oldSession = `{
+		"Tabs": [{
+			"Name": "预览.json",
+			"Source": {"Content": "{\"body\":\"{\\\"name\\\":\\\"示例\\\"}\"}"},
+			"Result": {"Content": "{\"body\":{\"name\":\"示例\"}}"},
+			"JSONAction": "转义",
+			"JSONResultKind": "JSON",
+			"JSONResultAction": "去转义"
+		}]
+	}`
+	var state windowSession
+	if err := json.Unmarshal([]byte(oldSession), &state); err != nil {
 		t.Fatal(err)
 	}
-	if !format.Selected || unescape.Selected || !highlighted(format) || highlighted(unescape) {
-		t.Fatal("current mode should remain highlighted when another item is hovered")
+	m := newEditorApp()
+	m.restoreSession(state)
+	tab := m.active
+	const source = `{"body":"{\"name\":\"示例\"}"}`
+	const draft = `{"body":{"name":"示例"}}`
+	if tab == nil || !tab.resultDraft || tab.resultKind != "JSON" ||
+		tab.source.text.String() != source || tab.result.text.String() != draft {
+		t.Fatal("restoring a right-side draft lost or changed either pane")
 	}
-	lookUp("应用到原文")
-
-	click("menuitem:去转义")
-	if tab.source.text.CommittedString() != original || tab.result.text.CommittedString() == original {
-		t.Fatal("the preview should only change the right pane")
+	s := openTestSession(t, m)
+	if err := s.ClickLabel("button:应用到原文"); err != nil {
+		t.Fatal(err)
 	}
-	click("右侧 JSON 菜单")
-	if !lookUp("去转义").Selected || lookUp("格式化").Selected {
-		t.Fatal("selecting the preview did not update the menu indicator")
-	}
-	lookUp("应用到原文")
-	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
-		if err := s.Screenshot(filepath.Join(preview, "json-result-menu.png")); err != nil {
-			t.Fatal(err)
-		}
-	}
-	click("menuitem:去转义")
-	click("右侧 JSON 菜单")
-	if !lookUp("格式化").Selected || lookUp("去转义").Selected || tab.result.text.CommittedString() != formatted {
-		t.Fatal("canceling the preview did not restore the default mode")
-	}
-
-	click("menuitem:转义")
-	click("右侧 JSON 菜单")
-	click("menuitem:去转义")
-	click("右侧 JSON 菜单")
-	if !lookUp("去转义").Selected || lookUp("转义").Selected || !tab.resultDraft ||
-		tab.source.text.CommittedString() != original || tab.result.text.CommittedString() != formatted {
-		t.Fatal("the menu did not reflect a transformation applied to the right pane only")
-	}
-	restored := newEditorApp()
-	restored.restoreSession(m.snapshotSession())
-	if restored.active == nil || restored.active.resultAction != "去转义" {
-		t.Fatal("the right pane's transformation indicator was lost on restore")
+	if tab.resultDraft || tab.source.text.String() != draft {
+		t.Fatal("applying a restored draft did not update the source")
 	}
 }
 

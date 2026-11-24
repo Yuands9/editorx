@@ -95,6 +95,7 @@ func (m *editorApp) closeLocalShell(shell *localShell) {
 		m.tools.terminal = nil
 		if len(m.tools.terminals) > 0 {
 			m.tools.terminal = m.tools.terminals[min(index, len(m.tools.terminals)-1)]
+			m.tools.terminal.wantFocus = true
 		}
 	}
 	if shell.process != nil {
@@ -212,6 +213,7 @@ func (m *editorApp) handleShellMessage(shell *localShell, raw string) {
 			shell.viewReady.Store(true)
 			shell.view.Eval(previewThemeJS(m.light))
 			shell.flushOutput()
+			m.invalidator.Invalidate()
 		}
 		size := terminalSize{cols: message.Cols, rows: message.Rows}
 		if size.cols > 0 && size.rows > 0 && size != shell.size {
@@ -262,9 +264,15 @@ func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 	}
 	if !blocked {
 		ui.Slot(c).FillWidth().Grow(1).MinHeight(0).NativeView(shell.view.ID())
-		if shell.wantFocus {
+		if shell.wantFocus && shell.viewReady.Load() {
 			shell.wantFocus = false
-			c.After(shell.view.Focus)
+			view := shell.view
+			// The native host applies the view's visibility after this render.
+			m.post(func() {
+				if m.tools.active == "终端" && m.tools.terminal == shell && shell.view == view && !m.appSettings.open && !m.interactionBlocked() {
+					view.Focus()
+				}
+			})
 		}
 	}
 }

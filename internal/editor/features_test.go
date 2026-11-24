@@ -223,10 +223,7 @@ func TestJSONPanelButtonsAndEditableResult(t *testing.T) {
 		t.Fatalf("clipboard = %q", clipboard)
 	}
 	original := tab.source.text.String()
-	if err := s.ClickLabel("右侧 JSON 菜单"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ClickLabel("menuitem:应用到原文"); err != nil {
+	if err := s.ClickLabel("button:应用到原文"); err != nil {
 		t.Fatal(err)
 	}
 	if tab.source.text.String() == original || !tab.source.text.Undo() || tab.source.text.String() != original {
@@ -281,10 +278,7 @@ func TestJSONPanelButtonsAndEditableResult(t *testing.T) {
 	if tab.resultKind != "XML" || !strings.HasPrefix(tab.result.text.String(), "<?xml") {
 		t.Fatal("XML UI failed")
 	}
-	if err := s.ClickLabel("右侧 JSON 菜单"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ClickLabel("menuitem:在新标签打开结果"); err != nil {
+	if err := s.ClickLabel("button:在新标签打开结果"); err != nil {
 		t.Fatal(err)
 	}
 	if m.active == tab || m.active.format() != "XML" || tab.source.text.String() != updated {

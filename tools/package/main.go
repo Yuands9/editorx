@@ -29,7 +29,7 @@ func packageExecutable() error {
 	if err != nil {
 		return err
 	}
-	executable, err = winres.Patch(executable, icon, winres.Info{Name: "EditorX", Description: "EditorX 多格式文本编辑器", Version: version.Number, File: "EditorX.exe"})
+	executable, err = winres.Patch(executable, icon, winres.Info{Name: "EditorX", Description: "EditorX", Version: version.Number, File: "EditorX.exe"})
 	if err != nil {
 		return err
 	}

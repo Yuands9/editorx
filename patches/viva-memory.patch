@@ -1,0 +1,336 @@
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/textengine_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/textengine_windows.go
+index 329f286..b99f710 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/textengine_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/textengine_windows.go
+@@ -48,6 +48,11 @@ var writeTextFormat1IID = guid{0x5f174b49, 0x0d8b, 0x4cfb, [8]byte{0x8b, 0xca, 0
+ // textEngineCapacity is the line limit of each cache segment (twice as many are kept).
+ const textEngineCapacity = 512
+ 
++const (
++	longLineMinBytes   = 64 << 10
++	longLineTextBudget = 8 << 20
++)
++
+ // hitMetrics is DWRITE_HIT_TEST_METRICS.
+ type hitMetrics struct {
+ 	Position, Length uint32
+@@ -79,8 +84,9 @@ type lineTables struct {
+ 	// next, caret, boxLeft and boxWidth are indexed by the byte offset of a cluster's
+ 	// start: where the next cluster starts, the x of the caret before it, and the
+ 	// extent of its glyphs.
+-	next              []int32
+-	caret             []float32
++	next  []int32
++	caret []float32
++	// Left-to-right boxes are derived from adjacent carets.
+ 	boxLeft, boxWidth []float32
+ 	// bidi says the line has right-to-left text: its carets are not in logical order.
+ 	bidi bool
+@@ -295,6 +301,17 @@ func (engine *textEngine) forget() {
+ 	engine.generation.Add(1)
+ }
+ 
++// TrimLongTextLayouts drops expensive layouts after closing a large document.
++// Normal-size lines stay cached and the next frame can rebuild any active long line.
++func (engine *textEngine) TrimLongTextLayouts() {
++	engine.mu.Lock()
++	defer engine.mu.Unlock()
++	engine.cache.TrimLargeText(longLineMinBytes, 0, 0)
++	if engine.italicCache != nil {
++		engine.italicCache.TrimLargeText(longLineMinBytes, 0, 0)
++	}
++}
++
+ // line is the shaped line of value, creating and caching it. The caller holds mu.
+ func (engine *textEngine) line(value string, size, weight float32) (*shapedLine, error) {
+ 	return engine.lineStyle(value, size, weight, false)
+@@ -320,6 +337,10 @@ func (engine *textEngine) lineStyle(value string, size, weight float32, italic b
+ 		return nil, err
+ 	}
+ 	cache.Put(key, line)
++	if len(value) >= longLineMinBytes {
++		// Keep the layouts of both comparison panes warm at logical and device sizes.
++		cache.TrimLargeText(longLineMinBytes, longLineTextBudget, 4)
++	}
+ 	return line, nil
+ }
+ 
+@@ -383,34 +404,36 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
+ 	}
+ 	n := len(value)
+ 	tables := &lineTables{
+-		cluster:  make([]int32, n+1),
+-		next:     make([]int32, n+1),
+-		caret:    make([]float32, n+1),
+-		boxLeft:  make([]float32, n+1),
+-		boxWidth: make([]float32, n+1),
+-		bidi:     bidi.NeedsBidi(value),
+-	}
+-	// The byte offset of every UTF-16 unit, and back: DirectWrite counts in UTF-16.
+-	units := 0
+-	for _, r := range value {
+-		units += utf16.RuneLen(r)
+-	}
+-	byteAt := make([]int32, units+1)
+-	unitAt := make([]int32, n+1)
+-	unit := 0
+-	for at, r := range value {
+-		unitAt[at] = int32(unit)
+-		byteAt[unit] = int32(at)
+-		width := utf16.RuneLen(r)
+-		if width < 1 {
+-			width = 1
++		cluster: make([]int32, n+1),
++		next:    make([]int32, n+1),
++		caret:   make([]float32, n+1),
++		bidi:    bidi.NeedsBidi(value),
++	}
++	if tables.bidi {
++		tables.boxLeft = make([]float32, n+1)
++		tables.boxWidth = make([]float32, n+1)
++	}
++	// DirectWrite counts UTF-16 units. ASCII byte offsets already match them.
++	units := n
++	var byteAt, unitAt []int32
++	if utf8.RuneCountInString(value) != n {
++		units = 0
++		for _, r := range value {
++			units += utf16.RuneLen(r)
++		}
++		byteAt = make([]int32, units+1)
++		unitAt = make([]int32, n+1)
++		unit := 0
++		for at, r := range value {
++			unitAt[at] = int32(unit)
++			byteAt[unit] = int32(at)
++			unit += utf16.RuneLen(r)
+ 		}
+-		unit += width
++		unitAt[n], byteAt[unit] = int32(unit), int32(n)
+ 	}
+-	unitAt[n], byteAt[unit] = int32(unit), int32(n)
+ 
+ 	for start := 0; start < n; {
+-		position := uint32(unitAt[start])
++		position := uint32(textTableOffset(unitAt, start))
+ 		var x, y float32
+ 		engine.hit = hitMetrics{}
+ 		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(position), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
+@@ -420,8 +443,10 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
+ 		// not believed, and the character is a cluster of its own.
+ 		end := nextRuneStart(value, start)
+ 		if engine.hit.Position == position && engine.hit.Length > 0 {
+-			if last := int(engine.hit.Position + engine.hit.Length); last <= units && byteAt[last] > int32(start) {
+-				end = int(byteAt[last])
++			if last := int(engine.hit.Position + engine.hit.Length); last <= units {
++				if at := textTableOffset(byteAt, last); at > start {
++					end = at
++				}
+ 			}
+ 		}
+ 		for at := start; at < end; at++ {
+@@ -436,21 +461,18 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
+ 		// The end of the line is the trailing edge of its last cluster.
+ 		last := int(tables.cluster[n-1])
+ 		var x, y float32
+-		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(unitAt[last]), 1, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
++		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(textTableOffset(unitAt, last)), 1, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
+ 			return fmt.Errorf("windows: hit test: %w", err)
+ 		}
+ 		tables.caret[n] = x - line.left
+ 	}
+-	for start := 0; start < n; start = int(tables.next[start]) {
++	for start := 0; tables.bidi && start < n; start = int(tables.next[start]) {
+ 		next := int(tables.next[start])
+-		if !tables.bidi {
+-			tables.boxLeft[start] = tables.caret[start]
+-			tables.boxWidth[start] = tables.caret[next] - tables.caret[start]
+-			continue
+-		}
+ 		// A right-to-left cluster's box is not between its carets in logical order.
+ 		var count uint32
+-		if err := hresult(comCall(line.layout, writeHitTestTextRange, uintptr(unitAt[start]), uintptr(unitAt[next]-unitAt[start]), 0, 0,
++		firstUnit := textTableOffset(unitAt, start)
++		lastUnit := textTableOffset(unitAt, next)
++		if err := hresult(comCall(line.layout, writeHitTestTextRange, uintptr(firstUnit), uintptr(lastUnit-firstUnit), 0, 0,
+ 			uintptr(unsafe.Pointer(&engine.ranges[0])), uintptr(len(engine.ranges)), uintptr(unsafe.Pointer(&count)))); err != nil && count == 0 {
+ 			return fmt.Errorf("windows: hit test range: %w", err)
+ 		}
+@@ -468,6 +490,13 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
+ 	return nil
+ }
+ 
++func textTableOffset(offsets []int32, value int) int {
++	if offsets == nil {
++		return value
++	}
++	return int(offsets[value])
++}
++
+ func nextRuneStart(value string, from int) int {
+ 	_, size := utf8.DecodeRuneInString(value[from:])
+ 	return from + max(size, 1)
+@@ -548,7 +577,10 @@ func (engine *textEngine) SelectionStyle(dst []gfx.TextSpan, value string, size,
+ 	const touching = 0.01
+ 	base := len(dst)
+ 	for at := start; at < end; at = int(tables.next[at]) {
+-		left, width := tables.boxLeft[at], tables.boxWidth[at]
++		left, width := tables.caret[at], tables.caret[tables.next[at]]-tables.caret[at]
++		if tables.bidi {
++			left, width = tables.boxLeft[at], tables.boxWidth[at]
++		}
+ 		dst = append(dst, gfx.TextSpan{X: left, Width: width})
+ 	}
+ 	// Order the pieces left to right and join the ones that touch: the boxes of a
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+index f0cb744..cd30b37 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_windows.go
+@@ -83,6 +83,7 @@ var folderIDDownloads = guid{0x374de290, 0x123f, 0x4565, [8]byte{0x91, 0x64, 0x3
+ 
+ // interfaceWebView4 is IID_ICoreWebView2_4: the interface that adds DownloadStarting to the view.
+ var interfaceWebView4 = guid{0x20d02d59, 0x6df2, 0x42dc, [8]byte{0xbd, 0x06, 0xf9, 0x8a, 0x69, 0x4b, 0x13, 0x02}}
++var interfaceWebView19 = guid{0x6921f954, 0x79b0, 0x437f, [8]byte{0xa9, 0x97, 0xc8, 0x58, 0x11, 0x89, 0x7c, 0x68}}
+ 
+ // webHost is the pages of one window.
+ type webHost struct {
+@@ -736,6 +737,19 @@ func (w *webHost) layoutAll(force bool) {
+ 	}
+ }
+ 
++func (page *windowsWeb) setMemoryTarget(level uintptr) {
++	if page.view == 0 {
++		return
++	}
++	var memoryView uintptr
++	status := comCall(page.view, 0, uintptr(unsafe.Pointer(&interfaceWebView19)), uintptr(unsafe.Pointer(&memoryView)))
++	if int32(status) < 0 || memoryView == 0 {
++		return
++	}
++	defer release(&memoryView)
++	comCall(memoryView, viewPutMemoryUsageTarget, level)
++}
++
+ // layout puts a page where the application declared it, with a hole in it for what Viva draws over it.
+ func (w *webHost) layout(page *windowsWeb, force bool) {
+ 	if page.closed || page.window == 0 || page.controller == 0 {
+@@ -756,6 +770,7 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
+ 			}
+ 			showWindow.Call(page.window, swHide)
+ 			comCall(page.controller, controllerPutVisible, 0)
++			page.setMemoryTarget(webMemoryLow)
+ 			page.shown = false
+ 		}
+ 		return
+@@ -770,6 +785,9 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
+ 	if !force && page.shown && page.device == device && sameRects(page.cutsSet, w.cuts) && slices.Equal(page.tooltipCutsSet, w.tooltipCuts) {
+ 		return
+ 	}
++	if !page.shown {
++		page.setMemoryTarget(webMemoryNormal)
++	}
+ 	page.device, page.cutsSet, page.shown = device, append(page.cutsSet[:0], w.cuts...), true
+ 	page.tooltipCutsSet = append(page.tooltipCutsSet[:0], w.tooltipCuts...)
+ 	width, height := device.Right-device.Left, device.Bottom-device.Top
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+index 7617449..44c3132 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/webview2_windows.go
+@@ -445,7 +445,9 @@ const (
+ 	viewAddWebResourceReq     = 55
+ 	viewAddResourceFilter     = 57
+ 	// ICoreWebView2_4 adds DownloadStarting after every ICoreWebView2_3 method.
+-	viewAddDownloadStarting   = 75
++	viewAddDownloadStarting = 75
++	// ICoreWebView2_19 adds the memory target in SDK 1.0.1823.32.
++	viewPutMemoryUsageTarget  = 120
+ 	messageTryGetString       = 5
+ 	startingGetURI            = 3
+ 	startingGetUserGesture    = 4
+@@ -469,6 +471,11 @@ const (
+ 	resourceContextAll    = 0
+ )
+ 
++const (
++	webMemoryNormal = iota
++	webMemoryLow
++)
++
+ // iidEnvironment10 is ICoreWebView2Environment10, which offers the controller options an InPrivate
+ // page is made with. It comes from the WebView2 SDK 1.0.1210.39 and Runtime 101 (Edge 101); a
+ // runtime older than that does not answer for it.
+diff --git a/vendor/github.com/vivaui/viva/internal/textcache/textcache.go b/vendor/github.com/vivaui/viva/internal/textcache/textcache.go
+index 32fac0f..defef05 100644
+--- a/vendor/github.com/vivaui/viva/internal/textcache/textcache.go
++++ b/vendor/github.com/vivaui/viva/internal/textcache/textcache.go
+@@ -244,6 +244,30 @@ func (cache *Cache[V]) drop(value V) {
+ 	}
+ }
+ 
++// TrimLargeText releases entries with long keys until their combined text fits the
++// byte budget, keeping at least keepRecent long entries when available.
++func (cache *Cache[V]) TrimLargeText(minBytes, budget, keepRecent int) {
++	total, count := 0, 0
++	for key := range cache.index {
++		if len(key.value) >= minBytes {
++			total += len(key.value)
++			count++
++		}
++	}
++	for _, segment := range [...]queue{cache.main, cache.protected, cache.window} {
++		for index := segment.tail; index != 0 && total > budget && count > keepRecent; {
++			entry := &cache.entries[index]
++			previous := entry.prev
++			if size := len(entry.key.value); size >= minBytes {
++				total -= size
++				count--
++				cache.evict(index)
++			}
++			index = previous
++		}
++	}
++}
++
+ // Clear releases every entry: the font set or the display scale changed and no
+ // shaped line is valid.
+ func (cache *Cache[V]) Clear() {
+diff --git a/vendor/github.com/vivaui/viva/internal/textcache/textcache_test.go b/vendor/github.com/vivaui/viva/internal/textcache/textcache_test.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/vivaui/viva/internal/textcache/textcache_test.go
+@@ -0,0 +1,35 @@
++package textcache
++
++import "testing"
++
++func TestTrimLargeTextReleasesOldKeys(t *testing.T) {
++	var released []int
++	cache := New(2, func(value int) { released = append(released, value) })
++	short := Key{Value: "ui"}
++	old := Key{Value: "old long line"}
++	latest := Key{Value: "most recent long line"}
++	cache.Put(short, 1)
++	cache.Put(old, 2)
++	cache.Put(latest, 3)
++
++	cache.TrimLargeText(4, 1, 2)
++	if len(released) != 0 {
++		t.Fatalf("trimming released a visible pair: %v", released)
++	}
++	cache.TrimLargeText(4, len(latest.Value), 1)
++	if _, found := cache.Get(old); found || len(released) != 1 || released[0] != 2 {
++		t.Fatalf("old long line still held or released incorrectly: %v", released)
++	}
++	if _, found := cache.Get(latest); !found {
++		t.Fatal("trimming evicted the line being drawn")
++	}
++
++	cache.TrimLargeText(4, 0, 0)
++	if _, found := cache.Get(short); !found || cache.Len() != 1 || len(released) != 2 || released[1] != 3 {
++		t.Fatalf("unexpected entries after dropping long layouts: %d, releases %v", cache.Len(), released)
++	}
++	cache.Put(old, 4)
++	if value, found := cache.Get(old); !found || value != 4 {
++		t.Fatal("cache could not reuse a released entry")
++	}
++}

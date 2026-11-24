@@ -445,7 +445,9 @@ const (
 	viewAddWebResourceReq     = 55
 	viewAddResourceFilter     = 57
 	// ICoreWebView2_4 adds DownloadStarting after every ICoreWebView2_3 method.
-	viewAddDownloadStarting   = 75
+	viewAddDownloadStarting = 75
+	// ICoreWebView2_19 adds the memory target in SDK 1.0.1823.32.
+	viewPutMemoryUsageTarget  = 120
 	messageTryGetString       = 5
 	startingGetURI            = 3
 	startingGetUserGesture    = 4
@@ -467,6 +469,11 @@ const (
 	deferralComplete      = 3
 	resourceRequestGetURI = 3
 	resourceContextAll    = 0
+)
+
+const (
+	webMemoryNormal = iota
+	webMemoryLow
 )
 
 // iidEnvironment10 is ICoreWebView2Environment10, which offers the controller options an InPrivate

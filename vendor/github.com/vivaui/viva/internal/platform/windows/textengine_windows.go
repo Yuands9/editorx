@@ -48,6 +48,11 @@ var writeTextFormat1IID = guid{0x5f174b49, 0x0d8b, 0x4cfb, [8]byte{0x8b, 0xca, 0
 // textEngineCapacity is the line limit of each cache segment (twice as many are kept).
 const textEngineCapacity = 512
 
+const (
+	longLineMinBytes   = 64 << 10
+	longLineTextBudget = 8 << 20
+)
+
 // hitMetrics is DWRITE_HIT_TEST_METRICS.
 type hitMetrics struct {
 	Position, Length uint32
@@ -79,8 +84,9 @@ type lineTables struct {
 	// next, caret, boxLeft and boxWidth are indexed by the byte offset of a cluster's
 	// start: where the next cluster starts, the x of the caret before it, and the
 	// extent of its glyphs.
-	next              []int32
-	caret             []float32
+	next  []int32
+	caret []float32
+	// Left-to-right boxes are derived from adjacent carets.
 	boxLeft, boxWidth []float32
 	// bidi says the line has right-to-left text: its carets are not in logical order.
 	bidi bool
@@ -295,6 +301,17 @@ func (engine *textEngine) forget() {
 	engine.generation.Add(1)
 }
 
+// TrimLongTextLayouts drops expensive layouts after closing a large document.
+// Normal-size lines stay cached and the next frame can rebuild any active long line.
+func (engine *textEngine) TrimLongTextLayouts() {
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	engine.cache.TrimLargeText(longLineMinBytes, 0, 0)
+	if engine.italicCache != nil {
+		engine.italicCache.TrimLargeText(longLineMinBytes, 0, 0)
+	}
+}
+
 // line is the shaped line of value, creating and caching it. The caller holds mu.
 func (engine *textEngine) line(value string, size, weight float32) (*shapedLine, error) {
 	return engine.lineStyle(value, size, weight, false)
@@ -320,6 +337,10 @@ func (engine *textEngine) lineStyle(value string, size, weight float32, italic b
 		return nil, err
 	}
 	cache.Put(key, line)
+	if len(value) >= longLineMinBytes {
+		// Keep the layouts of both comparison panes warm at logical and device sizes.
+		cache.TrimLargeText(longLineMinBytes, longLineTextBudget, 4)
+	}
 	return line, nil
 }
 
@@ -383,34 +404,36 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
 	}
 	n := len(value)
 	tables := &lineTables{
-		cluster:  make([]int32, n+1),
-		next:     make([]int32, n+1),
-		caret:    make([]float32, n+1),
-		boxLeft:  make([]float32, n+1),
-		boxWidth: make([]float32, n+1),
-		bidi:     bidi.NeedsBidi(value),
+		cluster: make([]int32, n+1),
+		next:    make([]int32, n+1),
+		caret:   make([]float32, n+1),
+		bidi:    bidi.NeedsBidi(value),
 	}
-	// The byte offset of every UTF-16 unit, and back: DirectWrite counts in UTF-16.
-	units := 0
-	for _, r := range value {
-		units += utf16.RuneLen(r)
+	if tables.bidi {
+		tables.boxLeft = make([]float32, n+1)
+		tables.boxWidth = make([]float32, n+1)
 	}
-	byteAt := make([]int32, units+1)
-	unitAt := make([]int32, n+1)
-	unit := 0
-	for at, r := range value {
-		unitAt[at] = int32(unit)
-		byteAt[unit] = int32(at)
-		width := utf16.RuneLen(r)
-		if width < 1 {
-			width = 1
+	// DirectWrite counts UTF-16 units. ASCII byte offsets already match them.
+	units := n
+	var byteAt, unitAt []int32
+	if utf8.RuneCountInString(value) != n {
+		units = 0
+		for _, r := range value {
+			units += utf16.RuneLen(r)
 		}
-		unit += width
+		byteAt = make([]int32, units+1)
+		unitAt = make([]int32, n+1)
+		unit := 0
+		for at, r := range value {
+			unitAt[at] = int32(unit)
+			byteAt[unit] = int32(at)
+			unit += utf16.RuneLen(r)
+		}
+		unitAt[n], byteAt[unit] = int32(unit), int32(n)
 	}
-	unitAt[n], byteAt[unit] = int32(unit), int32(n)
 
 	for start := 0; start < n; {
-		position := uint32(unitAt[start])
+		position := uint32(textTableOffset(unitAt, start))
 		var x, y float32
 		engine.hit = hitMetrics{}
 		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(position), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
@@ -420,8 +443,10 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
 		// not believed, and the character is a cluster of its own.
 		end := nextRuneStart(value, start)
 		if engine.hit.Position == position && engine.hit.Length > 0 {
-			if last := int(engine.hit.Position + engine.hit.Length); last <= units && byteAt[last] > int32(start) {
-				end = int(byteAt[last])
+			if last := int(engine.hit.Position + engine.hit.Length); last <= units {
+				if at := textTableOffset(byteAt, last); at > start {
+					end = at
+				}
 			}
 		}
 		for at := start; at < end; at++ {
@@ -436,21 +461,18 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
 		// The end of the line is the trailing edge of its last cluster.
 		last := int(tables.cluster[n-1])
 		var x, y float32
-		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(unitAt[last]), 1, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
+		if err := hresult(comCall(line.layout, writeHitTestTextPosition, uintptr(textTableOffset(unitAt, last)), 1, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&engine.hit)))); err != nil {
 			return fmt.Errorf("windows: hit test: %w", err)
 		}
 		tables.caret[n] = x - line.left
 	}
-	for start := 0; start < n; start = int(tables.next[start]) {
+	for start := 0; tables.bidi && start < n; start = int(tables.next[start]) {
 		next := int(tables.next[start])
-		if !tables.bidi {
-			tables.boxLeft[start] = tables.caret[start]
-			tables.boxWidth[start] = tables.caret[next] - tables.caret[start]
-			continue
-		}
 		// A right-to-left cluster's box is not between its carets in logical order.
 		var count uint32
-		if err := hresult(comCall(line.layout, writeHitTestTextRange, uintptr(unitAt[start]), uintptr(unitAt[next]-unitAt[start]), 0, 0,
+		firstUnit := textTableOffset(unitAt, start)
+		lastUnit := textTableOffset(unitAt, next)
+		if err := hresult(comCall(line.layout, writeHitTestTextRange, uintptr(firstUnit), uintptr(lastUnit-firstUnit), 0, 0,
 			uintptr(unsafe.Pointer(&engine.ranges[0])), uintptr(len(engine.ranges)), uintptr(unsafe.Pointer(&count)))); err != nil && count == 0 {
 			return fmt.Errorf("windows: hit test range: %w", err)
 		}
@@ -466,6 +488,13 @@ func (engine *textEngine) ensureTables(line *shapedLine, value string) error {
 	}
 	line.tables = tables
 	return nil
+}
+
+func textTableOffset(offsets []int32, value int) int {
+	if offsets == nil {
+		return value
+	}
+	return int(offsets[value])
 }
 
 func nextRuneStart(value string, from int) int {
@@ -548,7 +577,10 @@ func (engine *textEngine) SelectionStyle(dst []gfx.TextSpan, value string, size,
 	const touching = 0.01
 	base := len(dst)
 	for at := start; at < end; at = int(tables.next[at]) {
-		left, width := tables.boxLeft[at], tables.boxWidth[at]
+		left, width := tables.caret[at], tables.caret[tables.next[at]]-tables.caret[at]
+		if tables.bidi {
+			left, width = tables.boxLeft[at], tables.boxWidth[at]
+		}
 		dst = append(dst, gfx.TextSpan{X: left, Width: width})
 	}
 	// Order the pieces left to right and join the ones that touch: the boxes of a

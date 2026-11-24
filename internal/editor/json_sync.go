@@ -123,7 +123,6 @@ func (m *editorApp) jsonAction(t *editorTab, action string) {
 		t.resultError, t.resultErrorOffset, t.resultErrorPane = "", -1, nil
 		t.setJSONResult(output, kind, false)
 	}
-	t.resultAction = ""
 	t.comparison.text.CancelComposition()
 	t.jsonCompare, t.diffReady = false, false
 	if modeChanged {

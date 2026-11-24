@@ -83,6 +83,7 @@ var folderIDDownloads = guid{0x374de290, 0x123f, 0x4565, [8]byte{0x91, 0x64, 0x3
 
 // interfaceWebView4 is IID_ICoreWebView2_4: the interface that adds DownloadStarting to the view.
 var interfaceWebView4 = guid{0x20d02d59, 0x6df2, 0x42dc, [8]byte{0xbd, 0x06, 0xf9, 0x8a, 0x69, 0x4b, 0x13, 0x02}}
+var interfaceWebView19 = guid{0x6921f954, 0x79b0, 0x437f, [8]byte{0xa9, 0x97, 0xc8, 0x58, 0x11, 0x89, 0x7c, 0x68}}
 
 // webHost is the pages of one window.
 type webHost struct {
@@ -736,6 +737,19 @@ func (w *webHost) layoutAll(force bool) {
 	}
 }
 
+func (page *windowsWeb) setMemoryTarget(level uintptr) {
+	if page.view == 0 {
+		return
+	}
+	var memoryView uintptr
+	status := comCall(page.view, 0, uintptr(unsafe.Pointer(&interfaceWebView19)), uintptr(unsafe.Pointer(&memoryView)))
+	if int32(status) < 0 || memoryView == 0 {
+		return
+	}
+	defer release(&memoryView)
+	comCall(memoryView, viewPutMemoryUsageTarget, level)
+}
+
 // layout puts a page where the application declared it, with a hole in it for what Viva draws over it.
 func (w *webHost) layout(page *windowsWeb, force bool) {
 	if page.closed || page.window == 0 || page.controller == 0 {
@@ -756,6 +770,7 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
 			}
 			showWindow.Call(page.window, swHide)
 			comCall(page.controller, controllerPutVisible, 0)
+			page.setMemoryTarget(webMemoryLow)
 			page.shown = false
 		}
 		return
@@ -769,6 +784,9 @@ func (w *webHost) layout(page *windowsWeb, force bool) {
 	w.tooltipCuts = visibleTooltipCuts(view, w.state.textRectangles, w.tooltipCuts[:0])
 	if !force && page.shown && page.device == device && sameRects(page.cutsSet, w.cuts) && slices.Equal(page.tooltipCutsSet, w.tooltipCuts) {
 		return
+	}
+	if !page.shown {
+		page.setMemoryTarget(webMemoryNormal)
 	}
 	page.device, page.cutsSet, page.shown = device, append(page.cutsSet[:0], w.cuts...), true
 	page.tooltipCutsSet = append(page.tooltipCutsSet[:0], w.tooltipCuts...)

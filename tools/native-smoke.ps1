@@ -1,4 +1,4 @@
-param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeDocumentOutline','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeThemeIconSwitch','TestNativeStartupFrame','TestNativeOpenTiming','TestNativeEditorBackground')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log', [switch]$PublicRelease)
+param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeDocumentOutline','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeThemeIconSwitch','TestNativeStartupFrame','TestNativeOpenTiming','TestNativeEditorBackground','TestNativeTerminalInput')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log', [switch]$PublicRelease)
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
 $devDirectory = Join-Path $projectDirectory '.dev'
@@ -14,7 +14,7 @@ $previousNativeDrag = $env:VIVA_NATIVE_DRAG
 $previousScale = $env:VIVA_SCALE
 $previousOpenProfile = $env:VIVA_NATIVE_OPEN_PROFILE
 $openProfile = $null
-if ($TestName -in @('TestNativeOpenTiming', 'TestNativeOfficeEditing', 'TestNativeDocumentOutline')) {
+if ($TestName -in @('TestNativeOpenTiming', 'TestNativeOfficeEditing', 'TestNativeDocumentOutline', 'TestNativeTerminalInput')) {
     # WebView2 can finish writing metrics just after the test process closes.
     $openProfile = Join-Path $env:GOTMPDIR ('viva-open-profile-' + [Guid]::NewGuid().ToString('N'))
     $env:VIVA_NATIVE_OPEN_PROFILE = $openProfile

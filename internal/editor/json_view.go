@@ -35,7 +35,7 @@ func (m *editorApp) jsonToolbar(c ui.C, t *editorTab, blocked bool) {
 			c.After(func() {
 				t.jsonCompare = !t.jsonCompare
 				t.diffReady = false
-				t.jsonMenu, t.resultMenu, t.diffMenus = false, false, [2]bool{}
+				t.jsonMenu, t.diffMenus = false, [2]bool{}
 				t.source.text.CancelComposition()
 				t.result.text.CancelComposition()
 				t.comparison.text.CancelComposition()
@@ -83,9 +83,11 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 		return
 	}
 	t.source.view.Snapshot.MarkLayers = nil
+	resultMatchesSource := false
 	if t.resultKind == "JSON" {
 		source := t.source.text.String()
-		if source == t.result.text.String() && t.result.foldSource != source {
+		resultMatchesSource = source == t.result.text.String()
+		if resultMatchesSource && t.result.foldSource != source {
 			t.source.updateFolds()
 			t.result.foldSource, t.result.folds = source, t.source.folds
 			clear(t.result.collapsed)
@@ -114,7 +116,6 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 					title = "右侧草稿"
 				}
 				ui.Text(c, title).FontSize(12).Bold().Grow(1).MinWidth(0).Ellipsis().Hit(ui.ID(c), title).Tooltip(title)
-				m.jsonPaneMenu(c.Part("result-tools"), t, t.result, &t.resultMenu, "右侧", blocked)
 				if ui.Button(c, "复制").Icon(copyIcon).IconOnly().Ghost().Width(28).Height(28).Disabled(blocked || t.resultError != "").Tooltip("复制完整结果").Clicked() {
 					c.After(func() { m.copyResult(t) })
 				}
@@ -159,6 +160,11 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 					status += fmt.Sprintf(" · %d 节点已折叠", folded)
 				}
 				ui.Text(c, status).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis().Hit(ui.ID(c), status).Tooltip(status)
+				if label := t.jsonResultApplyLabel(resultMatchesSource); label != "" {
+					if ui.Button(c.Part("apply-result"), label).Ghost().Height(24).FontSize(11).Disabled(blocked || t.jsonComposing()).Clicked() {
+						c.After(func() { m.applyResult(t) })
+					}
+				}
 				wrap := ui.Button(c, "结果折行").Icon(wrapIcon).IconOnly().Ghost().Width(24).Height(24).Tooltip("双栏自动折行（仅影响显示）").Disabled(blocked)
 				if t.result.view.Snapshot.Wrap {
 					wrap.Secondary()

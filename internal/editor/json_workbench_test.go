@@ -125,10 +125,7 @@ func TestJSONWorkbenchActions(t *testing.T) {
 		s.Driver().Clipboard() != "name:中文\nport:8080\n" || tab.source.text.String() != source {
 		t.Fatal("conversion modified source or ignored display settings")
 	}
-	if err := s.ClickLabel("右侧 JSON 菜单"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ClickLabel("menuitem:在新标签打开结果"); err != nil {
+	if err := s.ClickLabel("button:在新标签打开结果"); err != nil {
 		t.Fatal(err)
 	}
 	if m.active == tab || m.active.format() != "纯文本" || m.active.source.text.String() != "name:中文\nport:8080\n" || tab.source.text.String() != source {

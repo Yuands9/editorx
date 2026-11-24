@@ -57,7 +57,7 @@ func (m *editorApp) jsonDiffEditor(c ui.C, t *editorTab, pane *editorPane, block
 	}
 	ui.Row(c).FillWidth().Height(40).PadX(8).Gap(4).Items(ui.Center).Children(func() {
 		ui.Text(c, title).FontSize(12).Bold().Grow(1).MinWidth(0).Ellipsis()
-		m.jsonDiffTools(c.Part("json-tools"), t, pane, &t.diffMenus[index], side, blocked)
+		m.jsonPaneMenu(c.Part("json-tools"), t, pane, &t.diffMenus[index], side, blocked)
 		if pane == t.comparison {
 			if ui.Button(c, "载入对比文件").Icon(fileIcon).IconOnly().Ghost().Size(28, 28).Tooltip("载入对比文件").Disabled(blocked).Clicked() {
 				c.After(func() { m.loadComparison(t) })
@@ -78,37 +78,29 @@ func (m *editorApp) jsonDiffEditor(c ui.C, t *editorTab, pane *editorPane, block
 	pane.declare(c, editorLabel, !blocked).FillWidth().Grow(1)
 }
 
-func (m *editorApp) jsonDiffTools(c ui.C, t *editorTab, pane *editorPane, open *bool, side string, blocked bool) {
-	disabled := blocked || strings.TrimSpace(pane.text.String()) == ""
-	ui.Row(c).Pad(2).Gap(1).Shrink(0).Radius(10).Background(m.theme.Background).Items(ui.Center).Children(func() {
-		if ui.Button(c, "格式化"+side).Ghost().Height(26).FontSize(11).Disabled(disabled).Clicked() {
-			c.After(func() { m.jsonPaneAction(t, pane, side, "格式化") })
-		}
-		m.jsonPaneMenu(c, t, pane, open, side, blocked)
-	})
-}
-
 func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *bool, side string, blocked bool) {
-	label := side + " JSON 菜单"
-	disabled := blocked || strings.TrimSpace(pane.text.String()) == ""
-	menuButton := ui.Button(c, label).Icon(chevronDownIcon).IconOnly().Ghost().Size(26, 26).Tooltip(label).Disabled(blocked)
-	if menuButton.Clicked() {
+	label := side + "操作"
+	trigger := ui.Row(c).Height(28).PadX(8).Gap(6).Radius(8).Items(ui.Center).Shrink(0).
+		Background(m.theme.Background).
+		HitWith(ui.ID(c), label, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked, Expandable: true, Expanded: *open}).
+		Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Border(m.theme.Ring))
+	if *open {
+		trigger.Background(m.theme.Hover)
+	}
+	trigger.Children(func() {
+		ui.Text(c, label).FontSize(11)
+		ui.Icon(c, chevronDownIcon).Size(10, 10).Color(m.theme.MutedForeground)
+	})
+	if trigger.Clicked() {
 		*open = !*open
 	}
-	ui.Menu(c, menuButton, open, func(menu *ui.MenuItems) {
+	ui.Menu(c, trigger, open, func(menu *ui.MenuItems) {
+		disabled := blocked || strings.TrimSpace(pane.text.String()) == ""
 		styleJSONMenu(menu)
 		menu.WidthRange(184, 228)
-		menu.Label(label)
-		selectedAction := t.jsonAction
-		if t.resultDraft && t.resultAction != "" {
-			selectedAction = t.resultAction
-		}
+		menu.Label(side + " JSON 菜单")
 		addAction := func(action string) {
-			item := menu.Item(action).Disabled(disabled)
-			if pane == t.result {
-				item.Chosen(selectedAction == action)
-			}
-			if item.Clicked() {
+			if menu.Item(action).Disabled(disabled).Clicked() {
 				c.After(func() { m.jsonPaneAction(t, pane, side, action) })
 			}
 		}
@@ -119,14 +111,6 @@ func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *b
 		for _, action := range jsonExtraActions {
 			addAction(action)
 		}
-		if pane == t.result {
-			if label := t.jsonResultApplyLabel(); label != "" {
-				menu.Separator()
-				if menu.Item(label).Disabled(blocked || t.jsonComposing()).Clicked() {
-					c.After(func() { m.applyResult(t) })
-				}
-			}
-		}
 	})
 }
 
@@ -135,27 +119,11 @@ func (m *editorApp) jsonPaneAction(t *editorTab, pane *editorPane, side, action 
 		m.status = "请先完成中文选词，再处理" + side + " JSON"
 		return
 	}
-	if pane == t.result && !t.resultDraft && (t.jsonLiveResult() || t.jsonAction == action) {
-		m.jsonAction(t, action)
-		return
-	}
 	source := pane.text.String()
 	output, kind, err := transformJSON(source, action, t.jsonIndent)
 	if err != nil {
 		message, _ := jsonErrorMessage(source, err)
 		m.fail(fmt.Errorf("%s JSON：%s", side, message))
-		return
-	}
-	if pane == t.result {
-		if output != source {
-			pane.replace(output)
-		}
-		t.resultDraft, t.resultAction, t.resultKind = true, action, kind
-		t.resultOutput = pane.text.CommittedString()
-		t.resultError, t.resultErrorOffset = "", -1
-		pane.view.Snapshot.Language = kind
-		t.source.focus, pane.focus = false, true
-		m.status = side + " JSON · " + action
 		return
 	}
 	if kind != "JSON" {

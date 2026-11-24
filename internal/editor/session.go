@@ -55,7 +55,6 @@ type tabSession struct {
 	JSONCompare                bool
 	JSONWrapSet                bool    `json:",omitempty"`
 	JSONResultKind             string  `json:",omitempty"`
-	JSONResultAction           string  `json:",omitempty"`
 	JSONDiffRatio              float32 `json:",omitempty"`
 	MarkdownMode, HTMLMode     string
 	MarkdownOffset             float32
@@ -277,7 +276,7 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 			item.Saved, item.SavedMatchesSource = "", true
 		}
 		if tab.hasResultDraft() {
-			item.JSONResultKind, item.JSONResultAction = tab.resultKind, tab.resultAction
+			item.JSONResultKind = tab.resultKind
 			if item.JSONResultKind == "" {
 				item.JSONResultKind = "JSON"
 			}
@@ -417,7 +416,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 		tab.scroll.enabled = item.SyncScroll
 		restorePane(tab.comparison, item.Comparison)
 		if item.JSONResultKind != "" {
-			tab.resultDraft, tab.resultKind, tab.resultAction = true, item.JSONResultKind, item.JSONResultAction
+			tab.resultDraft, tab.resultKind = true, item.JSONResultKind
 			tab.result.view.Snapshot.Language = tab.resultKind
 		} else if tab.format() == "JSON" {
 			tab.updateResult()
