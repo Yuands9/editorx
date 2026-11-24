@@ -40,7 +40,7 @@ func TestNativeOfficeEditing(t *testing.T) {
 		t.Skip("native Office integration is opt-in")
 	}
 	directory := t.TempDir()
-	t.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
+	setNativeWebViewProfile(t, directory)
 	store, err := openSessionStore(filepath.Join(directory, "data"))
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +72,7 @@ func TestNativeOfficeEditing(t *testing.T) {
 			failure = err
 			sheetTab.office.close()
 			wordTab.office.close()
+			wordTab.preview.close()
 			application.Quit()
 		}
 		flushUnchanged := func(office *officeDocument, next func()) {
@@ -111,7 +112,13 @@ func TestNativeOfficeEditing(t *testing.T) {
 							return
 						}
 						if time.Now().After(deadline) {
-							finish(fmt.Errorf("Office timeout phase=%d, sheet=%s, word=%s", phase, sheetTab.office.errorText, wordTab.office.errorText))
+							wordIssue := ""
+							if wordTab.office != nil {
+								wordIssue = wordTab.office.errorText
+							} else if wordTab.preview != nil {
+								wordIssue = wordTab.preview.issue
+							}
+							finish(fmt.Errorf("Office timeout phase=%d, sheet=%s, word=%s", phase, sheetTab.office.errorText, wordIssue))
 							return
 						}
 						if m.showError && phase != 10 {
@@ -164,17 +171,24 @@ func TestNativeOfficeEditing(t *testing.T) {
 								}
 								if !hasWordEditor {
 									m.activate(wordTab)
-									if wordTab.office.view != nil || wordTab.office.server != nil {
-										finish(fmt.Errorf("public release started a Word editor"))
+									if wordTab.office != nil || wordTab.preview == nil || wordTab.preview.kind != "Word" {
+										finish(fmt.Errorf("expected a read-only Word preview in the public release"))
 										return
 									}
-									finish(nil)
+									phase = 13
+									m.invalidator.Invalidate()
 									return
 								}
 								m.setLightMode(true)
 								m.activate(wordTab)
 								phase = 3
 							})
+						case 13:
+							if wordTab.preview.issue != "" {
+								finish(fmt.Errorf("public Word preview: %s", wordTab.preview.issue))
+							} else if wordTab.preview.ready {
+								finish(nil)
+							}
 						case 3:
 							if !wordTab.office.ready {
 								return
@@ -263,5 +277,5 @@ func TestNativeOfficeEditing(t *testing.T) {
 		t.Log("真实 WebView2：Word 标题与缩放、XLSX 公式编辑保存、DOCX 中文编辑保存、表格图片保留、退出时最后一次修改与草稿恢复、未编辑/重复保存不重新导出通过。")
 		return
 	}
-	t.Log("真实 WebView2：公开版 XLSX 公式编辑保存、中文输入保护及未编辑时不重新导出通过。")
+	t.Log("真实 WebView2：公开版 XLSX 公式编辑保存、中文输入保护、未编辑时不重新导出和 Word 只读预览通过。")
 }

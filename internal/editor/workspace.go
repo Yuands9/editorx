@@ -343,6 +343,9 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 			name := ui.Text(place, node.name).FontSize(13).Grow(1).MinWidth(0).Ellipsis().LabelFor(tree.state.RowID(i))
 			if !blocked {
 				ui.ContextMenu(place, name, func(menu *ui.MenuItems) {
+					if node.directory && menu.Item("在此文件夹新建…").Icon(plusIcon).Clicked() {
+						place.After(func() { m.openTemplatePicker(node.path, false) })
+					}
 					if (node.directory || aiTextPath(node.path)) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 						place.After(func() { m.openAIAt(nil, node.path, node.directory) })
 					}
@@ -410,6 +413,9 @@ func (m *editorApp) projectRow(c ui.C, rowID gfx.ID, root *fileNode, blocked boo
 func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 	menu.WidthRange(180, 290)
 	menu.Label(root.name)
+	if menu.Item("在此文件夹新建…").Icon(plusIcon).Clicked() {
+		c.After(func() { m.openTemplatePicker(root.path, false) })
+	}
 	if menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 		c.After(func() { m.openAIAt(nil, root.path, true) })
 	}

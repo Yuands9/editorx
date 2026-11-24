@@ -17,7 +17,7 @@ func TestNativeDocumentOutline(t *testing.T) {
 		t.Skip("native document outline check is opt-in")
 	}
 	directory := t.TempDir()
-	t.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
+	setNativeWebViewProfile(t, directory)
 	type outlineSample struct {
 		name  string
 		data  []byte

@@ -546,8 +546,8 @@ func TestStatusLanguagePicker(t *testing.T) {
 	check(s.Type(jsonSource))
 	formatted, _, err := transformJSON(jsonSource, "格式化", 4)
 	check(err)
-	if draft.source.text.String() != formatted || draft.result.text.String() != formatted {
-		t.Fatal("JSON selection did not keep editor focus and format both panes")
+	if draft.source.text.String() != jsonSource || draft.result.text.String() != formatted {
+		t.Fatal("JSON selection did not preserve the input and format the preview")
 	}
 	check(s.ClickLabel("button:JSON"))
 	check(s.ClickLabel("menuitem:Markdown"))

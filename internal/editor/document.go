@@ -67,6 +67,15 @@ func (doc *document) save(path, value string) error {
 			return errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
 		}
 	}
+	data := doc.fileBytes(value)
+	if err := writeFile(path, data); err != nil {
+		return err
+	}
+	doc.path, doc.saved, doc.diskHash = path, value, sha256.Sum256(data)
+	return nil
+}
+
+func (doc document) fileBytes(value string) []byte {
 	output := value
 	if doc.eol == "CRLF" {
 		output = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\n", "\r\n")
@@ -74,12 +83,23 @@ func (doc *document) save(path, value string) error {
 	if doc.bom {
 		output = "\ufeff" + output
 	}
-	data := []byte(output)
-	if err := writeFile(path, data); err != nil {
+	return []byte(output)
+}
+
+func (doc document) create(path, value string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+	if err != nil {
 		return err
 	}
-	doc.path, doc.saved, doc.diskHash = path, value, sha256.Sum256(data)
-	return nil
+	_, err = file.Write(doc.fileBytes(value))
+	if err == nil {
+		err = file.Sync()
+	}
+	err = errors.Join(err, file.Close())
+	if err != nil {
+		return errors.Join(err, os.Remove(path))
+	}
+	return err
 }
 
 // 先写入同目录临时文件，完成同步后再替换目标，写入失败时保留原文件。

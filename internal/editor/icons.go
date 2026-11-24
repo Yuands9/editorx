@@ -2,6 +2,16 @@ package editor
 
 import "github.com/vivaui/viva/gfx"
 
+var updateAvailableIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(21, 12), gfx.CubicTo(21, 16.97, 16.97, 21, 12, 21),
+		gfx.CubicTo(7.03, 21, 3, 16.97, 3, 12), gfx.CubicTo(3, 7.03, 7.03, 3, 12, 3),
+		gfx.CubicTo(16.97, 3, 21, 7.03, 21, 12),
+		gfx.MoveTo(12, 7), gfx.LineTo(12, 16), gfx.MoveTo(8.5, 12.5), gfx.LineTo(12, 16), gfx.LineTo(15.5, 12.5),
+	},
+}
+
 var pinIcon = gfx.Icon{
 	ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{

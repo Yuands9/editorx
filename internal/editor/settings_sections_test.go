@@ -165,18 +165,24 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 	if !s.HasText("版本 " + version.Number) {
 		t.Fatal("About does not display the executable version")
 	}
+	if !s.HasText("启动约 10 秒后检查，之后每 6 小时一次。重启沿用上次检查时间。") {
+		t.Fatal("About does not state the automatic check schedule")
+	}
 	if directory := os.Getenv("VIVA_PREVIEW_DIR"); directory != "" {
 		if err := s.Screenshot(filepath.Join(directory, "settings-about.png")); err != nil {
 			t.Fatal(err)
 		}
 	}
+	offered := testEditorRelease(t, 1)
+	offered.Notes = "新增设置分类和备份。"
 	m.update = editorUpdateState{
-		open: true, release: editorRelease{version: "0.33.0", comparison: 1, size: 38615552, notes: "新增设置分类和备份。"},
+		open: true, initialized: true,
+		cache: editorUpdateCache{Release: offered},
 	}
 	if err := s.Frame(); err != nil {
 		t.Fatal(err)
 	}
-	if !s.HasText("发现新版本") || !s.HasText("EditorX 0.33.0") {
+	if !s.HasText("EditorX " + offered.Version + " 可更新") {
 		t.Fatal("the update dialog did not show the offered version")
 	}
 	action := "下载更新"

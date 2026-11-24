@@ -119,10 +119,8 @@ func TestAIEnterSendsLargeDefaultFileAndSelection(t *testing.T) {
 	}
 	check(s.Keys("enter"))
 	request := waitForAIContext(t, m, s, requests)
-	formatted, _, err := transformJSON(source, "格式化", 4)
-	check(err)
 	if request.Instruction != "请计算\n商家数" || !slices.Equal(request.Folders, []string{"订单项目"}) ||
-		len(request.Files) != 2 || request.Files[0].Text != formatted || request.Files[0].Path != "订单项目/账单.json" ||
+		len(request.Files) != 2 || request.Files[0].Text != source || request.Files[0].Path != "订单项目/账单.json" ||
 		request.Files[1].Text != "merchant=all" {
 		t.Fatal("the default request truncated or duplicated the large file, or omitted the project")
 	}
@@ -130,8 +128,8 @@ func TestAIEnterSendsLargeDefaultFileAndSelection(t *testing.T) {
 		t.Fatal("sending lost the default context or failed to clear the draft")
 	}
 
-	start := strings.Index(formatted, content)
-	tab.source.text.SetSelection(text.Range{Start: utf8.RuneCountInString(formatted[:start]), End: utf8.RuneCountInString(formatted[:start+len(content)])})
+	start := strings.Index(source, content)
+	tab.source.text.SetSelection(text.Range{Start: utf8.RuneCountInString(source[:start]), End: utf8.RuneCountInString(source[:start+len(content)])})
 	largePrompt := strings.Repeat("复核", 3200)
 	m.ai.prompt.SetText(largePrompt)
 	check(s.Frame())

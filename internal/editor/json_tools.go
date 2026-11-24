@@ -314,7 +314,7 @@ func (t *editorTab) jsonResultApplyLabel() string {
 	if t.resultKind != "JSON" {
 		return "在新标签打开结果"
 	}
-	if !t.resultDraft && t.jsonAction == "压缩" || t.result.text.CommittedString() == t.source.text.CommittedString() {
+	if t.result.text.CommittedString() == t.source.text.CommittedString() {
 		return ""
 	}
 	return "应用到原文"

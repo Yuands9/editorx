@@ -222,6 +222,8 @@ func (m *editorApp) toggleAIPanel() {
 }
 
 func (m *editorApp) openAIAt(tab *editorTab, path string, directory bool) {
+	m.translation = nil
+	m.templatePanel = nil
 	a := &m.ai
 	if !a.open {
 		if err := m.reloadAIProfiles(); err != nil {

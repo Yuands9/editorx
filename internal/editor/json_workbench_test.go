@@ -121,12 +121,8 @@ func TestJSONWorkbenchActions(t *testing.T) {
 			t.Fatalf("%s: %v", label, err)
 		}
 	}
-	formatted, _, err := transformJSON(source, "格式化", 2)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if tab.jsonIndent != 2 || !tab.result.view.Snapshot.Wrap || !tab.source.view.Snapshot.Wrap ||
-		s.Driver().Clipboard() != "name:中文\nport:8080\n" || tab.source.text.String() != formatted {
+		s.Driver().Clipboard() != "name:中文\nport:8080\n" || tab.source.text.String() != source {
 		t.Fatal("conversion modified source or ignored display settings")
 	}
 	if err := s.ClickLabel("右侧 JSON 菜单"); err != nil {
@@ -135,7 +131,7 @@ func TestJSONWorkbenchActions(t *testing.T) {
 	if err := s.ClickLabel("menuitem:在新标签打开结果"); err != nil {
 		t.Fatal(err)
 	}
-	if m.active == tab || m.active.format() != "纯文本" || m.active.source.text.String() != "name:中文\nport:8080\n" || tab.source.text.String() != formatted {
+	if m.active == tab || m.active.format() != "纯文本" || m.active.source.text.String() != "name:中文\nport:8080\n" || tab.source.text.String() != source {
 		t.Fatal("form-data did not create a separate text tab")
 	}
 	m.activate(tab)
@@ -165,7 +161,7 @@ func TestJSONWorkbenchActions(t *testing.T) {
 	if err := s.ClickLabel("复制差异"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s.Driver().Clipboard(), "/port") || !strings.Contains(s.Driver().Clipboard(), "新增 /enabled") || tab.source.text.String() != formatted {
+	if !strings.Contains(s.Driver().Clipboard(), "/port") || !strings.Contains(s.Driver().Clipboard(), "新增 /enabled") || tab.source.text.String() != source {
 		t.Fatal("diff report incomplete or source modified")
 	}
 	comparison := tab.comparison.text.String()

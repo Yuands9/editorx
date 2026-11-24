@@ -51,9 +51,9 @@ func TestApplicationSettingsPersistFromMenu(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	click("显示系统托盘图标")
-	for _, label := range []string{"button:保存", "button:取消"} {
-		if _, err := session.Locate(label); err == nil {
+	click("switch:显示系统托盘图标")
+	for _, label := range []string{"保存", "取消"} {
+		if hit, err := session.Locate("button:" + label); err == nil && hit.Label == label {
 			t.Fatalf("auto-saved settings still show %s", label)
 		}
 	}

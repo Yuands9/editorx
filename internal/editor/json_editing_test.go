@@ -151,8 +151,11 @@ func TestJSONWorkbenchPastesEditsAndCopiesBothPanes(t *testing.T) {
 	expectBoth(right)
 
 	paste("代码编辑区", `{"左侧":true}`)
-	left := "{\n  \"左侧\": true\n}"
-	expectBoth(left)
+	left := `{"左侧":true}`
+	leftResult := "{\n  \"左侧\": true\n}"
+	if tab.source.text.String() != left || tab.result.text.String() != leftResult {
+		t.Fatal("left paste must stay raw while the result is formatted")
+	}
 	shortcut('a')
 	shortcut('c')
 	if s.Driver().Clipboard() != left {
@@ -166,13 +169,15 @@ func TestJSONWorkbenchPastesEditsAndCopiesBothPanes(t *testing.T) {
 	if err := s.Compose("zhongwen"); err != nil {
 		t.Fatal(err)
 	}
-	if tab.result.text.String() != left {
+	if tab.result.text.String() != leftResult {
 		t.Fatal("uncommitted IME text leaked to the other pane")
 	}
 	if err := s.Type("false"); err != nil {
 		t.Fatal(err)
 	}
-	expectBoth(strings.Replace(left, "true", "false", 1))
+	if tab.source.text.String() != strings.Replace(left, "true", "false", 1) || tab.result.text.String() != strings.Replace(leftResult, "true", "false", 1) {
+		t.Fatal("IME commit did not preserve raw source and update the preview")
+	}
 
 	_, extraEscapes := nestedJSONSample(t)
 	paste("JSON 处理结果", extraEscapes)
@@ -203,6 +208,7 @@ func TestJSONResultMenuShowsCurrentMode(t *testing.T) {
 	tab := m.addTab(document{saved: `{"body":"{\"name\":\"示例\"}"}`}, "预览.json")
 	s := openTestSession(t, m)
 	original := tab.source.text.CommittedString()
+	formatted := tab.result.text.CommittedString()
 	click := func(label string) {
 		t.Helper()
 		if err := s.ClickLabel(label); err != nil {
@@ -238,9 +244,7 @@ func TestJSONResultMenuShowsCurrentMode(t *testing.T) {
 	if !format.Selected || unescape.Selected || !highlighted(format) || highlighted(unescape) {
 		t.Fatal("current mode should remain highlighted when another item is hovered")
 	}
-	if _, err := s.Locate("menuitem:应用到原文"); err == nil {
-		t.Fatal("synchronized content does not need an apply action")
-	}
+	lookUp("应用到原文")
 
 	click("menuitem:去转义")
 	if tab.source.text.CommittedString() != original || tab.result.text.CommittedString() == original {
@@ -258,7 +262,7 @@ func TestJSONResultMenuShowsCurrentMode(t *testing.T) {
 	}
 	click("menuitem:去转义")
 	click("右侧 JSON 菜单")
-	if !lookUp("格式化").Selected || lookUp("去转义").Selected || tab.result.text.CommittedString() != original {
+	if !lookUp("格式化").Selected || lookUp("去转义").Selected || tab.result.text.CommittedString() != formatted {
 		t.Fatal("canceling the preview did not restore the default mode")
 	}
 
@@ -267,7 +271,7 @@ func TestJSONResultMenuShowsCurrentMode(t *testing.T) {
 	click("menuitem:去转义")
 	click("右侧 JSON 菜单")
 	if !lookUp("去转义").Selected || lookUp("转义").Selected || !tab.resultDraft ||
-		tab.source.text.CommittedString() != original || tab.result.text.CommittedString() != original {
+		tab.source.text.CommittedString() != original || tab.result.text.CommittedString() != formatted {
 		t.Fatal("the menu did not reflect a transformation applied to the right pane only")
 	}
 	restored := newEditorApp()
@@ -290,12 +294,13 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 	tab := m.active
 	s := openTestSession(t, m)
 
-	original, _, err := transformJSON(raw, "格式化", 4)
+	original := raw
+	formatted, _, err := transformJSON(raw, "格式化", 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tab.source.text.String() != original || tab.result.text.String() != original || tab.modified() {
-		t.Fatal("opening compact JSON did not format both panes as a clean document")
+	if tab.source.text.String() != original || tab.result.text.String() != formatted || tab.modified() {
+		t.Fatal("opening JSON must preserve the original and format only the preview")
 	}
 	onDisk, err := os.ReadFile(path)
 	if err != nil || string(onDisk) != raw {
@@ -322,7 +327,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 		}
 		click("更多")
 		click("menuitem:" + action)
-		if tab.jsonAction != "格式化" || tab.result.text.String() != original || tab.source.text.String() != original {
+		if tab.jsonAction != "格式化" || tab.result.text.String() != formatted || tab.source.text.String() != original {
 			t.Fatalf("%s did not cancel its preview", action)
 		}
 	}
@@ -343,7 +348,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 	if _, err := s.Driver().ShortcutChord(gfx.ModifierControl, 'z'); err != nil {
 		t.Fatal(err)
 	}
-	if tab.source.text.String() != original || tab.result.text.String() != original {
+	if tab.source.text.String() != original || tab.result.text.String() != formatted {
 		t.Fatal("undo restored a canceled conversion")
 	}
 	click("结果折行")
@@ -360,7 +365,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 		t.Fatal("enabling wrap did not affect both panes")
 	}
 	focusResult()
-	offset := tab.result.text.RuneIndex(strings.LastIndex(original, "345") + len("34"))
+	offset := tab.result.text.RuneIndex(strings.LastIndex(formatted, "345") + len("34"))
 	tab.result.text.SetSelection(text.Range{Start: offset, End: offset + 1})
 	if err := s.Frame(); err != nil {
 		t.Fatal(err)
@@ -372,7 +377,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 		t.Fatal(err)
 	}
 	saved, err := os.ReadFile(path)
-	if err != nil || string(saved) != strings.Replace(original, "345", "346", 1) || tab.modified() {
+	if err != nil || string(saved) != strings.Replace(formatted, "345", "346", 1) || tab.modified() {
 		t.Fatal("saving from the right pane did not write the synchronized edit")
 	}
 }

@@ -1,37 +1,24 @@
 package editor
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-	"unicode/utf8"
 
 	"github.com/Yuands9/editorx/internal/version"
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
+	uimarkdown "github.com/vivaui/viva/ui/markdown"
 )
 
-type editorUpdateState struct {
-	open     bool
-	release  editorRelease
-	check    *ui.EffectState[editorRelease, int]
-	download *ui.EffectState[struct{}, int]
-	staged   string
-	problem  string
-}
-
 func (m *editorApp) aboutSettings(c ui.C) {
-	state := &m.update
+	state := m.editorUpdates()
 	ui.Row(c.Part("editorx")).FillWidth().Pad(16).Gap(16).Items(ui.Center).
 		Background(m.theme.Card).Radius(14).Children(func() {
 		ui.Image(c, editorLogo(m.light)).Size(56, 56).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			ui.Text(c, applicationName).FontSize(23).Bold()
-			ui.Wrap(c, "一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。").
-				FillWidth().FontSize(13).Muted()
+			ui.Wrap(c, "一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。").FillWidth().FontSize(13).Muted()
 		})
 	})
 	build := "Windows x64 · 便携版"
@@ -47,6 +34,13 @@ func (m *editorApp) aboutSettings(c ui.C) {
 			c.After(m.checkEditorUpdate)
 		}
 	})
+	enabled := !m.appSettings.draft.DisableAutoUpdate
+	schedule := fmt.Sprintf("启动约 %g 秒后检查，之后每 %g 小时一次。重启沿用上次检查时间。",
+		editorUpdateStartupDelay.Seconds(), editorUpdateInterval.Hours())
+	if m.applicationSettingSwitch(c.Part("auto-update"), "自动检查更新", schedule, &enabled) {
+		m.appSettings.draft.DisableAutoUpdate = !enabled
+		c.After(m.saveApplicationSettings)
+	}
 	m.applicationSetting(c.Part("project"), "开源项目", "Apache-2.0", func() {
 		if ui.Button(c, "打开 GitHub").Outline().Height(32).Clicked() {
 			c.After(func() {
@@ -58,146 +52,127 @@ func (m *editorApp) aboutSettings(c ui.C) {
 	})
 }
 
-func (m *editorApp) checkEditorUpdate() {
-	state := &m.update
-	state.open = true
-	if state.check != nil || state.download != nil || state.staged != "" {
-		return
-	}
-	state.release, state.problem = editorRelease{}, ""
-	state.check = ui.NewEffect[editorRelease, int](func(ctx context.Context) (editorRelease, error) {
-		ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
-		defer cancel()
-		return fetchEditorRelease(ctx, editorUpdateHTTP, latestReleaseAPI, version.Number)
-	})
+func updateButtonRecipe(theme gfx.Theme, variant components.ButtonVariant, state gfx.State) components.ButtonLook {
+	look := components.ButtonRecipe(theme, variant, state)
+	look.Foreground = theme.Success
+	return look
 }
 
-func (m *editorApp) downloadEditorRelease() {
-	state := &m.update
-	if state.download != nil || state.staged != "" {
+func (m *editorApp) updateButton(c ui.C, blocked bool) {
+	state := m.editorUpdates()
+	if !state.available() {
 		return
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		state.problem = "无法定位当前程序：" + err.Error()
-		return
-	}
-	file, err := os.CreateTemp(filepath.Dir(executable), ".editorx-update-*.exe")
-	if err != nil {
-		state.problem = "无法在程序目录创建更新文件：" + err.Error()
-		return
-	}
-	path := file.Name()
-	if err := file.Close(); err != nil {
-		os.Remove(path)
-		state.problem = "无法准备下载文件：" + err.Error()
-		return
-	}
-	release := state.release
-	state.staged, state.problem = path, ""
-	state.download = ui.NewEffect[struct{}, int](func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, downloadEditorUpdate(ctx, editorUpdateHTTP, release, path)
-	})
-}
-
-func (m *editorApp) updateProgress(c ui.C) {
-	state := &m.update
-	if state.check != nil {
-		ui.Effect(c.Part("check"), state.check, 0)
-		if release, err, ready := state.check.Take(); ready {
-			state.check = nil
-			if err != nil {
-				state.problem = "检查更新失败：" + err.Error()
-			} else {
-				state.release = release
-			}
-		}
-	}
+	label := "发现新版本 " + state.cache.Release.Version
 	if state.download != nil {
-		ui.Effect(c.Part("download"), state.download, 0)
-		if _, err, ready := state.download.Take(); ready {
-			state.download = nil
-			if err != nil {
-				state.staged = ""
-				state.problem = "下载更新失败：" + err.Error()
-			}
-		}
+		label = "正在下载更新"
+	} else if state.staged != "" {
+		label = "更新已下载，安装并重启"
+	}
+	if ui.Button(c, label).Icon(updateAvailableIcon).IconOnly().Ghost().Size(32, 34).
+		ButtonRecipe(updateButtonRecipe).Tooltip(label).Disabled(blocked).Clicked() {
+		m.update.open = true
 	}
 }
 
 func (m *editorApp) updateDialog(c ui.C) {
-	state := &m.update
-	if !state.open || !m.appSettings.open {
+	if !m.update.open {
 		return
 	}
-	release := state.release
+	state := m.editorUpdates()
+	release := state.cache.Release
 	title := "检查更新"
 	if release.comparison > 0 {
-		title = "发现新版本"
+		title = "EditorX " + release.Version + " 可更新"
 	}
-	ui.ModalWith(c, &state.open, title, ui.ModalSpec{Width: 540}, func() {
-		switch {
-		case state.check != nil:
-			ui.Text(c, "正在查询 GitHub 发布版本…").Muted()
-		case release.comparison > 0:
-			ui.Text(c, "EditorX "+release.version).FontSize(19).Bold()
-			ui.Text(c, fmt.Sprintf("当前版本 %s · %.1f MB", version.Number, float64(release.size)/(1<<20))).Muted().FontSize(12)
-			if release.notes != "" {
-				ui.Slot(c).Height(8)
-				if utf8.RuneCountInString(release.notes) > 160 || strings.Count(release.notes, "\n") > 3 {
-					ui.Scroll(c.Part("release-notes")).FillWidth().Height(144).Scrollbars().Children(func() {
-						ui.Wrap(c, release.notes).FillWidth().FontSize(13)
+	ui.ModalWith(c, &m.update.open, title, ui.ModalSpec{Width: 600}, func() {
+		ui.Column(c).FillWidth().Gap(10).Children(func() {
+			switch {
+			case state.check != nil:
+				ui.Text(c, "正在检查新版本…").Muted()
+			case release.comparison > 0:
+				description := fmt.Sprintf("当前版本 %s · 下载 %.1f MiB", version.Number, float64(release.Size)/(1<<20))
+				if state.staged != "" && state.download == nil {
+					description = "当前版本 " + version.Number + "。安装前保存会话，完成后自动重新打开。"
+				}
+				ui.Wrap(c, description).FillWidth().Muted().FontSize(12)
+				if release.Notes != "" {
+					m.update.notes.Source = release.Notes
+					m.update.notes.Style = uimarkdown.Style{Size: 13, LineHeight: 21}
+					ui.Scroll(c.Part("release-notes")).FillWidth().Height(220).Scrollbars().Pad(12).
+						Border(1, m.theme.Border).Radius(8).Children(func() {
+						uimarkdown.View(c, "更新内容", &m.update.notes).FillWidth().Height(max(180, m.update.notes.Height()))
 					})
+				}
+				if state.download != nil {
+					received := state.progress.received.Load()
+					ui.Text(c, fmt.Sprintf("正在下载并校验 · %.1f / %.1f MiB", float64(received)/(1<<20), float64(release.Size)/(1<<20))).Muted().FontSize(12)
+					ui.Progress(c, float32(received)/float32(release.Size)).FillWidth().Height(5)
+				} else if state.staged != "" {
+					ui.Text(c, "更新已下载并校验，可以重启安装。").FontSize(12).Color(m.theme.Success)
+				}
+			case state.problem == "" && release.comparison < 0:
+				ui.Wrap(c, "当前版本 "+version.Number+"。最新公开版本为 "+release.Version+"。").FillWidth()
+			case state.problem == "":
+				ui.Text(c, "已是最新版本 "+version.Number)
+			}
+			if state.problem != "" {
+				ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
+			}
+		})
+	}, func() {
+		if release.comparison > 0 && state.check == nil {
+			label := "跳过此版本"
+			if state.download != nil {
+				label = "取消下载"
+			}
+			if ui.Button(c, label).Ghost().FontSize(12).Clicked() {
+				if state.download != nil {
+					c.After(m.cancelEditorDownload)
 				} else {
-					ui.Wrap(c, release.notes).FillWidth().FontSize(13)
+					c.After(m.skipEditorUpdate)
 				}
 			}
-			if state.download != nil {
-				ui.Text(c, "正在下载并校验更新…").Muted().FontSize(12)
-			} else if state.staged != "" {
-				ui.Text(c, "更新已下载并校验，可保存会话后重启。").FontSize(12).Color(m.theme.Success)
-			}
-		case state.problem == "" && release.comparison < 0:
-			ui.Wrap(c, "当前版本 "+version.Number+"。最新公开版本为 "+release.version+"。").FillWidth()
-		case state.problem == "":
-			ui.Text(c, "已是最新版本 "+version.Number)
+			ui.Slot(c).Grow(1)
 		}
-		if state.problem != "" {
-			ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger).FontSize(13)
-		}
-	}, func() {
 		dismiss := "关闭"
 		if release.comparison > 0 {
 			dismiss = "稍后"
 		}
-		if ui.Button(c, dismiss).Ghost().Clicked() {
-			state.open = false
+		if state.download != nil {
+			dismiss = "后台下载"
 		}
-		if release.version != "" && ui.Button(c, "发布说明").Outline().Clicked() {
-			c.After(func() {
-				if err := app.OpenURL(release.page); err != nil {
-					state.problem = "无法打开发布说明：" + err.Error()
-				}
-			})
+		if ui.Button(c, dismiss).Ghost().FontSize(12).Clicked() {
+			m.update.open = false
 		}
-		if release.comparison <= 0 || state.download != nil {
+		if state.check != nil || state.download != nil {
+			return
+		}
+		if release.comparison <= 0 {
+			if state.problem != "" && ui.Button(c, "重新检查").FontSize(12).Clicked() {
+				c.After(m.checkEditorUpdate)
+			}
 			return
 		}
 		switch {
 		case hasWordEditor:
-			if ui.Button(c, "下载公开版").Clicked() {
+			if ui.Button(c, "下载公开版").FontSize(12).Clicked() {
 				c.After(func() {
-					if err := app.OpenURL(release.download); err != nil {
+					if err := app.OpenURL(release.Download); err != nil {
 						state.problem = "无法打开下载链接：" + err.Error()
 					}
 				})
 			}
 		case state.staged != "":
-			if ui.Button(c, "更新并重启").Disabled(m.desktop == nil).Clicked() {
+			if ui.Button(c, "安装并重启").FontSize(12).Disabled(m.desktop == nil).Clicked() {
 				c.After(func() { m.desktop.restartForUpdate(state.staged) })
 			}
 		default:
-			if ui.Button(c, "下载更新").Clicked() {
+			label := "下载更新"
+			if state.problem != "" {
+				label = "重试下载"
+			}
+			if ui.Button(c, label).FontSize(12).Clicked() {
 				c.After(m.downloadEditorRelease)
 			}
 		}

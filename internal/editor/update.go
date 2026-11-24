@@ -44,10 +44,13 @@ type githubEditorRelease struct {
 }
 
 type editorRelease struct {
-	version, page, notes, download string
-	size                           int64
-	checksum                       [sha256.Size]byte
-	comparison                     int
+	Version    string            `json:"version"`
+	Page       string            `json:"page"`
+	Notes      string            `json:"notes"`
+	Download   string            `json:"download,omitempty"`
+	Size       int64             `json:"size,omitempty"`
+	Checksum   [sha256.Size]byte `json:"checksum"`
+	comparison int
 }
 
 var editorUpdateHTTP = func() *http.Client {
@@ -88,7 +91,7 @@ func editorVersionParts(value string) ([3]int, error) {
 	return result, nil
 }
 
-func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, current string) (editorRelease, error) {
+func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, current string, cache *editorUpdateCache) (editorRelease, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return editorRelease{}, err
@@ -96,11 +99,17 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	request.Header.Set("User-Agent", applicationName+"/"+current)
+	if cache.Release.Version != "" && cache.ETag != "" {
+		request.Header.Set("If-None-Match", cache.ETag)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return editorRelease{}, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotModified && cache.Release.Version != "" {
+		return cache.Release, nil
+	}
 	if response.StatusCode != http.StatusOK {
 		return editorRelease{}, fmt.Errorf("GitHub 返回 HTTP %d", response.StatusCode)
 	}
@@ -121,9 +130,9 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 		return editorRelease{}, err
 	}
 	release := editorRelease{
-		version: strings.TrimPrefix(record.Tag, "v"),
-		page:    editorRepositoryURL + "/releases/tag/" + record.Tag,
-		notes:   editorReleaseNotes(record.Body),
+		Version: strings.TrimPrefix(record.Tag, "v"),
+		Page:    editorRepositoryURL + "/releases/tag/" + record.Tag,
+		Notes:   editorReleaseNotes(record.Body),
 	}
 	for index := range latest {
 		if release.comparison = cmp.Compare(latest[index], installed[index]); release.comparison != 0 {
@@ -131,6 +140,7 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 		}
 	}
 	if release.comparison <= 0 {
+		cache.ETag = response.Header.Get("ETag")
 		return release, nil
 	}
 	download := editorRepositoryURL + "/releases/download/" + record.Tag + "/" + updateExecutable
@@ -143,8 +153,9 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 		if !valid || err != nil || len(checksum) != sha256.Size || asset.Size <= 0 || asset.Size > maxUpdateBytes {
 			return editorRelease{}, errors.New("更新文件的大小或 SHA-256 无效")
 		}
-		release.download, release.size = asset.URL, asset.Size
-		copy(release.checksum[:], checksum)
+		release.Download, release.Size = asset.URL, asset.Size
+		copy(release.Checksum[:], checksum)
+		cache.ETag = response.Header.Get("ETag")
 		return release, nil
 	}
 	return editorRelease{}, errors.New("发布页没有可下载的 EditorX.exe")
@@ -158,14 +169,14 @@ func editorReleaseNotes(body string) string {
 	return strings.TrimSpace(notes)
 }
 
-func downloadEditorUpdate(ctx context.Context, client *http.Client, release editorRelease, target string) error {
+func downloadEditorUpdate(ctx context.Context, client *http.Client, release editorRelease, target string, progress io.Writer) error {
 	complete := false
 	defer func() {
 		if !complete {
 			os.Remove(target)
 		}
 	}()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, release.download, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, release.Download, nil)
 	if err != nil {
 		return err
 	}
@@ -184,11 +195,11 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 	}
 	defer file.Close()
 	digest := sha256.New()
-	size, err := io.Copy(io.MultiWriter(file, digest), io.LimitReader(response.Body, release.size+1))
+	size, err := io.Copy(io.MultiWriter(file, digest, progress), io.LimitReader(response.Body, release.Size+1))
 	if err != nil {
 		return err
 	}
-	if size != release.size || [sha256.Size]byte(digest.Sum(nil)) != release.checksum {
+	if size != release.Size || [sha256.Size]byte(digest.Sum(nil)) != release.Checksum {
 		return errors.New("更新文件的大小或 SHA-256 校验失败")
 	}
 	if err := file.Sync(); err != nil {

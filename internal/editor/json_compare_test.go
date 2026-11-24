@@ -38,8 +38,7 @@ func TestJSONComparisonToolsTargetTheirOwnSide(t *testing.T) {
 	}
 	click("右侧 JSON 菜单", "menuitem:格式化")
 	wantRight, _, _ := transformJSON(right, "格式化", 2)
-	openedLeft, _, _ := transformJSON(left, "格式化", 4)
-	if tab.source.text.String() != openedLeft || tab.comparison.text.String() != wantRight || !tab.jsonCompare {
+	if tab.source.text.String() != left || tab.comparison.text.String() != wantRight || !tab.jsonCompare {
 		t.Fatalf("right format left=%q right=%q compare=%t want=%q status=%q error=%q", tab.source.text.String(), tab.comparison.text.String(), tab.jsonCompare, wantRight, m.status, m.errorText)
 	}
 	click("格式化左侧")

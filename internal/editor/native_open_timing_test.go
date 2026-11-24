@@ -12,16 +12,21 @@ import (
 	"github.com/vivaui/viva/app"
 )
 
-func TestNativeOpenTiming(t *testing.T) {
-	if os.Getenv("VIVA_NATIVE_SMOKE") != "1" {
-		t.Skip("native timing is opt-in")
-	}
-	directory := t.TempDir()
+func setNativeWebViewProfile(t *testing.T, directory string) {
+	t.Helper()
 	webData := os.Getenv("VIVA_NATIVE_OPEN_PROFILE")
 	if webData == "" {
 		webData = filepath.Join(directory, "WebView2")
 	}
 	t.Setenv("WEBVIEW2_USER_DATA_FOLDER", webData)
+}
+
+func TestNativeOpenTiming(t *testing.T) {
+	if os.Getenv("VIVA_NATIVE_SMOKE") != "1" {
+		t.Skip("native timing is opt-in")
+	}
+	directory := t.TempDir()
+	setNativeWebViewProfile(t, directory)
 	git, err := exec.LookPath("git.exe")
 	if err != nil {
 		t.Skip("Git for Windows is required for startup timing")
@@ -39,33 +44,49 @@ func TestNativeOpenTiming(t *testing.T) {
 	}
 	m := newEditorApp()
 	m.dataDirectory = directory
+	linkedPDF, err := decodeLinkedFile("临时链接.pdf", previewFixturePDF())
+	if err != nil {
+		t.Fatal(err)
+	}
 	samples := []struct {
 		label string
 		open  func()
 		ready func() (bool, string)
+		check func()
 	}{
 		{"Excel", func() { m.load(sheet) }, func() (bool, string) {
 			return m.active.office.ready, m.active.office.errorText
-		}},
+		}, nil},
 		{"Word", func() { m.load(word) }, func() (bool, string) {
 			if preview := m.active.preview; preview != nil {
 				return preview.ready, preview.issue
 			}
 			return m.active.office.ready, m.active.office.errorText
-		}},
+		}, nil},
 		{"PDF", func() { m.load(pdf) }, func() (bool, string) {
 			return m.active.preview.ready, m.active.preview.issue
+		}, func() {
+			view := m.active.preview.view
+			m.setLightMode(true)
+			view.Eval(`if (getComputedStyle(document.querySelector('#viewer canvas')).filter !== 'none') {window.viva.postMessage(JSON.stringify({kind:'error', text:'PDF light paper did not follow the theme'}))}`)
+			m.setLightMode(false)
+			view.Eval(checkPDFPreviewJS)
+		}},
+		{"Linked PDF", func() { m.openLoadedFile(linkedPDF) }, func() (bool, string) {
+			return m.active.preview.ready, m.active.preview.issue
+		}, func() {
+			m.active.preview.view.Eval(checkLinkedPDFPreviewJS)
 		}},
 		{"PowerShell", func() { m.openLocalShell(directory) }, func() (bool, string) {
 			return m.tools.terminal.viewReady.Load() && m.tools.terminal.process != nil, m.tools.terminal.issue
-		}},
+		}, nil},
 		{"Git", func() { m.openProjectGit(directory) }, func() (bool, string) {
 			return m.tools.git.request == nil && m.tools.git.snapshot.root != "", m.tools.git.issue
-		}},
+		}, nil},
 	}
 	var failure error
 	var started time.Time
-	checkingPDF := false
+	checkingPreview := false
 	sample := 0
 	completed := false
 	stop := make(chan struct{})
@@ -111,21 +132,17 @@ func TestNativeOpenTiming(t *testing.T) {
 						if !ready {
 							return
 						}
-						if current.label == "PDF" {
-							if !checkingPDF {
-								t.Logf("PDF first page ready in %s", time.Since(started).Round(time.Millisecond))
-								checkingPDF = true
-								preview := m.active.preview
-								preview.ready = false
-								m.setLightMode(true)
-								preview.view.Eval(`if (getComputedStyle(document.querySelector('#viewer canvas')).filter !== 'none') {window.viva.postMessage(JSON.stringify({kind:'error', text:'PDF light paper did not follow the theme'}))}`)
-								m.setLightMode(false)
-								preview.view.Eval(checkPDFPreviewJS)
+						if !checkingPreview {
+							t.Logf("%s ready in %s", current.label, time.Since(started).Round(time.Millisecond))
+							if current.check != nil {
+								checkingPreview = true
+								m.active.preview.ready = false
+								current.check()
 								return
 							}
-							t.Log("PDF title, zoom, paper theme, search, and original file range passed")
 						} else {
-							t.Logf("%s ready in %s", current.label, time.Since(started).Round(time.Millisecond))
+							t.Logf("%s preview checks passed", current.label)
+							checkingPreview = false
 						}
 						sample++
 						started = time.Time{}
@@ -182,6 +199,22 @@ const checkPDFPreviewJS = `(async () => {
 		while (document.querySelector("#find-count").textContent !== "1 / 1") {
 			if (Date.now() >= deadline) throw new Error("PDF text search did not return the expected match");
 			await new Promise(resolve => setTimeout(resolve, 40));
+		}
+		window.viva.postMessage(JSON.stringify({kind: "ready"}));
+	} catch (error) {
+		window.viva.postMessage(JSON.stringify({kind: "error", text: error.message}));
+	}
+})()`
+
+const checkLinkedPDFPreviewJS = `(async () => {
+	try {
+		if (document.querySelector("#name").textContent !== "临时链接.pdf" ||
+			!document.querySelector("#external").hidden || document.querySelector("#save-copy").hidden) {
+			throw new Error("Linked PDF did not show the expected name and actions");
+		}
+		const response = await fetch("document.pdf", {headers: {Range: "bytes=0-4"}});
+		if (response.status !== 206 || await response.text() !== "%PDF-") {
+			throw new Error("Linked PDF range request did not return the original bytes");
 		}
 		window.viva.postMessage(JSON.stringify({kind: "ready"}));
 	} catch (error) {

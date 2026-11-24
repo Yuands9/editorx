@@ -207,7 +207,11 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 	if m.tools.git.snapshot.hasStaged() || m.tools.git.commit.Text() != "" {
 		t.Fatal("the commit button did not commit and clear the description")
 	}
-	m.startGit(gitAddRemote, remote, nil)
+	click("远程仓库地址")
+	if err := session.Type(remote); err != nil {
+		t.Fatal(err)
+	}
+	click("button:添加远程")
 	waitForGit()
 	click("button:推送")
 	waitForGit()

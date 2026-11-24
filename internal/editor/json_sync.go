@@ -47,17 +47,10 @@ func (t *editorTab) updateResult() {
 			formatError = err
 		}
 	}
-	// 撤销后保留编辑侧的原始文本和重做记录，对侧仍跟随当前内容。
-	if editor == t.result || !t.source.text.CanRedo() {
-		clean := editor == t.source && left == t.doc.saved
-		hadUndo := t.source.text.CanUndo()
-		t.source.syncJSONText(formatted, editor == t.source && formatError == nil)
-		if clean && left != formatted {
-			t.doc.saved = t.source.text.CommittedString()
-			if !hadUndo {
-				t.source.text.ClearHistory()
-			}
-		}
+	// 左侧始终保留原始输入（含空行、缩进和未完成的 JSON）。
+	// 只有用户主动编辑右侧时才同步写回，预览刷新不修改原文或撤销记录。
+	if editor == t.result {
+		t.source.syncJSONText(formatted, false)
 	}
 	t.resultSource = t.source.text.CommittedString()
 	t.resultReady = true

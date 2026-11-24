@@ -226,3 +226,59 @@ func TestLinkedFileSaveChoiceKeepsOriginalBytes(t *testing.T) {
 		t.Fatal("saving changed the original bytes or skipped the saved tab")
 	}
 }
+
+func TestLinkedFileDraftsAndAttachmentsAfterRestart(t *testing.T) {
+	store, err := openSessionStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newEditorApp()
+	store.attach(m)
+
+	const viewedName = "临时阅读.md"
+	const viewedContent = "# 只浏览的链接内容"
+	viewedFile, err := decodeLinkedFile(viewedName, []byte(viewedContent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewed := m.openLoadedFile(viewedFile)
+	draftFile, err := decodeLinkedFile("草稿.md", []byte("# 链接原文"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := m.openLoadedFile(draftFile)
+	const editedContent = "# 本地未保存的修改"
+	draft.source.replace(editedContent)
+	m.ai.attachments = []aiAttachment{{tabID: viewed.id}, {tabID: draft.id}}
+
+	if err := store.save(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(store.directory, "session.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte(viewedName)) || bytes.Contains(data, []byte(viewedContent)) {
+		t.Fatal("the session file stored a viewed-only link")
+	}
+
+	restored, err := openSessionStore(store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.windows) != 1 {
+		t.Fatalf("restored %d windows, want one", len(restored.windows))
+	}
+	window := restored.windows[0]
+	if len(window.tabs) != 1 || window.active != window.tabs[0] {
+		t.Fatalf("restored %d tabs, want only the active draft", len(window.tabs))
+	}
+	tab := window.active
+	if tab.name != draft.name || tab.doc.path != "" || tab.source.text.CommittedString() != editedContent || !tab.modified() {
+		t.Fatal("the edited link did not restore as a modified draft")
+	}
+	attachments := window.ai.attachments
+	if len(attachments) != 1 || attachments[0].tabID != tab.id {
+		t.Fatal("the restored attachment did not point to the remaining draft")
+	}
+}

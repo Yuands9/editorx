@@ -80,7 +80,7 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 		t.Fatal("the fresh profile should wrap only JSON")
 	}
 	click("文件类型 · 1 项")
-	click("checkbox:纯文本")
+	click("switch:纯文本")
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
 		check(session.Screenshot(filepath.Join(preview, "editor-wrap-types.png")))
 	}
@@ -112,8 +112,8 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	checkPanes(overridden, false)
 	click("关闭设置")
 	if jsonTab.jsonIndent != 2 || overridden.jsonIndent != 4 ||
-		jsonTab.source.text.String() != "{\n  \"field\": [\n    1,\n    2\n  ]\n}" ||
-		jsonTab.source.text.String() != jsonTab.result.text.String() {
+		jsonTab.result.text.String() != "{\n  \"field\": [\n    1,\n    2\n  ]\n}" ||
+		jsonTab.source.text.String() != `{"field":[1,2]}` {
 		t.Fatal("JSON did not use the correct global or per-tab indentation")
 	}
 

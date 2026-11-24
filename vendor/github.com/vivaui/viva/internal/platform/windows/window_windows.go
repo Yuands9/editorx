@@ -420,6 +420,18 @@ func (application *windowsApplication) OpenWindow(config platform.Config) (platf
 	state.applyBackdrop()
 	state.applyBorderColor()
 	state.ready = true
+	// Prepare the real DPI-sized frame before ShowWindow exposes the client area.
+	// A cold first layout can be slow; presenting afterwards flashes an empty window.
+	var initialBounds rect
+	getClientRect.Call(state.window, uintptr(unsafe.Pointer(&initialBounds)))
+	initialWidth, initialHeight := int(initialBounds.Right), int(initialBounds.Bottom)
+	if !state.layoutClientSize(initialWidth, initialHeight) {
+		return nil, state.err
+	}
+	if err := state.presentImmediate(initialWidth, initialHeight); err != nil {
+		destroyWindow.Call(state.window)
+		return nil, err
+	}
 	if state.activeBackdrop() {
 		postMessage.Call(state.window, wmRedraw, 0, 0)
 	}

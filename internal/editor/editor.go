@@ -202,6 +202,13 @@ type editorApp struct {
 	groupClick         tabGroupClick
 	rename             tabRenameState
 	fileMenu           bool
+	newFileMenu        bool
+	templateDialog     *templateDialogState
+	templatePanel      *templateDialogState
+	sidebarPrefs       sidebarPreferences
+	translationEnabled bool
+	translationMode    translationMode
+	translation        *translationPanelState
 	languageMenu       bool
 	results            searchResults
 	ai                 aiAssistant
@@ -257,7 +264,6 @@ func (m *editorApp) addTab(doc document, name string) *editorTab {
 		}
 		return value
 	}
-	t.source.input.TransformPaste = formatPaste
 	t.result.input.TransformPaste = formatPaste
 	t.comparison.input.TransformPaste = formatPaste
 	t.initSearch(m)
@@ -273,13 +279,20 @@ func (m *editorApp) addTab(doc document, name string) *editorTab {
 }
 
 func (m *editorApp) newDocument() {
+	m.addTab(document{eol: "CRLF"}, m.untitledName(""))
+	m.status = "新文档"
+}
+
+func (m *editorApp) untitledName(extension string) string {
 	usedNames := make(map[string]bool, len(m.tabs))
 	for _, tab := range m.tabs {
-		usedNames[tab.title()] = true
-		usedNames[tab.tabTitle()] = true
+		for _, name := range []string{tab.title(), tab.tabTitle()} {
+			if base, matches := strings.CutSuffix(name, extension); matches {
+				usedNames[base] = true
+			}
+		}
 	}
-	m.addTab(document{eol: "CRLF"}, nextUntitledName(usedNames))
-	m.status = "新文档"
+	return nextUntitledName(usedNames) + extension
 }
 
 func nextUntitledName(usedNames map[string]bool) string {
@@ -293,6 +306,10 @@ func nextUntitledName(usedNames map[string]bool) string {
 
 func (m *editorApp) activate(t *editorTab) {
 	m.languageMenu = false
+	if m.active != t && m.translation != nil {
+		m.translation.clearLookup()
+		m.translation.message, m.translation.problem = "", ""
+	}
 	// 切换时取消尚未提交的组合，避免把拼音音节当成正文存入旧标签。
 	if m.active != nil && m.active != t {
 		m.active.source.text.CancelComposition()
@@ -301,6 +318,9 @@ func (m *editorApp) activate(t *editorTab) {
 		m.active.search.query.CancelComposition()
 	}
 	m.active = t
+	if m.templatePanel != nil && m.templatePanel.project != m.activeTextProject(t) {
+		m.loadTemplatePicker(&templateDialogState{open: true, project: m.activeTextProject(t)}, "", "")
+	}
 	m.tabReveal = t != nil
 	if t == nil {
 		return
@@ -682,6 +702,8 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		next.setLightMode(m.light)
 		next.editorPrefs = m.editorPrefs
 		next.keyBindings = m.keyBindings
+		next.applySidebarPreferences(m.sidebarPrefs)
+		next.translationEnabled = m.translationEnabled
 		next.store, next.dataDirectory = m.store, m.dataDirectory
 		if err := openEditorWindow(application, next); err != nil {
 			m.fail(err)
@@ -719,6 +741,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 	}
 	return app.Config{
 		Title: applicationName, Icon: themedApplicationIcon(m.light), Width: width, Height: height, MinWidth: 900, MinHeight: 560, Origin: origin, Web: &m.webHost,
+		ClearColor:  app.Color{Red: float64(m.theme.Card.Red), Green: float64(m.theme.Card.Green), Blue: float64(m.theme.Card.Blue), Alpha: 1},
 		Invalidator: &m.invalidator,
 		OnShortcut:  m.windowShortcut,
 		OnKey:       m.functionShortcut,
@@ -775,6 +798,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 		store.attach(newEditorApp())
 	}
 	desktop := &editorDesktop{store: store}
+	desktop.update.initialize(directory, time.Now())
+	defer desktop.update.close()
 	desktop.preferences, err = readApplicationPreferences(directory)
 	if err != nil {
 		store.windows[0].status = "无法读取应用设置，已使用默认值：" + err.Error()
@@ -783,6 +808,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 	for _, window := range store.windows {
 		window.applyEditorPreferences(desktop.preferences.Editor)
 		window.keyBindings = desktop.preferences.Shortcuts
+		window.applySidebarPreferences(desktop.preferences.Sidebar)
+		window.translationEnabled = desktop.preferences.TranslationEnabled
 	}
 	store.windows[0].openLaunchPaths(paths)
 
@@ -836,6 +863,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 					return
 				case <-ticker.C:
 					application.Post(func() {
+						desktop.checkEditorUpdates(time.Now())
 						if store.backgroundSaving {
 							return
 						}
@@ -865,6 +893,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 
 func (m *editorApp) interactionBlocked() bool {
 	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
+		m.templateDialog != nil ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
@@ -929,8 +958,9 @@ func (m *editorApp) releaseWindowState() {
 	m.tabs, m.active, m.workspace = nil, nil, nil
 	m.results = searchResults{}
 	m.ai = aiAssistant{}
-	if m.update.staged != "" {
-		os.Remove(m.update.staged)
+	m.translation, m.templateDialog, m.templatePanel = nil, nil, nil
+	if m.desktop == nil {
+		m.update.close()
 	}
 	m.update, m.backup = editorUpdateState{}, editorBackupState{}
 	m.linkedFile = linkedFileState{}

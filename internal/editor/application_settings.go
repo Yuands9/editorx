@@ -18,16 +18,19 @@ const (
 )
 
 type applicationPreferences struct {
-	ShowTrayIcon         bool              `json:"showTrayIcon"`
-	ExitOnClose          bool              `json:"exitOnClose"`
-	SkipSaveConfirmation bool              `json:"skipSaveConfirmation,omitempty"`
-	Theme                string            `json:"theme,omitempty"`
-	Editor               editorPreferences `json:"editor"`
-	Shortcuts            shortcutOverrides `json:"shortcuts,omitempty"`
+	ShowTrayIcon         bool               `json:"showTrayIcon"`
+	ExitOnClose          bool               `json:"exitOnClose"`
+	SkipSaveConfirmation bool               `json:"skipSaveConfirmation,omitempty"`
+	TranslationEnabled   bool               `json:"translationEnabled,omitempty"`
+	DisableAutoUpdate    bool               `json:"disableAutoUpdate,omitempty"`
+	Theme                string             `json:"theme,omitempty"`
+	Editor               editorPreferences  `json:"editor"`
+	Sidebar              sidebarPreferences `json:"sidebar"`
+	Shortcuts            shortcutOverrides  `json:"shortcuts,omitempty"`
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
-	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, Editor: defaultEditorPreferences()}
+	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, Editor: defaultEditorPreferences(), Sidebar: sidebarPreferences{Position: "right"}}
 	data, err := os.ReadFile(filepath.Join(directory, applicationSettingsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return defaults, nil
@@ -45,6 +48,7 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 		preferences.Theme = themeSystem
 	}
 	preferences.Editor = preferences.Editor.normalized()
+	preferences.Sidebar = preferences.Sidebar.normalized()
 	return preferences, nil
 }
 
@@ -63,6 +67,7 @@ func (m *editorApp) applicationPreferences() (applicationPreferences, error) {
 	if m.desktop != nil {
 		preferences := m.desktop.preferences
 		preferences.Editor = preferences.Editor.normalized()
+		preferences.Sidebar = preferences.Sidebar.normalized()
 		return preferences, nil
 	}
 	return readApplicationPreferences(m.dataDirectory)
@@ -72,6 +77,9 @@ func (m *editorApp) saveApplicationSettings() {
 	settings := &m.appSettings
 	if settings.draft.ShowTrayIcon == settings.original.ShowTrayIcon && settings.draft.ExitOnClose == settings.original.ExitOnClose &&
 		settings.draft.SkipSaveConfirmation == settings.original.SkipSaveConfirmation &&
+		settings.draft.TranslationEnabled == settings.original.TranslationEnabled &&
+		settings.draft.DisableAutoUpdate == settings.original.DisableAutoUpdate &&
+		settings.draft.Sidebar == settings.original.Sidebar &&
 		settings.draft.Theme == settings.original.Theme && settings.draft.Editor.equal(settings.original.Editor) {
 		return
 	}
@@ -95,7 +103,14 @@ func (m *editorApp) saveApplicationSettings() {
 	if settings.draft.Theme != settings.original.Theme {
 		preferences.Theme = settings.draft.Theme
 	}
+	if settings.draft.TranslationEnabled != settings.original.TranslationEnabled {
+		preferences.TranslationEnabled = settings.draft.TranslationEnabled
+	}
+	if settings.draft.DisableAutoUpdate != settings.original.DisableAutoUpdate {
+		preferences.DisableAutoUpdate = settings.draft.DisableAutoUpdate
+	}
 	preferences.Editor = preferences.Editor.withChanges(settings.original.Editor, settings.draft.Editor)
+	preferences.Sidebar = preferences.Sidebar.withChanges(settings.original.Sidebar, settings.draft.Sidebar)
 	m.persistApplicationSettings(preferences)
 }
 
@@ -171,11 +186,20 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 		trayChanged := desktop.preferences.ShowTrayIcon != preferences.ShowTrayIcon ||
 			desktop.tray != nil && desktop.preferences.Theme != preferences.Theme
 		desktop.preferences = preferences
+		if preferences.DisableAutoUpdate && desktop.update.check != nil && !desktop.update.manual {
+			desktop.update.check.cancel()
+			desktop.update.check = nil
+		}
 		for _, window := range desktop.store.windows {
 			if !window.windowClosed {
 				window.applyThemePreference(preferences.Theme)
 				window.applyEditorPreferences(preferences.Editor)
 				window.keyBindings = preferences.Shortcuts
+				window.applySidebarPreferences(preferences.Sidebar)
+				window.translationEnabled = preferences.TranslationEnabled
+				if !window.translationEnabled {
+					window.translation = nil
+				}
 				if window.appSettings.open {
 					window.appSettings.original, window.appSettings.draft = preferences, preferences
 				}
@@ -190,6 +214,11 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 	m.applyThemePreference(preferences.Theme)
 	m.applyEditorPreferences(preferences.Editor)
 	m.keyBindings = preferences.Shortcuts
+	m.applySidebarPreferences(preferences.Sidebar)
+	m.translationEnabled = preferences.TranslationEnabled
+	if !m.translationEnabled {
+		m.translation = nil
+	}
 	m.invalidator.Invalidate()
 	return nil
 }

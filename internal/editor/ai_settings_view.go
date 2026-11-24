@@ -353,8 +353,8 @@ func (m *editorApp) aiAdvancedSettings(c ui.C, disabled bool, submitted *bool) {
 			e.clearProbe(true)
 		}
 	})
-	m.aiSettingsRow(c.Part("network"), "网络", func() {
-		if ui.Checkbox(c, &e.direct, "直连 · 不使用环境代理").FontSize(12).Disabled(disabled).Changed() {
+	m.aiSettingsRow(c.Part("network"), "网络直连", func() {
+		if ui.Switch(c, &e.direct, "").Label("网络直连").Tooltip("不使用环境代理").Disabled(disabled).Changed() {
 			e.clearProbe(true)
 		}
 	})

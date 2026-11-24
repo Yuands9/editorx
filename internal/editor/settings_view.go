@@ -10,6 +10,7 @@ import (
 const (
 	settingsAppearance = "外观"
 	settingsEditor     = "编辑器"
+	settingsSidebar    = "侧栏"
 	settingsBackup     = "备份"
 	settingsShortcuts  = "快捷键"
 	settingsAI         = "AI"
@@ -22,10 +23,11 @@ var settingSections = []struct {
 }{
 	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、询问保存、不再询问", themeIcon},
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
+	{settingsSidebar, "左侧、右侧、显示按钮、模板库、本地词库、AI 翻译", leftPanelIcon},
 	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
 	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
-	{settingsAbout, "EditorX、版本、检查更新、GitHub", infoIcon},
+	{settingsAbout, "EditorX、版本、自动检查更新、GitHub", infoIcon},
 }
 
 type settingsPageState struct {
@@ -195,6 +197,8 @@ func (m *editorApp) settingsPage(c ui.C) {
 							m.windowSettings(c)
 						case settingsEditor:
 							m.editorSettings(c)
+						case settingsSidebar:
+							m.sidebarSettings(c)
 						case settingsBackup:
 							m.backupSettings(c)
 						case settingsShortcuts:
@@ -240,26 +244,20 @@ func (m *editorApp) settingsSearchResults(c ui.C, query string) {
 
 func (m *editorApp) windowSettings(c ui.C) {
 	draft := &m.appSettings.draft
-	m.applicationSetting(c.Part("show-tray"), "显示系统托盘图标",
-		"点击托盘图标恢复窗口，右键可打开设置或退出。", func() {
-			if ui.Switch(c, &draft.ShowTrayIcon, "").Label("显示系统托盘图标").Changed() {
-				c.After(m.saveApplicationSettings)
-			}
-		})
-	m.applicationSetting(c.Part("close-action"), "关闭最后一个窗口时退出程序",
-		"关闭此项后，关闭最后一个窗口会隐藏到后台。再次打开 EditorX 可以唤回窗口。", func() {
-			if ui.Switch(c, &draft.ExitOnClose, "").Label("关闭最后一个窗口时退出程序").Changed() {
-				c.After(m.saveApplicationSettings)
-			}
-		})
-	m.applicationSetting(c.Part("save-confirmation"), "关闭标签时询问保存",
-		"关闭询问后，关闭有修改的标签会自动保存。未命名文件会先选择保存位置。", func() {
-			ask := !draft.SkipSaveConfirmation
-			if ui.Switch(c, &ask, "").Label("关闭标签时询问保存").Changed() {
-				draft.SkipSaveConfirmation = !ask
-				c.After(m.saveApplicationSettings)
-			}
-		})
+	if m.applicationSettingSwitch(c.Part("show-tray"), "显示系统托盘图标",
+		"点击托盘图标恢复窗口，右键可打开设置或退出。", &draft.ShowTrayIcon) {
+		c.After(m.saveApplicationSettings)
+	}
+	if m.applicationSettingSwitch(c.Part("close-action"), "关闭最后一个窗口时退出程序",
+		"关闭此项后，关闭最后一个窗口会隐藏到后台。再次打开 EditorX 可以唤回窗口。", &draft.ExitOnClose) {
+		c.After(m.saveApplicationSettings)
+	}
+	ask := !draft.SkipSaveConfirmation
+	if m.applicationSettingSwitch(c.Part("save-confirmation"), "关闭标签时询问保存",
+		"关闭询问后，关闭有修改的标签会自动保存。未命名文件会先选择保存位置。", &ask) {
+		draft.SkipSaveConfirmation = !ask
+		c.After(m.saveApplicationSettings)
+	}
 }
 
 func (m *editorApp) appearanceSettings(c ui.C) {
@@ -292,4 +290,23 @@ func (m *editorApp) applicationSetting(c ui.C, title, description string, contro
 		})
 		control()
 	})
+}
+
+func (m *editorApp) applicationSettingSwitch(c ui.C, title, description string, enabled *bool) bool {
+	var changed bool
+	m.applicationSetting(c, title, description, func() {
+		changed = ui.Switch(c, enabled, "").Label(title).Changed()
+	})
+	return changed
+}
+
+func settingsSwitchRow(c ui.C, title string, enabled *bool) bool {
+	var changed bool
+	ui.Row(c).FillWidth().Height(30).PadX(4).Gap(8).Items(ui.Center).Children(func() {
+		label := ui.Text(c, title).Grow(1).MinWidth(0).Ellipsis().FontSize(13)
+		control := ui.Switch(c, enabled, "").Label(title).Shrink(0)
+		label.LabelFor(control.N().ID)
+		changed = control.Changed()
+	})
+	return changed
 }

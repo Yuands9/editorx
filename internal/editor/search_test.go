@@ -207,8 +207,7 @@ func TestSearchFoldedJSONAndOtherPanes(t *testing.T) {
 	if tab.search.target != tab.comparison || len(tab.search.matches) != 1 {
 		t.Fatal("comparison search failed")
 	}
-	formatted, _, err := transformJSON(source, "格式化", 4)
-	if err != nil || tab.source.text.String() != formatted {
+	if tab.source.text.String() != source {
 		t.Fatal("search corrupted JSON")
 	}
 }
@@ -313,13 +312,6 @@ func TestUnsavedDetectionKeepsEditingAndUndo(t *testing.T) {
 				t.Fatal(err)
 			}
 			expected := first + second
-			if mode == "JSON" {
-				formatted, _, err := transformJSON(expected, "格式化", 4)
-				if err != nil {
-					t.Fatal(err)
-				}
-				expected = formatted
-			}
 			if tab.source.text.String() != expected || tab.format() != mode || tab.doc.path != "" {
 				t.Fatalf("auto mode lost typing: %q (%s)", tab.source.text.String(), tab.format())
 			}

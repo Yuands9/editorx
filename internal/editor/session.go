@@ -161,6 +161,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		m := newEditorApp()
 		m.editorPrefs = preferences.Editor
 		m.keyBindings = preferences.Shortcuts
+		m.applySidebarPreferences(preferences.Sidebar)
 		m.store, m.dataDirectory = store, directory
 		if len(store.windows) > 0 && !saved.SeparateWindows {
 			conversations := state.AI
@@ -237,6 +238,9 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 	state := windowSession{Active: slices.Index(tabs, m.active), Light: m.light, ShowFiles: m.showFiles, ShowOutline: m.showOutline,
 		FilesWidth: m.filesSplit.Pos, OutlineRatio: 1 - m.outlineSplit.Ratio,
 		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, Frame: m.windowFrame, Maximized: m.maximized}
+	if m.sidebarPrefs.Position == "left" {
+		state.AIEditorRatio = 1 - state.AIEditorRatio
+	}
 	if includeAI {
 		state.AI = m.snapshotAI(tabs)
 	}
@@ -323,6 +327,9 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 	}
 	if state.AIEditorRatio > 0 && state.AIEditorRatio < 1 {
 		m.aiEditorSplit.Ratio = state.AIEditorRatio
+		if m.sidebarPrefs.Position == "left" {
+			m.aiEditorSplit.Ratio = 1 - m.aiEditorSplit.Ratio
+		}
 	}
 	if state.AIPromptRatio > 0 && state.AIPromptRatio < 1 {
 		m.aiPromptSplit.Ratio = state.AIPromptRatio

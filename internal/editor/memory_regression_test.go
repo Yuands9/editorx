@@ -58,7 +58,7 @@ func TestCompactSessionFallbackAndClosedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(restored.windows) != 2 || restored.windows[0].tabs[0].source.text.String() != result || restored.windows[0].tabs[0].modified() {
+	if len(restored.windows) != 2 || restored.windows[0].tabs[0].source.text.String() != source || restored.windows[0].tabs[0].modified() {
 		t.Fatal("missing clean file fallback lost content or became modified")
 	}
 	if restored.windows[0].tabs[0].result.text.String() != result || restored.windows[0].tabs[0].result.restoreScroll.Y != 37 {

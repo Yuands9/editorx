@@ -19,9 +19,12 @@ func (m *editorApp) workspacePanel(c ui.C) ui.Box {
 
 func (m *editorApp) page(c ui.C) {
 	m.backupProgress(c.Part("backup"))
-	m.updateProgress(c.Part("update"))
+	m.updateProgress()
 	m.browserUpdate(c)
 	m.aiUpdate(c)
+	m.updateSelectionTranslation(c.Part("selection-translation"))
+	m.updateTranslationDictionary(c.Part("dictionary-download"))
+	m.updateOfflineTranslation(c.Part("offline-translation"))
 	m.updateProjectGit(c)
 	m.updateLocalShell()
 	m.updateLinkedFile(c.Part("link-download"))
@@ -30,12 +33,17 @@ func (m *editorApp) page(c ui.C) {
 		c.After(m.toggleApplicationSettings)
 	}
 	ui.Row(c.Part("workspace")).Fill().Background(m.theme.Card).Children(func() {
+		if m.sidebarPrefs.Position == "left" {
+			m.toolRail(c.Part("tool-rail"), blocked)
+		}
 		if m.appSettings.open {
 			m.settingsPage(c.Part("settings"))
 		} else {
 			m.editorPage(c.Part("editor"), blocked)
 		}
-		m.rightRail(c.Part("right-rail"), blocked)
+		if m.sidebarPrefs.Position != "left" {
+			m.toolRail(c.Part("tool-rail"), blocked)
+		}
 	})
 	if !m.appSettings.open {
 		if m.active != nil && !blocked {
@@ -50,6 +58,7 @@ func (m *editorApp) page(c ui.C) {
 	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
 	m.linkedFileDialog(c.Part("link-dialog"))
+	m.showTemplateDialog(c.Part("template-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.dialogs(c)
 }
@@ -88,9 +97,18 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 				ui.Splitter(c, &m.filesSplit).Mins(210, 580).SplitterThickness(workspaceInset)
 			}
 			ui.Row(c.Part("editing-area")).Grow(1).MinWidth(0).FillHeight().Clip().Children(func() {
-				workbench := ui.Row(c.Part("workbench")).MinWidth(0).FillHeight().PadRight(workspaceInset).Clip()
+				split := m.activeAssetSplit()
 				if m.ai.open {
-					workbench.Width(m.aiEditorSplit.Pos).Shrink(0).PadRight(0)
+					split = &m.aiEditorSplit
+				}
+				left := m.sidebarPrefs.Position == "left"
+				if split != nil && left {
+					ui.Column(c.Part("tool-panel")).Width(split.Pos).Shrink(0).FillHeight().MinWidth(0).Children(func() { m.sideToolPanel(c, blocked) })
+					m.toolPanelDivider(c.Part("tool-split"), split, true)
+				}
+				workbench := ui.Row(c.Part("workbench")).MinWidth(0).FillHeight().PadRight(workspaceInset).Clip()
+				if split != nil && !left {
+					workbench.Width(split.Pos).Shrink(0).PadRight(0)
 				} else {
 					workbench.Grow(1)
 				}
@@ -108,12 +126,9 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 						m.documentPanes(c.Part("document-panes"), t, blocked)
 					})
 				})
-				if m.ai.open {
-					ui.Splitter(c, &m.aiEditorSplit).Mins(232, 280).SplitterThickness(12).
-						Label("调整编辑区与 AI 助手宽度").DrawOver(func(d *ui.DrawContext) {
-						m.drawAIResizeGrip(d, &m.aiEditorSplit, true)
-					})
-					m.aiPanel(c.Part("assistant"), blocked)
+				if split != nil && !left {
+					m.toolPanelDivider(c.Part("tool-split"), split, false)
+					ui.Column(c.Part("tool-panel")).Grow(1).MinWidth(0).FillHeight().Children(func() { m.sideToolPanel(c, blocked) })
 				}
 			})
 		})
@@ -127,9 +142,31 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 	})
 }
 
+func (m *editorApp) sideToolPanel(c ui.C, blocked bool) {
+	if m.ai.open {
+		m.aiPanel(c.Part("assistant"), blocked)
+	} else if m.translation != nil {
+		m.translationPanel(c.Part("translation"), blocked)
+	} else if m.templatePanel != nil {
+		m.templatesPanel(c.Part("templates"), blocked)
+	}
+}
+
+func (m *editorApp) toolPanelDivider(c ui.C, split *ui.SplitterState, left bool) {
+	divider := ui.Splitter(c, split).SplitterThickness(workspaceInset).Label("调整侧栏宽度")
+	if left {
+		divider.Mins(300, 230)
+	} else {
+		divider.Mins(230, 300)
+	}
+	if m.ai.open {
+		divider.SplitterThickness(12).Label("调整编辑区与 AI 助手宽度").DrawOver(func(d *ui.DrawContext) { m.drawAIResizeGrip(d, split, true) })
+	}
+}
+
 func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 	ui.Row(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
-		if t.format() == "Markdown" && m.showOutline && !m.ai.open {
+		if t.format() == "Markdown" && m.showOutline && !m.ai.open && m.translation == nil && m.templatePanel == nil {
 			ui.Column(c.Part("outline")).Width(m.outlineSplit.Pos).Shrink(0).FillHeight().Clip().
 				Children(func() { m.outlinePanel(c, t) })
 			ui.Splitter(c, &m.outlineSplit).Mins(160, 420).SplitterThickness(workspaceInset).Label("调整大纲宽度")
@@ -150,54 +187,82 @@ func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 	})
 }
 
-func (m *editorApp) rightRail(c ui.C, blocked bool) {
+func (m *editorApp) toolRail(c ui.C, blocked bool) {
 	ui.Column(c).Width(44).Shrink(0).FillHeight().PadX(6).PadY(workspaceInset + 4).Gap(6).Children(func() {
 		t := m.active
-		if t != nil && !m.appSettings.open {
-			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
-			if t.modified() {
+		if !m.sidebarPrefs.HideSave {
+			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
+			if t != nil && t.modified() {
 				save.Secondary().ButtonRecipe(m.pinButtonRecipe)
 			}
 			if save.Clicked() {
 				c.After(func() { m.saveTab(t, false) })
 			}
+		}
+		if !m.sidebarPrefs.HideSearch {
 			searchHint := m.shortcutHint("查找", shortcutFind) + " / " + m.shortcutHint("替换", shortcutReplace)
-			if t.office != nil {
+			if t != nil && t.office != nil {
 				searchHint = "Office 文档请使用文档内的查找功能"
 			}
-			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t.readOnlyPreview() || t.office != nil || blocked).Tooltip(searchHint).Clicked() {
-				c.After(t.openSearch)
+			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(searchHint).Clicked() {
+				c.After(func() { m.closeSettings(); t.openSearch() })
 			}
-			ui.Slot(c).FillWidth().Height(1).MarginY(3).Background(m.theme.Border)
-			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(30).Height(34).Disabled(t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint("自动折行", shortcutWrap))
-			if !t.readOnlyPreview() && t.source.view.Snapshot.Wrap {
+		}
+		if !m.sidebarPrefs.HideWrap {
+			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(32).Height(34).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint("自动折行", shortcutWrap))
+			if t != nil && !t.readOnlyPreview() && t.source.view.Snapshot.Wrap {
 				wrap.Secondary()
 			}
 			if wrap.Clicked() {
 				t.toggleWrap()
 			}
-			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(30).Height(34).Tooltip("AI 助手").TooltipOn(ui.TooltipLeft).Disabled(blocked)
+		}
+		if !m.sidebarPrefs.HideAI {
+			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(32).Height(34).Tooltip("AI 助手").Disabled(blocked)
 			if m.ai.open || m.ai.hasPendingRequest() {
 				assistant.Secondary()
 			}
 			if assistant.Clicked() {
-				c.After(m.toggleAIPanel)
+				c.After(func() { m.closeSettings(); m.toggleAIPanel() })
 			}
-			for _, tool := range []struct {
-				name string
-				icon gfx.Icon
-			}{{"Git", gitBranchIcon}, {"终端", shellIcon}} {
-				entry := ui.Button(c.Key(tool.name), tool.name).Icon(tool.icon).IconOnly().Ghost().Width(30).Height(34).Tooltip(tool.name).Disabled(blocked)
-				if m.tools.active == tool.name {
-					entry.Secondary()
-				}
-				if entry.Clicked() {
-					c.After(func() { m.useTool(tool.name) })
-				}
+		}
+		for _, tool := range []struct {
+			name string
+			icon gfx.Icon
+		}{{"Git", gitBranchIcon}, {"终端", shellIcon}} {
+			if tool.name == "Git" && m.sidebarPrefs.HideGit || tool.name == "终端" && m.sidebarPrefs.HideTerminal {
+				continue
+			}
+			entry := ui.Button(c.Key(tool.name), tool.name).Icon(tool.icon).IconOnly().Ghost().Width(32).Height(34).Tooltip(tool.name).Disabled(blocked)
+			if m.tools.active == tool.name {
+				entry.Secondary()
+			}
+			if entry.Clicked() {
+				c.After(func() { m.closeSettings(); m.useTool(tool.name) })
+			}
+		}
+		if m.translationEnabled {
+			button := ui.Button(c.Part("translation"), "翻译").Icon(translationIcon).IconOnly().Ghost().Size(32, 34).
+				Tooltip("翻译").Disabled(blocked)
+			if m.translation != nil {
+				button.Secondary()
+			}
+			if button.Clicked() {
+				c.After(func() { m.closeSettings(); m.toggleTranslation() })
+			}
+		}
+		if m.sidebarPrefs.Templates {
+			button := ui.Button(c.Part("templates"), "模板库").Icon(templateIcon).IconOnly().Ghost().Size(32, 34).Tooltip("模板库").Disabled(blocked)
+			if m.templatePanel != nil {
+				button.Secondary()
+			}
+			if button.Clicked() {
+				c.After(func() { m.closeSettings(); m.toggleTemplates() })
 			}
 		}
 		ui.Slot(c).Grow(1)
-		if !m.appSettings.open {
+		m.updateButton(c.Part("update-available"), blocked)
+		if !m.sidebarPrefs.HideTheme {
 			m.themeButton(c.Part("theme-toggle"), blocked)
 		}
 		label := "设置"
@@ -227,6 +292,7 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		if m.shortcutMenu(menu.Item("新建").Icon(plusIcon), shortcutNewFile).Clicked() {
 			c.After(m.newDocument)
 		}
+		menu.Sub("新建格式与模板", func(items *ui.MenuItems) { m.newFileOptions(c, items) })
 		if m.shortcutMenu(menu.Item("新建窗口"), shortcutNewWindow).Disabled(m.newWindow == nil).Clicked() {
 			c.After(m.newWindow)
 		}
@@ -243,6 +309,14 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			m.showHistory = true
 		}
 		menu.Separator()
+		if m.translationEnabled {
+			if menu.Item("翻译").Icon(translationIcon).Checked(m.translation != nil).Clicked() {
+				c.After(m.toggleTranslation)
+			}
+			if menu.Item("翻译选区…").Disabled(!editableTextSource(t)).Clicked() {
+				c.After(func() { m.openTranslation(true) })
+			}
+		}
 		if t != nil {
 			if m.shortcutMenu(menu.Item("保存").Disabled(t.readOnlyPreview()), shortcutSave).Clicked() {
 				c.After(func() { m.saveTab(t, false) })
@@ -253,6 +327,10 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			if m.shortcutMenu(menu.Item("关闭当前标签"), shortcutCloseTab).Clicked() {
 				c.After(func() { m.closeTab(t) })
 			}
+			if menu.Item("插入模板…").Disabled(!editableTextSource(t)).Clicked() {
+				c.After(func() { m.openTemplatePicker("", true) })
+			}
+			m.templateSaveActions(c, menu, t)
 			menu.Separator()
 			if menu.Item("搜索结果").Disabled(m.results.query == "").Clicked() {
 				m.results.open = true
@@ -356,6 +434,12 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 			Shrink(0).Radius(10).Tooltip(m.shortcutHint("新建标签", shortcutNewFile)).Disabled(blocked).Clicked() {
 			c.After(m.newDocument)
 		}
+		options := ui.Button(c.Part("new-options"), "新建选项").Icon(chevronDownIcon).IconOnly().Ghost().Size(24, 30).
+			Shrink(0).Tooltip("新建格式与模板").Disabled(blocked)
+		if options.Clicked() {
+			m.newFileMenu = !m.newFileMenu
+		}
+		ui.Menu(c, options, &m.newFileMenu, func(menu *ui.MenuItems) { m.newFileOptions(c, menu) })
 	})
 }
 
@@ -371,7 +455,7 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 				label = "收起大纲"
 			}
 			toggle := ui.Button(c.Part("outline-toggle"), label).Icon(leftPanelIcon).Ghost().Height(28).FontSize(12).
-				Disabled(blocked || m.ai.open).Tooltip(m.shortcutHint(label, shortcutOutline))
+				Disabled(blocked || m.ai.open || m.translation != nil || m.templatePanel != nil).Tooltip(m.shortcutHint(label, shortcutOutline))
 			if m.showOutline {
 				toggle.Secondary()
 			}
@@ -471,7 +555,7 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 					}
 					column.Children(func() {
 						ui.Text(c, "源文件").Muted().FontSize(12).Height(36).PadX(14).PadY(9)
-						t.source.declare(c, "代码编辑区", !blocked).FillWidth().Grow(1)
+						m.sourceEditor(c, t, blocked).FillWidth().Grow(1)
 					})
 				}
 				if t.markdownMode == "分屏" {
@@ -487,7 +571,7 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 				t.source.view.Snapshot.Placeholder = "文件为空，输入开始编辑"
 			}
 			ui.Stack(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
-				t.source.declare(c, "代码编辑区", !blocked).Fill()
+				m.sourceEditor(c, t, blocked).Fill()
 				_, composing := t.source.text.Composition()
 				if t.doc.path == "" && t.source.text.RuneCount() == 0 && !composing {
 					m.openingPage(c, blocked)

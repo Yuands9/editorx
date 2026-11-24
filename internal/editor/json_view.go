@@ -99,9 +99,9 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 			ui.Row(c).FillWidth().Height(38).PadX(14).Gap(8).Items(ui.Center).Children(func() {
 				ui.Text(c, "源文件").FontSize(12).Bold()
 				ui.Slot(c).Grow(1)
-				ui.Text(c, "可编辑").FontSize(11).Muted()
+				ui.Text(c, "原样输入").FontSize(11).Muted()
 			})
-			t.source.declare(c, "代码编辑区", !blocked).FillWidth().Grow(1)
+			m.sourceEditor(c, t, blocked).FillWidth().Grow(1)
 			ui.Row(c).FillWidth().Height(28).PadX(12).Items(ui.Center).Children(func() {
 				ui.Text(c, fmt.Sprintf("%d 字符 · %d 行", t.source.text.RuneCount(), strings.Count(t.source.text.String(), "\n")+1)).FontSize(11).Muted()
 			})

@@ -26,6 +26,10 @@ var editorControlStyles = ui.Styles{
 		theme.Input.Alpha = .7
 		return components.CheckboxRecipe(theme, state)
 	},
+	Switch: func(theme gfx.Theme, state gfx.State, progress float32) components.SwitchLook {
+		theme.Input = theme.MutedForeground
+		return components.SwitchRecipe(theme, state, progress)
+	},
 }
 
 func (m *editorApp) themeButton(c ui.C, blocked bool) {

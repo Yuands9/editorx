@@ -18,6 +18,7 @@ type editorDesktop struct {
 	exiting     bool
 	updateFile  string
 	updated     installedEditorUpdate
+	update      editorUpdateState
 }
 
 func (d *editorDesktop) syncTray() error {

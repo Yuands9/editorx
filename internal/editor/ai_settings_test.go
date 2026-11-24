@@ -179,6 +179,10 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	check(err)
 	click("高级设置")
 	check(s.Scroll(gfx.ScrollEvent{X: modelRow.Bounds.X + 80, Y: modelRow.Bounds.Y + 12, DeltaY: 440, Precise: true}))
+	click("switch:网络直连")
+	if !m.ai.settings.direct {
+		t.Fatal("the network switch did not enable direct connections")
+	}
 	click("自定义请求头 · JSON")
 	check(s.Type(`{"X-Draft":"uncommitted"}`))
 	headers, err := s.Locate("自定义请求头 · JSON")
@@ -196,7 +200,7 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	profiles, err := readAIProfiles(m.dataDirectory)
 	check(err)
 	if len(profiles.Profiles) != 2 || profiles.active(0).Name != "本机验收模型" || !slices.Equal(profiles.Profiles[0].Key, oldKey) ||
-		len(profiles.active(0).Headers) != 0 ||
+		len(profiles.active(0).Headers) != 0 || profiles.active(0).Direct ||
 		profiles.ChatFont != 16 || profiles.DefaultMode != aiDraft {
 		t.Fatal("new configuration or updated default overwrote the migrated configuration")
 	}

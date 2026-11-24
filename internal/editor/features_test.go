@@ -271,7 +271,7 @@ func TestJSONPanelButtonsAndEditableResult(t *testing.T) {
 	if err := s.Type("4"); err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(original, "\"c\": 1", "\"c\": 4", 1)
+	updated := strings.Replace(result, "\"c\": 1", "\"c\": 4", 1)
 	if tab.result.text.String() != updated || tab.source.text.String() != updated {
 		t.Fatal("the right edit did not reach the source")
 	}
@@ -911,11 +911,7 @@ func TestJSONCompactDoesNotBecomeFoldedFormatting(t *testing.T) {
 	if err := s.ClickLabel("复制"); err != nil {
 		t.Fatal(err)
 	}
-	formatted, _, err := transformJSON(source, "格式化", 4)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Driver().Clipboard() != want || tab.source.text.String() != formatted {
+	if s.Driver().Clipboard() != want || tab.source.text.String() != source {
 		t.Fatal("compact copy changed content")
 	}
 	path := filepath.Join(t.TempDir(), "压缩.json")

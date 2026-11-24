@@ -250,7 +250,7 @@ func (m *editorApp) htmlView(c ui.C, t *editorTab, blocked bool) {
 			} else {
 				column.Grow(1)
 			}
-			column.Children(func() { t.source.declare(c, "代码编辑区", !blocked).FillWidth().Grow(1) })
+			column.Children(func() { m.sourceEditor(c, t, blocked).FillWidth().Grow(1) })
 		}
 		if t.htmlMode == "分屏" {
 			ui.Splitter(c, &t.split).Mins(180, 180).SplitterThickness(1)
