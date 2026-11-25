@@ -247,7 +247,7 @@ func (snapshot aiRequestContext) targets(ctx context.Context) ([]aiTarget, error
 			target, open := snapshot.drafts[key]
 			if !open {
 				target, err = readAIFile(path, -len(targets)-1)
-				if errors.Is(err, errTextNotUTF8) || errors.Is(err, errTextHasNUL) || errors.Is(err, errAINonTextFile) {
+				if errors.Is(err, errTextEncoding) || errors.Is(err, errTextPE) || errors.Is(err, errTextHasNUL) || errors.Is(err, errAINonTextFile) {
 					return nil
 				}
 				if err != nil {

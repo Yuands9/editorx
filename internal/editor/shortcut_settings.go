@@ -30,7 +30,7 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 		first, last editorShortcut
 	}{
 		{"文件与标签", shortcutNewFile, shortcutPreviousTab},
-		{"查找与编辑", shortcutFind, shortcutWrap},
+		{"查找与编辑", shortcutFind, shortcutDeleteLine},
 		{"工作区", shortcutFiles, shortcutOpenSettings},
 	} {
 		ui.Text(c, group.title).Bold().FontSize(14).Height(22)

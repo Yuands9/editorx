@@ -41,9 +41,13 @@ type tabSession struct {
 	LanguageOverride           string `json:",omitempty"`
 	SavedMatchesSource         bool   `json:",omitempty"`
 	BOM                        bool
+	Encoding                   textEncoding `json:",omitempty"`
 	DiskHash                   [32]byte
 	Picture                    bool
-	Office                     *officeSession `json:",omitempty"`
+	LargeTextPage              *int64            `json:",omitempty"`
+	LargeEdit                  *largeEditSession `json:",omitempty"`
+	Bookmarks                  []int             `json:",omitempty"`
+	Office                     *officeSession    `json:",omitempty"`
 	Pinned                     bool
 	GroupID                    int `json:",omitempty"`
 	Source, Comparison, Result paneSession
@@ -149,6 +153,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		data, recovered = backup, true
 	}
 	store.lastHash, store.hasLast, store.recovered = sha256.Sum256(data), true, recovered
+	bindLargeEditDraftPaths(saved, directory)
 	store.lastSnapshot = saved
 	store.history = saved.History
 	if len(store.history) > 30 {
@@ -253,7 +258,7 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 		if tab.format() == "JSON" && tab.resultReady {
 			tab.updateResult()
 		}
-		item := tabSession{Name: tab.name, DisplayName: tab.displayName, LanguageOverride: tab.languageOverride, Path: tab.doc.path, Saved: tab.doc.saved, EOL: tab.doc.eol, BOM: tab.doc.bom, DiskHash: tab.doc.diskHash,
+		item := tabSession{Name: tab.name, DisplayName: tab.displayName, LanguageOverride: tab.languageOverride, Path: tab.doc.path, Saved: tab.doc.saved, EOL: tab.doc.eol, BOM: tab.doc.bom, Encoding: tab.doc.encoding, DiskHash: tab.doc.diskHash,
 			Picture: tab.picture != nil, Pinned: tab.pinned, Source: snapshotPane(tab.source), Comparison: snapshotPane(tab.comparison), Result: snapshotPane(tab.result),
 			SplitPos: tab.split.Pos, SplitRatio: tab.split.Ratio, JSONAction: tab.jsonAction, JSONCompare: tab.jsonCompare, JSONDiffRatio: tab.diffSplit.Ratio,
 			MarkdownMode: tab.markdownMode, HTMLMode: tab.htmlMode, MarkdownOffset: tab.markdown.Offset, HTMLScroll: tab.html.scroll, OutlineCollapsed: maps.Clone(tab.outlineCollapsed), SyncScroll: tab.scroll.enabled,
@@ -272,6 +277,13 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 			}
 		}
 		previousGroup = tab.group
+		tab.syncBookmarks()
+		item.Bookmarks = slices.Clone(tab.bookmarks.lines)
+		if tab.largeText != nil {
+			page := tab.largeText.index
+			item.LargeTextPage, item.Source = &page, paneSession{}
+			item.LargeEdit = tab.snapshotLargeEdit(m.dataDirectory)
+		}
 		if item.Saved != "" && item.Saved == item.Source.Content {
 			item.Saved, item.SavedMatchesSource = "", true
 		}
@@ -347,10 +359,34 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 		if item.SavedMatchesSource {
 			item.Saved = item.Source.Content
 		}
-		doc := document{path: item.Path, saved: item.Saved, eol: item.EOL, bom: item.BOM, diskHash: item.DiskHash}
+		doc := document{path: item.Path, saved: item.Saved, eol: item.EOL, bom: item.BOM, encoding: item.Encoding, diskHash: item.DiskHash}
 		previewKind := previewFormat(item.Path)
+		if item.LargeTextPage != nil || previewKind == "" && !item.Picture && item.Office == nil &&
+			item.Source.Content == item.Saved && largeTextFile(item.Path) {
+			index := int64(0)
+			if item.LargeTextPage != nil {
+				index = *item.LargeTextPage
+			}
+			path := item.Path
+			if item.LargeEdit != nil && item.LargeEdit.BasePath != "" {
+				path = item.LargeEdit.BasePath
+			}
+			page, err := readLargeTextPage(path, index, -1, "", item.Encoding)
+			if err == nil || item.LargeTextPage != nil {
+				tab := m.addTab(document{path: item.Path, encoding: item.Encoding, bom: item.BOM}, item.Name)
+				tab.displayName, tab.pinned, tab.group = item.DisplayName, item.Pinned, groups[item.GroupID]
+				tab.restoreLargeTextTab(page, item, index, err)
+				if err != nil {
+					issues++
+				}
+				if restoredTab != nil {
+					restoredTab()
+				}
+				continue
+			}
+		}
 		if item.Path != "" && previewKind == "" && !item.Picture && item.Office == nil && item.Source.Content == item.Saved {
-			if current, err := readDocument(item.Path); err == nil {
+			if current, err := readDocumentAs(item.Path, item.Encoding); err == nil {
 				doc = current
 				item.Source.Content = current.saved
 			} else {
@@ -385,6 +421,8 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 			tab.group = groups[item.GroupID]
 		}
 		restorePane(tab.source, item.Source)
+		tab.bookmarks.lines = item.Bookmarks
+		tab.syncBookmarks()
 		tab.split = ui.SplitterState{Pos: item.SplitPos, Ratio: item.SplitRatio}
 		if item.JSONAction != "" {
 			tab.jsonAction = item.JSONAction
@@ -545,6 +583,11 @@ func (store *sessionStore) write(saved savedSession, generation uint64) error {
 	if generation < store.written {
 		return nil
 	}
+	for _, draft := range saved.largeDrafts() {
+		if draft.patchError != "" {
+			return errors.New(draft.patchError)
+		}
+	}
 	// 文本快照是不可变字符串；未变化时直接比较引用与布局，避免每五秒重新编码整份文档。
 	if store.hasLast && !store.recovered && reflect.DeepEqual(saved, store.lastSnapshot) {
 		store.written = generation
@@ -568,8 +611,12 @@ func (store *sessionStore) write(saved savedSession, generation uint64) error {
 	if err = writeFile(path, data); err != nil {
 		return err
 	}
+	previous, canPrune := store.lastSnapshot, !store.recovered
 	store.lastHash, store.hasLast, store.recovered = digest, true, false
 	store.lastSnapshot, store.written = saved, generation
+	if canPrune {
+		pruneLargeEditDrafts(store.directory, saved, previous)
+	}
 	return nil
 }
 

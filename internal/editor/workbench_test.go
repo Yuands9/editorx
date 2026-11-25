@@ -167,7 +167,7 @@ func TestSearchResultsVirtualizationAndClosedTabs(t *testing.T) {
 		t.Fatal("results not capped")
 	}
 	first, last := m.results.list.Visible()
-	if last-first > 50 || len(m.results.rows) != 10001 {
+	if last-first > 50 || len(m.results.rows) != 10002 {
 		t.Fatal("result list not virtualized")
 	}
 	m.closeTab(second)

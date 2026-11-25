@@ -13,7 +13,7 @@ var closedTextCollectionPending atomic.Bool
 func (m *editorApp) releaseClosedTabText(tab *editorTab) {
 	const largeTabRunes = 512 << 10
 	if m.nativeWindow == nil ||
-		tab.source.text.RuneCount()+tab.result.text.RuneCount()+tab.comparison.text.RuneCount() < largeTabRunes {
+		tab.largeText == nil && tab.source.text.RuneCount()+tab.result.text.RuneCount()+tab.comparison.text.RuneCount() < largeTabRunes {
 		return
 	}
 	if engine, ok := app.PlatformTextEngine().(interface{ TrimLongTextLayouts() }); ok {

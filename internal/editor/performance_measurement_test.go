@@ -15,7 +15,7 @@ func BenchmarkSearchResultLongLine(b *testing.B) {
 	results.origin, results.pane, results.query = tab, tab.source, "中文"
 	results.groups = nil
 	results.refresh(model)
-	if results.total != 1000 || len(results.rows) != 1001 {
+	if results.total != 1000 || len(results.rows) != 3 {
 		b.Fatalf("unexpected results: matches=%d rows=%d", results.total, len(results.rows))
 	}
 	b.ReportAllocs()

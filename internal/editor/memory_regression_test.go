@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
@@ -139,17 +140,22 @@ func TestSearchSnippetsKeepUnicodeColumns(t *testing.T) {
 	suffix := strings.Repeat("后缀😀", 45)
 	source := prefix + "hit" + suffix + "hit\r\n中文hit"
 	first, second, third := len(prefix), len(prefix)+3+len(suffix), len(prefix)+3+len(suffix)+5+6
-	results := searchResults{groups: []searchResultGroup{{source: source, matches: []text.Span{{Start: first, End: first + 3}, {Start: second, End: second + 3}, {Start: third, End: third + 3}}}}}
-	results.buildRows()
-	if len(results.rows) != 4 {
-		t.Fatal("missing results")
+	group := searchResultGroup{source: source, matches: []text.Span{{Start: first, End: first + 3}, {Start: second, End: second + 3}, {Start: third, End: third + 3}}}
+	group.collectLines()
+	if len(group.lines) != 2 {
+		t.Fatal("expected one result row per matched line")
 	}
-	a, b, c := results.rows[1], results.rows[2], results.rows[3]
-	if a.column != 91 || b.column != 229 || c.column != 3 || c.line != 2 {
-		t.Fatalf("incorrect Unicode columns: %+v %+v %+v", a, b, c)
+	a, b := group.lines[0], group.lines[1]
+	if a.column != 91 || b.column != 3 || b.number != 2 || len(a.marks) != 2 || len(b.marks) != 1 {
+		t.Fatalf("incorrect Unicode positions: %+v %+v", a, b)
 	}
-	if a.before != "…"+strings.Repeat("中文😀", 8) || len([]rune(a.after)) != 101 || !strings.HasSuffix(a.after, "…") || b.after != "" {
-		t.Fatalf("incorrect bounded snippets: %+v %+v", a, b)
+	if a.clippedLeft || a.clippedRight || !utf8.ValidString(a.excerpt) || a.excerpt != prefix+"hit"+suffix+"hit" {
+		t.Fatalf("invalid bounded excerpt: %+v", a)
+	}
+	for _, mark := range a.marks {
+		if a.excerpt[mark.Start:mark.End] != "hit" {
+			t.Fatalf("mark split a UTF-8 character: %+v", mark)
+		}
 	}
 }
 

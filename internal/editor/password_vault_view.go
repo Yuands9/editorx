@@ -258,6 +258,9 @@ func (m *editorApp) passwordGroupList(c ui.C, v *passwordVaultView, blocked bool
 								place.After(func() { m.openPasswordEntry(passwordEntry{Group: group.ID, Kind: vaultLogin}) })
 							}
 							menu.Separator()
+							if menu.Item("重命名").Icon(modelEditIcon).Clicked() {
+								place.After(func() { m.openPasswordGroup(group.ID, 0) })
+							}
 							if menu.Item("删除分组…").Destructive().Clicked() {
 								place.After(func() { m.confirmPasswordDelete(passwordDeleteGroupMode, group.ID) })
 							}

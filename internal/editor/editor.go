@@ -27,6 +27,7 @@ type editorTab struct {
 	linked            bool
 	picture           *imageDocument
 	preview           *documentPreview
+	largeText         *largeTextView
 	office            *officeDocument
 	html              htmlPreview
 	htmlMode          string
@@ -68,6 +69,7 @@ type editorTab struct {
 	previewHeight     float32
 	previewJump       int
 	search            documentSearch
+	bookmarks         textBookmarks
 	scroll            scrollSync
 	detectedSource    string
 	detectedFormat    string
@@ -88,6 +90,9 @@ func (t *editorTab) tabTitle() string {
 }
 
 func (t *editorTab) format() string {
+	if t.largeText != nil {
+		return "纯文本"
+	}
 	if t.preview != nil {
 		return t.preview.kind
 	}
@@ -127,7 +132,7 @@ func documentFormat(name string) string {
 		return "CSV"
 	case ".tsv":
 		return "TSV"
-	case ".log":
+	case ".log", ".out":
 		return "日志"
 	case ".md", ".markdown":
 		return "Markdown"
@@ -155,7 +160,9 @@ func documentFormat(name string) string {
 	return "纯文本"
 }
 
-func (t *editorTab) readOnlyPreview() bool { return t.picture != nil || t.preview != nil }
+func (t *editorTab) readOnlyPreview() bool {
+	return t.picture != nil || t.preview != nil || t.largeText != nil && t.largeText.editing == nil
+}
 
 func (t *editorTab) isTemporaryLink() bool {
 	return t.linked && t.doc.path == "" && !t.modified() && !t.hasResultDraft() &&
@@ -163,6 +170,12 @@ func (t *editorTab) isTemporaryLink() bool {
 }
 
 func (t *editorTab) modified() bool {
+	if state := t.largeText; state != nil {
+		if edit := state.editing; edit != nil {
+			return edit.revision != edit.saved
+		}
+		return state.editSession.hasChanges() || state.editSession != nil && state.editSession.BasePath != ""
+	}
 	if t.office != nil {
 		return t.office.state.Dirty
 	}
@@ -170,46 +183,47 @@ func (t *editorTab) modified() bool {
 }
 
 type editorApp struct {
-	passwordVault      *passwordVaultView
-	linkedFile         linkedFileState
-	imageOCR           *imageOCRDialog
-	imageAI            *imageAIDialog
-	theme              gfx.Theme
-	light              bool
-	tabs               []*editorTab
-	active             *editorTab
-	nextID             int
-	status             string
-	errorText          string
-	showError          bool
-	confirm            bool
-	confirmFocus       bool
-	dontAskToSave      bool
-	confirmTab         *editorTab
-	pending            func()
-	workspace          *folderTree
-	showFiles          bool
-	showOutline        bool
-	filesSplit         ui.SplitterState
-	outlineSplit       ui.SplitterState
-	aiEditorSplit      ui.SplitterState
-	aiPromptSplit      ui.SplitterState
-	newWindow          func()
-	tabReveal          bool
-	tabDrag            ui.DragState
-	tabScrollAt        time.Duration
-	tabEndHit          gfx.ID
-	tabGhost           *editorTab
-	groupGhost         *tabGroup
-	tabGrabX           float32
-	nextGroupID        int
-	groupClick         tabGroupClick
-	rename             tabRenameState
-	fileMenu           bool
-	newFileMenu        bool
-	templateDialog     *templateDialogState
-	projectFolder      *projectFolderDialog
-	projectDelete      *projectDeleteDialog
+	passwordVault  *passwordVaultView
+	linkedFile     linkedFileState
+	imageOCR       *imageOCRDialog
+	imageAI        *imageAIDialog
+	theme          gfx.Theme
+	light          bool
+	tabs           []*editorTab
+	active         *editorTab
+	nextID         int
+	status         string
+	errorText      string
+	showError      bool
+	confirm        bool
+	confirmFocus   bool
+	dontAskToSave  bool
+	confirmTab     *editorTab
+	pending        func()
+	workspace      *folderTree
+	showFiles      bool
+	showOutline    bool
+	filesSplit     ui.SplitterState
+	outlineSplit   ui.SplitterState
+	aiEditorSplit  ui.SplitterState
+	aiPromptSplit  ui.SplitterState
+	newWindow      func()
+	tabReveal      bool
+	tabDrag        ui.DragState
+	tabScrollAt    time.Duration
+	tabEndHit      gfx.ID
+	tabGhost       *editorTab
+	groupGhost     *tabGroup
+	tabGrabX       float32
+	nextGroupID    int
+	groupClick     tabGroupClick
+	rename         tabRenameState
+	fileMenu       bool
+	newFileMenu    bool
+	templateDialog *templateDialogState
+	projectFolder  *projectFolderDialog
+	projectRename  *projectRenameDialog
+	projectDelete  *projectDeleteDialog
 
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
@@ -217,7 +231,10 @@ type editorApp struct {
 	translationMode    translationMode
 	translation        *translationPanelState
 	languageMenu       bool
+	encodingMenu       bool
+	gotoLine           gotoLineState
 	results            searchResults
+	searchBatch        *documentSearchBatch
 	ai                 aiAssistant
 	tools              projectTools
 	browser            *ui.EffectState[string, int]
@@ -313,7 +330,7 @@ func nextUntitledName(usedNames map[string]bool) string {
 
 func (m *editorApp) activate(t *editorTab) {
 	m.leavePasswordVault()
-	m.languageMenu = false
+	m.languageMenu, m.encodingMenu = false, false
 	if m.active != t {
 		m.imageOCR, m.imageAI = nil, nil
 	}
@@ -345,14 +362,14 @@ func (m *editorApp) activate(t *editorTab) {
 	if t.preview != nil && t.preview.issue == "" && m.webReady {
 		m.openDocumentPreview(t)
 	}
-	t.source.focus = t.office == nil && !t.readOnlyPreview()
+	t.source.focus = t.largeText != nil || t.office == nil && !t.readOnlyPreview()
 	m.queueHTMLPreview(t)
 }
 
 func (m *editorApp) focusActiveSource() {
 	if t := m.active; t != nil {
 		format := t.format()
-		t.source.focus = !t.readOnlyPreview() && t.office == nil &&
+		t.source.focus = t.largeText != nil || !t.readOnlyPreview() && t.office == nil &&
 			(format != "Markdown" || t.markdownMode != "预览") &&
 			(format != "HTML" || t.htmlMode != "预览")
 	}
@@ -377,6 +394,10 @@ func (m *editorApp) requestTab(t *editorTab, action func()) {
 }
 
 func (m *editorApp) saveBeforeClosing(tab *editorTab, proceed func()) {
+	if tab.largeText != nil && tab.largeText.editing != nil {
+		m.startLargeEditSave(tab, false, proceed)
+		return
+	}
 	if tab.office != nil {
 		m.saveOfficeTab(tab, false, proceed)
 		return
@@ -413,6 +434,10 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 	for index, tab := range tabs {
 		if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
 			continue
+		}
+		if tab.largeText != nil && tab.largeText.saving != nil {
+			m.status = "请等待大文件保存完成"
+			return
 		}
 		waitingForOffice := tab.office != nil && tab.office.view != nil && tab.office.ready
 		if !waitingForOffice && !tab.modified() {
@@ -452,8 +477,12 @@ func (m *editorApp) removeTab(t *editorTab) {
 	t.html.close()
 	t.office.close()
 	t.preview.close()
+	t.largeText.close()
 	m.tabs = slices.Delete(m.tabs, index, index+1)
 	m.results.removeTab(t)
+	if m.searchBatch != nil && m.searchBatch.origin == t {
+		m.searchBatch = nil
+	}
 	m.ai.attachments = slices.DeleteFunc(m.ai.attachments, func(item aiAttachment) bool { return item.tabID == t.id })
 	if m.active == t {
 		next := m.visibleTabNear(index)
@@ -470,6 +499,9 @@ func (m *editorApp) removeTab(t *editorTab) {
 }
 
 func (m *editorApp) requestClose(allow func()) {
+	if m.largeEditOperationPending() {
+		return
+	}
 	m.flushOfficeTabs(0, func(err error) {
 		if err != nil {
 			m.fail(err)
@@ -504,6 +536,7 @@ func (m *editorApp) finishClose(allow func()) {
 					t.html.close()
 					t.office.close()
 					t.preview.close()
+					t.largeText.close()
 					m.results.removeTab(t)
 					m.ai.attachments = slices.DeleteFunc(m.ai.attachments, func(item aiAttachment) bool { return item.tabID == t.id })
 					m.tabs = slices.Delete(m.tabs, index, index+1)
@@ -517,9 +550,15 @@ func (m *editorApp) finishClose(allow func()) {
 	allow()
 }
 
-func (m *editorApp) open() {
+func (m *editorApp) open() { m.openWithEncoding("") }
+
+func (m *editorApp) openWithEncoding(enc textEncoding) {
+	title := "打开文件"
+	if enc != "" {
+		title = "按 " + string(enc) + " 打开文本"
+	}
 	paths, err := app.OpenFiles(app.OpenFileOptions{
-		Title: "打开文件", AllowMultiple: true,
+		Title: title, AllowMultiple: true,
 		Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}, {Name: "代码与配置", Pattern: "*.xml;*.json;*.md;*.yaml;*.yml;*.properties;*.toml;*.ini;*.env;.env.*;*.go;*.java;*.txt;*.html;*.htm;*.css;*.js;*.svg"}, {Name: "Office 文档", Pattern: "*.xlsx;*.docx"}, {Name: "PDF 与思维导图", Pattern: "*.pdf;*.xmind"}, {Name: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.tif;*.tiff"}},
 	})
 	m.focusActiveSource()
@@ -531,7 +570,7 @@ func (m *editorApp) open() {
 		return
 	}
 	for _, path := range paths {
-		m.load(path)
+		m.loadWithEncoding(path, enc)
 	}
 }
 
@@ -544,7 +583,9 @@ func (m *editorApp) tabAtPath(path string) *editorTab {
 	return nil
 }
 
-func (m *editorApp) load(path string) {
+func (m *editorApp) load(path string) { m.loadWithEncoding(path, "") }
+
+func (m *editorApp) loadWithEncoding(path string, enc textEncoding) {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		m.fail(err)
@@ -552,10 +593,13 @@ func (m *editorApp) load(path string) {
 	}
 	if tab := m.tabAtPath(path); tab != nil {
 		m.activate(tab)
+		if enc != "" && tab.canFind() {
+			m.reopenTextEncoding(tab, enc)
+		}
 		m.rememberPath(path, false)
 		return
 	}
-	file, err := readEditorFile(path)
+	file, err := readEditorFile(path, enc)
 	if err != nil {
 		m.fail(fmt.Errorf("打开 %s 失败\n%w", path, err))
 		return
@@ -564,14 +608,15 @@ func (m *editorApp) load(path string) {
 }
 
 type openedEditorFile struct {
-	name    string
-	doc     document
-	picture *imageDocument
-	office  *officeDocument
-	preview *documentPreview
+	name      string
+	doc       document
+	picture   *imageDocument
+	office    *officeDocument
+	preview   *documentPreview
+	largeText *largeTextPage
 }
 
-func readEditorFile(path string) (openedEditorFile, error) {
+func readEditorFile(path string, enc textEncoding) (openedEditorFile, error) {
 	var file openedEditorFile
 	var err error
 	switch {
@@ -585,8 +630,12 @@ func readEditorFile(path string) (openedEditorFile, error) {
 	case isImageFile(path):
 		file.picture, err = readImage(path)
 		file.doc.path = path
+	case largeTextFile(path):
+		var page largeTextPage
+		page, err = readLargeTextPage(path, 0, -1, "", enc)
+		file.doc.path, file.largeText = path, &page
 	default:
-		file.doc, err = readDocument(path)
+		file.doc, err = readDocumentAs(path, enc)
 	}
 	return file, err
 }
@@ -609,6 +658,10 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 		tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = true, true
 		tab.source.focus = false
 	}
+	if file.largeText != nil {
+		tab.startLargeText(*file.largeText)
+		tab.source.focus = true
+	}
 	if path != "" {
 		m.rememberPath(path, false)
 	}
@@ -617,6 +670,10 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 }
 
 func (m *editorApp) saveTab(t *editorTab, saveAs bool) bool {
+	if t.largeText != nil && t.largeText.editing != nil {
+		m.startLargeEditSave(t, saveAs, nil)
+		return false
+	}
 	if t.office != nil {
 		m.saveOfficeTab(t, saveAs, nil)
 		return false
@@ -638,7 +695,7 @@ func (m *editorApp) saveTab(t *editorTab, saveAs bool) bool {
 	return m.saveTextTab(t, saveAs)
 }
 
-func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
+func (m *editorApp) textSavePath(t *editorTab, saveAs bool) (string, bool) {
 	path := t.doc.path
 	if saveAs || path == "" {
 		var err error
@@ -651,23 +708,31 @@ func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
 			Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}},
 		})
 		if errors.Is(err, app.ErrCanceled) {
-			return false
+			return "", false
 		}
 		if err != nil {
 			m.fail(err)
-			return false
+			return "", false
 		}
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
 		m.fail(err)
-		return false
+		return "", false
 	}
 	for _, other := range m.tabs {
-		if other != t && strings.EqualFold(other.doc.path, path) {
+		if other != t && (strings.EqualFold(other.doc.path, path) || other.largeText != nil && strings.EqualFold(other.largeText.savePath, path)) {
 			m.fail(errors.New("该文件已在另一个标签中打开，请切换到该标签或使用其他文件名"))
-			return false
+			return "", false
 		}
+	}
+	return path, true
+}
+
+func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
+	path, ok := m.textSavePath(t, saveAs)
+	if !ok {
+		return false
 	}
 	if err := t.doc.save(path, t.source.text.String()); err != nil {
 		m.fail(fmt.Errorf("保存 %s 失败\n%w", path, err))
@@ -910,8 +975,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 }
 
 func (m *editorApp) interactionBlocked() bool {
-	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
-		m.templateDialog != nil || m.projectFolder != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
+	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
+		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
@@ -975,9 +1040,11 @@ func (m *editorApp) releaseWindowState() {
 		tab.html.close()
 		tab.office.close()
 		tab.preview.close()
+		tab.largeText.close()
 	}
 	m.tabs, m.active, m.workspace = nil, nil, nil
 	m.results = searchResults{}
+	m.searchBatch = nil
 	m.ai = aiAssistant{}
 	m.translation, m.templateDialog, m.templatePanel = nil, nil, nil
 	m.projectFolder = nil
@@ -990,6 +1057,7 @@ func (m *editorApp) releaseWindowState() {
 	m.tabDrag = ui.DragState{}
 	m.tabGhost, m.groupGhost = nil, nil
 	m.rename = tabRenameState{}
+	m.gotoLine = gotoLineState{}
 	m.clearSaveConfirmation()
 	m.newWindow, m.browser = nil, nil
 	m.webHost = app.WebHost{}

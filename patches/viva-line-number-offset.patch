@@ -1,0 +1,66 @@
+diff --git a/vendor/github.com/vivaui/viva/components/code_editor.go b/vendor/github.com/vivaui/viva/components/code_editor.go
+index ef98c0b..9d5b2b7 100644
+--- a/vendor/github.com/vivaui/viva/components/code_editor.go
++++ b/vendor/github.com/vivaui/viva/components/code_editor.go
+@@ -3,6 +3,7 @@ package components
+ 
+ import (
+ 	"sort"
++	"strconv"
+ 	"strings"
+ 
+ 	"github.com/vivaui/viva/gfx"
+@@ -154,6 +155,8 @@ type CodeEditorSnapshot struct {
+ 	Wrap bool
+ 	// LineNumbers shows the number of each line in a gutter on the left.
+ 	LineNumbers bool
++	// LineNumberOffset is added to line numbers when Value is a document window.
++	LineNumberOffset int
+ 	// MarkerGutter reserves the marker lane even when no markers are present.
+ 	MarkerGutter bool
+ 	// GutterMarkers paint in a lane before the line numbers, or on their own.
+@@ -393,9 +396,9 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 			lines = strings.Count(value, "\n") + 1
+ 		}
+ 		if snapshot.Gutter != nil {
+-			numberLane = float32(decimalDigits(lines))*cellWidth + 2*lineNumberPadding
++			numberLane = float32(decimalDigits(lines+snapshot.LineNumberOffset))*cellWidth + 2*lineNumberPadding
+ 		} else {
+-			numberLane = float32(max(decimalDigits(lines), 2)+2) * cellWidth
++			numberLane = float32(max(decimalDigits(lines+snapshot.LineNumberOffset), 2)+2) * cellWidth
+ 		}
+ 	}
+ 	gutter := foldLane + markerLane + bookmarkLane + numberLane
+@@ -497,8 +500,8 @@ func (editor *CodeEditor) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.
+ 		caret: caret, caretRow: caretRow, caretColumn: caretColumn,
+ 		showCaret:  showCaret,
+ 		caretWidth: editorCaretWidth(snapshot.CaretWidth), caretColor: caretColor(snapshot.CaretColor, foreground),
+-		lineNumberPadding: lineNumberPadding,
+-		language:          snapshot.Language, highlight: snapshot.Highlight, highlightLine: snapshot.HighlightLine, face: snapshot.MonoFace,
++		lineNumberPadding: lineNumberPadding, lineNumberOffset: snapshot.LineNumberOffset,
++		language: snapshot.Language, highlight: snapshot.Highlight, highlightLine: snapshot.HighlightLine, face: snapshot.MonoFace,
+ 		firstColumn: int(editor.scrollX / cellWidth), marks: snapshot.Marks, current: snapshot.CurrentMark,
+ 		markLayers:     snapshot.MarkLayers,
+ 		showWhitespace: snapshot.ShowWhitespace, showIndentGuides: snapshot.ShowIndentGuides, showEOL: snapshot.ShowEOL, showWrapSymbol: showWrapSymbol, eolLabel: snapshot.EOLLabel, eolLabels: snapshot.EOLLabels,
+@@ -779,6 +782,7 @@ type codePaint struct {
+ 	// lineNumberPadding is the space on each side of the digits, one cell
+ 	// unless a CodeEditorGutter sets it.
+ 	lineNumberPadding                       float32
++	lineNumberOffset                        int
+ 	language                                string
+ 	highlight                               func(language, line string, dst []CodeEditorRun) []CodeEditorRun
+ 	highlightLine                           func(language string, lineIndex int, line string, dst []CodeEditorRun) []CodeEditorRun
+@@ -816,7 +820,12 @@ func (paint *codePaint) firstMark(index int) int {
+ }
+ 
+ func (paint *codePaint) lineNumber(row codeRow, y, left, gutter float32, current bool) {
+-	number := paint.editor.numbers.text(int(row.line))
++	var number string
++	if paint.lineNumberOffset == 0 {
++		number = paint.editor.numbers.text(int(row.line))
++	} else {
++		number = strconv.Itoa(paint.lineNumberOffset + int(row.line) + 1)
++	}
+ 	color := paint.theme.MutedForeground
+ 	if current {
+ 		color = paint.theme.Foreground

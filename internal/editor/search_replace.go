@@ -43,7 +43,7 @@ func (m *editorApp) searchFieldShortcut(event gfx.KeyEvent) gfx.EventResult {
 		if event.Modifiers == gfx.ModifierShift {
 			direction = -1
 		}
-		s.step(direction)
+		m.stepSearch(m.active, direction)
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	return gfx.EventResult{}
@@ -107,6 +107,13 @@ func (s *documentSearch) replaceCurrent() {
 }
 
 func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
+	if t.hasLargeEdit() && !allOpen {
+		t.replaceInLargeEdit(true)
+		return
+	}
+	if m.startLargeDocumentSearch(t, allOpen, true) {
+		return
+	}
 	s := &t.search
 	if s.composing() {
 		return
@@ -141,16 +148,7 @@ func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
 		if len(matches) == 0 {
 			continue
 		}
-		edits := make([]text.Replacement, 0, len(matches))
-		for _, match := range matches {
-			if source[match.Start:match.End] == match.Text {
-				continue
-			}
-			edits = append(edits, text.Replacement{
-				Range: text.Range{Start: editor.RuneIndex(match.Start), End: editor.RuneIndex(match.End)},
-				Text:  match.Text,
-			})
-		}
+		edits := searchReplacementRanges(editor, matches)
 		if len(edits) == 0 {
 			continue
 		}
@@ -174,4 +172,19 @@ func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
 	}
 	s.refresh()
 	s.message = fmt.Sprintf("已替换 %d 处 · %d 个文件", count, len(files))
+}
+
+func searchReplacementRanges(editor *text.Editor, matches []find.Edit) []text.Replacement {
+	source := editor.String()
+	edits := make([]text.Replacement, 0, len(matches))
+	for _, match := range matches {
+		if source[match.Start:match.End] == match.Text {
+			continue
+		}
+		edits = append(edits, text.Replacement{
+			Range: text.Range{Start: editor.RuneIndex(match.Start), End: editor.RuneIndex(match.End)},
+			Text:  match.Text,
+		})
+	}
+	return edits
 }

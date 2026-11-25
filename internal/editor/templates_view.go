@@ -28,7 +28,6 @@ type templateDialogState struct {
 	inSidebar, details                    bool
 	open, saving, inserting, projectScope bool
 	variableOpen, templatesOnly           bool
-	projectTemplates                      bool
 	directory, project, problem, warning  string
 	target                                textEditTarget
 	choices                               []templateChoice
@@ -151,7 +150,6 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 	directory := state.directory
 	if directory != "" {
 		state.project = m.projectRoot(directory)
-		state.projectTemplates = m.sidebarPrefs.Templates
 		state.choices = append(state.choices, templateChoice{template: documentTemplate{
 			Name: "自定义", Filename: m.untitledName(""), EOL: "CRLF",
 		}})
@@ -161,14 +159,12 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 			}})
 		}
 	}
-	if directory == "" || state.projectTemplates {
-		if state.project != "" {
-			m.addTemplateChoices(state, state.project, "项目")
-		}
-		m.addTemplateChoices(state, "", "个人")
-		for _, template := range builtInTemplates() {
-			state.choices = append(state.choices, templateChoice{template, "内置"})
-		}
+	if state.project != "" {
+		m.addTemplateChoices(state, state.project, "项目")
+	}
+	m.addTemplateChoices(state, "", "个人")
+	for _, template := range builtInTemplates() {
+		state.choices = append(state.choices, templateChoice{template, "内置"})
 	}
 	state.options = make([]int, len(state.choices))
 	for i := range state.options {
@@ -498,9 +494,6 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Text(c, state.directory).FillWidth().Ellipsis().Muted().FontSize(12).
 				Hit(ui.ID(c.Part("project-location")), state.directory).Tooltip(state.directory)
-			if !state.projectTemplates {
-				return
-			}
 			ui.Row(c.Part("creation-mode")).Gap(4).Pad(3).Radius(10).Background(m.theme.Background).Children(func() {
 				for index, label := range []string{"常见格式", "模板"} {
 					templates := index == 1

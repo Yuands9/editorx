@@ -136,20 +136,43 @@ func (t *editorTab) bindSearchWindow(m *editorApp) {
 }
 
 func (t *editorTab) canSearchText() bool {
-	return t.office == nil && !t.readOnlyPreview()
+	return t.office == nil && t.largeText == nil && !t.readOnlyPreview()
 }
 
-func (t *editorTab) openSearch() { t.showSearch(false) }
+func (t *editorTab) canFind() bool { return t.largeText != nil || t.canSearchText() }
 
-func (t *editorTab) openReplace() { t.showSearch(true) }
+func (t *editorTab) openSearch() {
+	if state := t.largeText; state != nil && state.editing == nil {
+		if !state.searchOpen {
+			selection := t.source.text.Selection()
+			value := t.source.text.String()[t.source.text.ByteOffset(selection.Start):t.source.text.ByteOffset(selection.End)]
+			if value != "" && len(value) <= largeTextQueryLimit && !strings.Contains(value, "\n") {
+				state.query.SetText(value)
+			}
+		}
+		if query := state.query.GetEditor(); query != nil {
+			state.query.Select(0, query.RuneCount())
+		}
+		state.searchOpen, state.focus = true, true
+		return
+	}
+	t.showSearch(false)
+}
+
+func (t *editorTab) openReplace() {
+	if t.canReplace() {
+		t.showSearch(true)
+	}
+}
 
 func (t *editorTab) showSearch(replacing bool) {
-	if !t.canSearchText() {
+	large := t.hasLargeEdit()
+	if !t.canSearchText() && !large {
 		return
 	}
 	s := &t.search
 	target := t.source
-	if !replacing {
+	if !replacing && !large {
 		if s.open && t.searchPaneVisible(s.target) {
 			target = s.target
 		}
@@ -164,8 +187,13 @@ func (t *editorTab) showSearch(replacing bool) {
 	s.query.CancelComposition()
 	s.replacement.CancelComposition()
 	if !s.open || target.focused {
-		selection := target.text.Selection()
-		selected := target.text.String()[target.text.ByteOffset(selection.Start):target.text.ByteOffset(selection.End)]
+		var selected string
+		if large {
+			selected = largeEditSearchSelection(t)
+		} else {
+			selection := target.text.Selection()
+			selected = target.text.String()[target.text.ByteOffset(selection.Start):target.text.ByteOffset(selection.End)]
+		}
 		if selected != "" {
 			if s.options.mode == searchEscapes {
 				selected = strings.ReplaceAll(selected, "\\", "\\\\")
@@ -176,10 +204,10 @@ func (t *editorTab) showSearch(replacing bool) {
 	s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
 	s.centerOnOpen = !s.open
 	s.target, s.open, s.focus, s.ready, s.replacing = target, true, true, false, replacing
-	if t.format() == "HTML" && t.htmlMode == "预览" {
+	if !large && t.format() == "HTML" && t.htmlMode == "预览" {
 		t.htmlMode = "分屏"
 	}
-	if t.format() == "Markdown" && t.markdownMode == "预览" {
+	if !large && t.format() == "Markdown" && t.markdownMode == "预览" {
 		t.markdownMode = "分屏"
 	}
 	for _, pane := range []*editorPane{t.source, t.result, t.comparison} {
@@ -192,6 +220,11 @@ func (t *editorTab) searchPaneVisible(p *editorPane) bool {
 }
 
 func (m *editorApp) searchNavigation(t *editorTab, event gfx.KeyEvent, pane *editorPane) gfx.EventResult {
+	if t.largeText != nil && pane == t.source && !event.Release && !m.interactionBlocked() {
+		if result := t.largeTextKey(event); result.Handled {
+			return result
+		}
+	}
 	s := &t.search
 	if event.Release || m.interactionBlocked() || !s.open && s.query.String() == "" || s.composing() {
 		return gfx.EventResult{}
@@ -217,8 +250,16 @@ func (m *editorApp) searchNavigation(t *editorTab, event gfx.KeyEvent, pane *edi
 	if pane != nil && !s.replacing && s.target != pane {
 		s.target, s.ready = pane, false
 	}
-	s.step(direction)
+	m.stepSearch(t, direction)
 	return gfx.EventResult{Handled: true, Repaint: true}
+}
+
+func (m *editorApp) stepSearch(t *editorTab, direction int) {
+	if t.largeText != nil {
+		m.stepLargeSearch(t, direction)
+		return
+	}
+	t.search.step(direction)
 }
 
 func (s *documentSearch) close() {
@@ -298,6 +339,9 @@ func (s *documentSearch) reveal() {
 }
 
 func (m *editorApp) searchView(c ui.C, t *editorTab, blocked bool) {
+	if t.largeText != nil {
+		return
+	}
 	s := &t.search
 	for _, p := range []*editorPane{t.source, t.result, t.comparison} {
 		if !s.open || p != s.target {
@@ -306,6 +350,13 @@ func (m *editorApp) searchView(c ui.C, t *editorTab, blocked bool) {
 		}
 	}
 	if !s.open {
+		if m.results.open {
+			for _, group := range m.results.groups {
+				if group.tab == t && group.pane != nil && group.source == group.pane.text.String() {
+					group.pane.view.Snapshot.Marks = group.matches
+				}
+			}
+		}
 		return
 	}
 	if !t.searchPaneVisible(s.target) || s.replacing && s.target != t.source {

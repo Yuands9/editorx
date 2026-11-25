@@ -42,6 +42,12 @@ func (m *editorApp) page(c ui.C) {
 	m.updateLinkedFile(c.Part("link-download"))
 	m.updateImageOCR(c.Part("image-ocr-job"))
 	m.updateImageAI(c.Part("image-ai-job"))
+	for _, tab := range m.tabs {
+		jobs := c.Part("large-file").KeyInt(tab.id)
+		m.updateLargeTextEdit(jobs, tab)
+		m.updateLargeFindAll(jobs.Part("find-all"), tab)
+	}
+	m.updateSearchBatch(c.Part("search-batch"))
 	blocked := m.interactionBlocked()
 	if !blocked && m.appSettings.shortcutEdit.action == shortcutNone && m.shortcutPressed(c, shortcutOpenSettings) {
 		c.After(m.toggleApplicationSettings)
@@ -65,6 +71,7 @@ func (m *editorApp) page(c ui.C) {
 		}
 		m.historyDialog(c)
 		m.renameDialog(c)
+		m.gotoLineDialog(c.Part("goto-line"))
 		m.aiConversationDialog(c)
 		m.aiReviewDialog(c)
 	}
@@ -76,6 +83,7 @@ func (m *editorApp) page(c ui.C) {
 	m.imageAIView(c.Part("image-ai-dialog"))
 	m.showTemplateDialog(c.Part("template-dialog"))
 	m.showProjectFolderDialog(c.Part("project-folder-dialog"))
+	m.showProjectRenameDialog(c.Part("project-rename-dialog"))
 	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
@@ -244,7 +252,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			if t != nil && t.office != nil {
 				searchHint = "Office 文档请使用文档内的查找功能"
 			}
-			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(searchHint).Clicked() {
+			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || !t.canFind() || blocked).Tooltip(searchHint).Clicked() {
 				c.After(func() {
 					m.closeSettings()
 					m.leavePasswordVault()
@@ -361,6 +369,13 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		if m.shortcutMenu(menu.Item("打开…").Icon(fileIcon), shortcutOpenFile).Clicked() {
 			c.After(m.open)
 		}
+		menu.Sub("按编码打开", func(items *ui.MenuItems) {
+			for _, enc := range textEncodings {
+				if items.Item(string(enc)).Clicked() {
+					c.After(func() { m.openWithEncoding(enc) })
+				}
+			}
+		})
 		if m.shortcutMenu(menu.Item("打开链接文件…").Icon(linkIcon), shortcutOpenLink).Clicked() {
 			c.After(m.openLinkedFileDialog)
 		}
@@ -409,12 +424,13 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			if menu.Item("搜索结果").Disabled(m.results.query == "").Clicked() {
 				m.results.open = true
 			}
-			if m.shortcutMenu(menu.Item("搜索内容").Disabled(!t.canSearchText()), shortcutFind).Clicked() {
+			if m.shortcutMenu(menu.Item("搜索内容").Disabled(!t.canFind()), shortcutFind).Clicked() {
 				c.After(t.openSearch)
 			}
-			if m.shortcutMenu(menu.Item("替换内容").Disabled(!t.canSearchText()), shortcutReplace).Clicked() {
+			if m.shortcutMenu(menu.Item("替换内容").Disabled(!t.canReplace()), shortcutReplace).Clicked() {
 				c.After(t.openReplace)
 			}
+			menu.Sub("文本操作", func(items *ui.MenuItems) { m.textActions(c, items, t) })
 		} else if menu.Item("AI 助手").Icon(aiIcon).Checked(m.ai.open).Clicked() {
 			c.After(m.toggleAIPanel)
 		}
@@ -624,6 +640,15 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 }
 
 func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
+	if t.largeText == nil {
+		m.updateBookmarkMarkers(t)
+	}
+	if t.largeText != nil {
+		ui.Column(c.KeyInt(t.id)).FillWidth().Grow(1).MinHeight(0).Children(func() {
+			m.largeTextView(c, t, blocked)
+		})
+		return
+	}
 	format := t.format()
 	t.source.view.Snapshot.Language = format
 	t.source.syntaxDisabled = t.languageOverride == "纯文本"
@@ -682,6 +707,26 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 }
 
 func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
+	if t.largeText != nil && t.largeText.editing != nil {
+		m.largeEditStatusBar(c, t, blocked)
+		return
+	}
+	if t.largeText != nil {
+		ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
+			ui.Text(c, m.status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
+			state := t.largeText
+			if int(state.index) < len(state.lines.breaks)-1 {
+				value := t.source.text.String()
+				offset := t.source.text.ByteOffset(t.source.text.Caret())
+				line := state.lines.breaks[state.index] + strings.Count(value[:offset], "\n") + 1
+				total := state.lines.breaks[len(state.lines.breaks)-1] + 1
+				ui.Text(c, fmt.Sprintf("行 %d · 共 %d 行", line, total)).Muted().FontSize(12)
+			}
+			ui.Text(c, fmt.Sprintf("只读 · %.1f MiB", float64(state.size)/(1<<20))).Muted().FontSize(12)
+			m.encodingPicker(c, t, blocked)
+		})
+		return
+	}
 	if t.office != nil {
 		status := m.status
 		if t.modified() {
@@ -711,10 +756,7 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 	caret := t.source.text.ByteOffset(t.source.text.Caret())
 	line := strings.Count(value[:caret], "\n") + 1
 	column := utf8.RuneCountInString(value[strings.LastIndex(value[:caret], "\n")+1:caret]) + 1
-	encoding := "UTF-8"
-	if t.doc.bom {
-		encoding += " BOM"
-	}
+
 	status, color := m.status, m.theme.MutedForeground
 	if t.modified() {
 		status, color = "未保存", m.theme.Ring
@@ -728,7 +770,7 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 		ui.Text(c, status).Color(color).FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 		ui.Text(c, fmt.Sprintf("%d 个文件", len(m.tabs))).Muted().FontSize(12)
 		ui.Text(c, fmt.Sprintf("行 %d，列 %d", line, column)).Muted().FontSize(12)
-		ui.Text(c, encoding).Muted().FontSize(12)
+		m.encodingPicker(c, t, blocked)
 		ui.Text(c, t.doc.eol).Muted().FontSize(12)
 		m.languagePicker(c, t, blocked)
 	})
@@ -785,10 +827,15 @@ func (m *editorApp) dialogs(c ui.C) {
 			m.clearSaveConfirmation()
 			m.focusActiveSource()
 		}
-		if ui.Button(c, "放弃修改").Outline().Clicked() {
+		var state *largeTextView
+		if m.confirmTab != nil {
+			state = m.confirmTab.largeText
+		}
+		saving := state != nil && state.saving != nil
+		if ui.Button(c, "放弃修改").Outline().Disabled(saving).Clicked() {
 			c.After(m.finishSaveConfirmation)
 		}
-		save := ui.Button(c, "保存并继续")
+		save := ui.Button(c, "保存并继续").Disabled(saving || state != nil && state.editing == nil)
 		if m.confirmFocus {
 			save.AutoFocus()
 			m.confirmFocus = false

@@ -795,7 +795,20 @@ func TestPasswordVaultDeleteFromContextMenu(t *testing.T) {
 	click("button:取消")
 
 	click("子组")
-	openDelete("测试组", "删除分组")
+	check(s.RightClickLabel("测试组"))
+	click("menuitem:重命名")
+	if v.dialog == nil || v.dialog.id != 3 || v.dialog.name.Text() != "测试组" {
+		t.Fatal("rename did not target the right-clicked group")
+	}
+	check(s.Type("测试环境"))
+	click("button:保存分组")
+	entry, _ := v.store.data.entry(8)
+	if group := v.store.data.group(3); group.Name != "测试环境" || group.Parent != 2 ||
+		v.store.data.group(4).Parent != 3 || entry.Group != 3 {
+		t.Fatal("renaming changed the group hierarchy or entry assignment")
+	}
+	click("子组")
+	openDelete("测试环境", "删除分组")
 	if !s.HasText("同时删除 1 个子分组。2 个条目将移到「项目」。") {
 		t.Fatal("the confirmation did not describe the child groups and entry destination")
 	}
@@ -803,7 +816,7 @@ func TestPasswordVaultDeleteFromContextMenu(t *testing.T) {
 	if v.dialog != nil || v.store.data.group(3).ID == 0 || v.store.data.group(4).ID == 0 {
 		t.Fatal("dismissing the confirmation changed the group tree")
 	}
-	openDelete("测试组", "删除分组")
+	openDelete("测试环境", "删除分组")
 	click("button:确认删除")
 	if v.group != 2 || v.store.data.group(3).ID != 0 || v.store.data.group(4).ID != 0 {
 		t.Fatal("the confirmed group deletion did not remove the branch and select its parent")

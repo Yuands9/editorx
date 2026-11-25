@@ -87,7 +87,7 @@ func (m *editorApp) aiTab(id int) *editorTab {
 }
 
 func aiTextTab(t *editorTab) bool {
-	return t != nil && t.office == nil && !t.readOnlyPreview()
+	return t != nil && t.office == nil && t.largeText == nil && !t.readOnlyPreview()
 }
 
 func (m *editorApp) startAI() {

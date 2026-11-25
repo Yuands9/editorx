@@ -407,6 +407,7 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 									ancestors.Sub(filepath.Base(path), func(items *ui.MenuItems) {
 										m.projectCreateActions(place, items, path)
 										items.Separator()
+										m.projectRenameAction(place, items, path, true)
 										m.projectDeleteAction(place, items, path, true)
 									})
 									if path == row.start.path {
@@ -428,6 +429,7 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 						place.After(func() { m.openExplorerFolder(path) })
 					}
 					menu.Separator()
+					m.projectRenameAction(place, menu, node.path, node.directory)
 					m.projectDeleteAction(place, menu, node.path, node.directory)
 				})
 			}
@@ -508,5 +510,6 @@ func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 		c.After(func() { m.removeProject(root) })
 	}
 	menu.Separator()
+	m.projectRenameAction(c, menu, root.path, true)
 	m.projectDeleteAction(c, menu, root.path, true)
 }

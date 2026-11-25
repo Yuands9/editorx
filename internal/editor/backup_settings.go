@@ -244,6 +244,9 @@ func writeEditorBackup(ctx context.Context, path string, saved savedSession) err
 		if err := json.NewEncoder(entry).Encode(saved); err != nil {
 			return err
 		}
+		if err := includeLargeEditDrafts(ctx, archive, saved); err != nil {
+			return err
+		}
 		if err := archive.Close(); err != nil {
 			return err
 		}
@@ -252,6 +255,10 @@ func writeEditorBackup(ctx context.Context, path string, saved savedSession) err
 }
 
 func readEditorBackup(path string) (savedSession, error) {
+	return readEditorBackupDrafts(path, "")
+}
+
+func readEditorBackupDrafts(path, directory string) (savedSession, error) {
 	if !strings.EqualFold(filepath.Ext(path), ".zip") {
 		return savedSession{}, errors.New("请选择 EditorX 导出的 ZIP 备份")
 	}
@@ -283,6 +290,9 @@ func readEditorBackup(path string) (savedSession, error) {
 	if err := saved.validateVersion(); err != nil {
 		return savedSession{}, err
 	}
+	if err := importLargeEditDrafts(archive, saved, directory); err != nil {
+		return savedSession{}, err
+	}
 	return saved, nil
 }
 
@@ -300,11 +310,11 @@ func (m *editorApp) importBackup() {
 	if len(paths) == 0 {
 		return
 	}
-	path, preferences := paths[0], m.editorPrefs
+	path, preferences, directory := paths[0], m.editorPrefs, m.dataDirectory
 	progress := &backupImportProgress{}
 	repaint := m.invalidator.Invalidate
 	request := ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
-		saved, err := readEditorBackup(path)
+		saved, err := readEditorBackupDrafts(path, directory)
 		if err != nil {
 			return editorBackupResult{}, err
 		}
@@ -405,7 +415,8 @@ func (m *editorApp) mergeRestoredWindow(restored *editorApp, conversations *aiWi
 	for index, tab := range restored.tabs {
 		if existing := m.tabAtPath(tab.doc.path); existing != nil {
 			sameContent := tab.source.text.CommittedString() == existing.source.text.CommittedString()
-			if tab.readOnlyPreview() || (sameContent && !tab.modified() && !tab.hasResultDraft()) {
+			if tab.readOnlyPreview() && !tab.modified() || (sameContent && !tab.modified() && !tab.hasResultDraft()) {
+				tab.largeText.close()
 				if tab == restored.active {
 					active = existing
 				}
@@ -415,6 +426,9 @@ func (m *editorApp) mergeRestoredWindow(restored *editorApp, conversations *aiWi
 			// 同一路径已有标签时，保留备份版本为可另存的副本。
 			tab.name = tab.title()
 			tab.displayName = tab.tabTitle() + "（备份）"
+			if state := tab.largeText; state != nil && state.editSession != nil && state.editSession.BasePath == "" {
+				state.editSession.BasePath = tab.doc.path
+			}
 			tab.doc.path = ""
 		}
 		if tab.group != nil && !groups[tab.group] {

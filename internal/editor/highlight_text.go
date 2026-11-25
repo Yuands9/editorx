@@ -45,6 +45,8 @@ const syntaxURL = `https?://[^\s<>\p{Zs}\[\](){}"'，。、；！？：）…》
 
 var plainTokens = regexp.MustCompile(syntaxURL + `|\b(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL|true|false|null)\b|\b[A-Za-z_][A-Za-z0-9_.-]*=|\b[0-9]+(?:\.[0-9]+)?\b`)
 
+var logTokens = regexp.MustCompile(`\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:[.,]\d+)?(?:Z|[+-]\d\d:?\d\d)?|\b[0-9a-fA-F]{16,64}\b|</?[A-Za-z_][A-Za-z0-9_.:-]*|==>|<==|\b(?:GET|POST|PUT|DELETE|PATCH|HEAD|SELECT|INSERT|UPDATE)\b|` + plainTokens.String())
+
 func (h *syntaxLine) plain(line string, log bool) {
 	line = strings.TrimRight(line, syntaxWhitespace)
 	start := skipSyntaxSpace(line, 0)
@@ -72,7 +74,11 @@ func (h *syntaxLine) plain(line string, log bool) {
 			return
 		}
 	}
-	for _, bounds := range plainTokens.FindAllStringIndex(content, -1) {
+	tokens := plainTokens
+	if log {
+		tokens = logTokens
+	}
+	for _, bounds := range tokens.FindAllStringIndex(content, -1) {
 		left, right := start+bounds[0], start+bounds[1]
 		token := line[left:right]
 		switch token {
@@ -86,10 +92,20 @@ func (h *syntaxLine) plain(line string, log bool) {
 			h.add(left, right, h.comment)
 		case "true", "false", "null":
 			h.add(left, right, h.literal)
+		case "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "SELECT", "INSERT", "UPDATE":
+			h.add(left, right, h.keyword)
+		case "==>", "<==":
+			h.add(left, right, h.punctuation)
 		default:
 			switch {
 			case strings.HasPrefix(token, "http://") || strings.HasPrefix(token, "https://"):
 				h.add(left, left+len(strings.TrimRight(token, ".,!?;")), h.symbol)
+			case strings.HasPrefix(token, "<"):
+				h.add(left, right, h.key)
+			case log && len(token) >= 19 && token[4] == '-' && token[7] == '-':
+				h.add(left, right, h.punctuation)
+			case log && len(token) >= 16:
+				h.add(left, right, h.symbol)
 			case strings.HasSuffix(token, "="):
 				h.add(left, right-1, h.key)
 			default:

@@ -9,8 +9,12 @@ import (
 
 func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 	s := &t.search
-	if !s.open {
+	large := t.hasLargeEdit()
+	if !s.open || !large && !t.canSearchText() {
 		return
+	}
+	if large {
+		t.refreshLargeEditSearch()
 	}
 	viewport := c.Bounds()
 	width, height := min(float32(680), viewport.Width-24), float32(350)
@@ -86,16 +90,22 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 					})
 				})
 				ui.Column(c).Width(180).Gap(8).Children(func() {
-					disabled := s.composing() || s.query.String() == "" || s.errorText != ""
+					disabled := s.composing() || s.query.String() == "" || s.errorText != "" || large && t.largeText.busyEditing()
 					if ui.Button(c, "下一个匹配").FillWidth().Height(32).Disabled(disabled).Tooltip(m.shortcutHint("下一个匹配", shortcutFindNext)).Clicked() {
-						c.After(func() { s.step(1) })
+						c.After(func() { m.stepSearch(t, 1) })
 					}
 					if ui.Button(c, "上一个匹配").Outline().FillWidth().Height(32).Disabled(disabled).Tooltip(m.shortcutHint("上一个匹配", shortcutFindPrevious)).Clicked() {
-						c.After(func() { s.step(-1) })
+						c.After(func() { m.stepSearch(t, -1) })
 					}
 					if s.replacing {
 						if ui.Button(c, "替换当前匹配").Outline().FillWidth().Height(32).Disabled(disabled || s.target.readOnly).Clicked() {
-							c.After(s.replaceCurrent)
+							c.After(func() {
+								if large {
+									t.replaceInLargeEdit(false)
+								} else {
+									s.replaceCurrent()
+								}
+							})
 						}
 						if ui.Button(c, "替换当前文件全部").Outline().FillWidth().Height(32).FontSize(12).Disabled(disabled || s.target.readOnly).Clicked() {
 							c.After(func() { m.replaceAll(t, false) })
@@ -105,7 +115,14 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 						}
 					} else {
 						if ui.Button(c, "计数").Outline().FillWidth().Height(32).Disabled(disabled).Clicked() {
-							c.After(func() { s.refresh(); s.message = fmt.Sprintf("当前范围共有 %d 个匹配", len(s.matches)) })
+							c.After(func() {
+								if large {
+									t.countLargeEditMatches()
+								} else {
+									s.refresh()
+									s.message = fmt.Sprintf("当前范围共有 %d 个匹配", len(s.matches))
+								}
+							})
 						}
 						if ui.Button(c, "查找当前文档全部").Outline().FillWidth().Height(32).FontSize(12).Disabled(disabled).Clicked() {
 							c.After(func() { m.findAll(t, false) })
@@ -121,7 +138,7 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 				status = binding + " 换行 · " + status
 			}
 			color := m.theme.MutedForeground
-			if s.pattern != "" {
+			if !large && s.pattern != "" {
 				status = fmt.Sprintf("%d / %d", s.current+1, len(s.matches))
 				if s.truncated {
 					status += " · 仅显示前 10,000 个匹配"
@@ -131,7 +148,7 @@ func (m *editorApp) searchDialog(c ui.C, t *editorTab) {
 				status, color = s.errorText, m.theme.Danger
 			} else if s.message != "" {
 				status = s.message
-			} else if s.pattern != "" && len(s.matches) == 0 {
+			} else if !large && s.pattern != "" && len(s.matches) == 0 {
 				status, color = "没有找到匹配内容", m.theme.Danger
 			}
 			ui.Text(c, status).FontSize(12).Color(color).Height(20).FillWidth().Ellipsis()

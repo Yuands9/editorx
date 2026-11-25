@@ -104,6 +104,10 @@ func (d *editorDesktop) close(window *editorApp, allow func()) {
 	if d.exiting || window.windowClosed || window.windowClosePending || window.confirm {
 		return
 	}
+	if window.largeEditOperationPending() {
+		window.invalidator.Invalidate()
+		return
+	}
 	d.lastActive = window
 	if len(d.store.windows) == 1 {
 		d.closeLastWindow(window)
@@ -201,6 +205,10 @@ func (d *editorDesktop) flushForExit(index int) {
 		index++
 		if window.nativeWindow.Closed() {
 			continue
+		}
+		if window.largeEditOperationPending() {
+			d.cancelExit(window, fmt.Errorf("请等待大文件保存完成"))
+			return
 		}
 		if window.appSettings.open {
 			window.closeSettings()

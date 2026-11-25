@@ -3,12 +3,11 @@ package editor
 import (
 	"fmt"
 	"slices"
-	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/text/find"
 	"github.com/vivaui/viva/ui"
@@ -19,31 +18,156 @@ type searchResultGroup struct {
 	pane      *editorPane
 	source    string
 	matches   []text.Span
+	stream    *largeSearchResults
+	lines     []searchResultLine
 	collapsed bool
+	truncated bool
+}
+
+func (g searchResultGroup) count() int {
+	if g.stream != nil {
+		return len(g.stream.hits)
+	}
+	return len(g.matches)
+}
+
+func (g searchResultGroup) name() string {
+	if g.tab.doc.path != "" {
+		return g.tab.doc.path
+	}
+	return g.tab.title() + "（未保存）"
+}
+
+// Offsets are in the decoded text. Large-file hits keep their original navigation
+// offsets separately so multiple hits on one displayed line can still be visited.
+type searchResultLine struct {
+	number, column            int
+	first, end                int
+	sourceStart, sourceEnd    int
+	offset                    int64
+	excerpt                   string
+	cells                     int
+	clippedLeft, clippedRight bool
+	marks                     []text.Span
+}
+
+const searchResultExcerptBytes = 1024
+
+func newSearchResultLine(number, column, first int, offset int64, prefix, suffix string, continued bool) searchResultLine {
+	if end := strings.IndexByte(suffix[:min(len(suffix), searchResultExcerptBytes+1)], '\n'); end >= 0 {
+		suffix = suffix[:end]
+	}
+	left := 0
+	if len(prefix)+len(suffix) > searchResultExcerptBytes {
+		left = max(0, len(prefix)-120)
+		for left < len(prefix) && !utf8.RuneStart(prefix[left]) {
+			left++
+		}
+	}
+	prefix = prefix[left:]
+	right := min(len(suffix), searchResultExcerptBytes-len(prefix))
+	for right < len(suffix) && !utf8.RuneStart(suffix[right]) {
+		right--
+	}
+	clipped := right < len(suffix)
+	value := strings.TrimSuffix(prefix+suffix[:right], "\r")
+	if prefix == "" || right == 0 {
+		// A single slice could otherwise keep the whole source allocation alive.
+		value = strings.Clone(value)
+	}
+	cells := 0
+	for _, ch := range value {
+		if ch == '\t' {
+			cells += 4
+		} else {
+			cells += text.CellWidth(ch)
+		}
+	}
+	return searchResultLine{number: number, column: column, first: first, end: first, offset: offset - int64(len(prefix)), excerpt: value, cells: cells,
+		clippedLeft: continued || left > 0, clippedRight: clipped}
+}
+
+func (line *searchResultLine) addHit(index int, start, end int64) {
+	line.end = index + 1
+	from, to := start-line.offset, end-line.offset
+	length := int64(len(line.excerpt))
+	if from > length {
+		// A match on the LF in CRLF can be one byte after the excerpt.
+		if line.clippedRight || from > length+1 {
+			return
+		}
+		from = length
+	}
+	if to < 0 {
+		return
+	}
+	mark := text.Span{Start: int(max(0, from)), End: int(min(length, to))}
+	if mark.Start == mark.End {
+		line.cells++
+	}
+	line.marks = append(line.marks, mark)
+}
+
+func (g *searchResultGroup) collectLines() {
+	line, start, end := 1, 0, 0
+	for i, hit := range g.matches {
+		if i == 0 || hit.Start > end {
+			scanned := g.source[start:hit.Start]
+			line += strings.Count(scanned, "\n")
+			if last := strings.LastIndexByte(scanned, '\n'); last >= 0 {
+				start += last + 1
+			}
+			end = len(g.source)
+			if next := strings.IndexByte(g.source[hit.Start:], '\n'); next >= 0 {
+				end = hit.Start + next
+			}
+			prefix := g.source[start:hit.Start]
+			row := newSearchResultLine(line, utf8.RuneCountInString(prefix)+1, i, int64(hit.Start), prefix, g.source[hit.Start:end], false)
+			row.sourceStart, row.sourceEnd = start, end
+			g.lines = append(g.lines, row)
+		}
+		g.lines[len(g.lines)-1].addHit(i, int64(hit.Start), int64(hit.End))
+	}
 }
 
 type searchResultRow struct {
-	group, match         int
-	line, column         int
-	before, value, after string
+	group, line int // group -1 for the query, line -1 for a file heading
 }
 
 type searchResults struct {
-	open, allOpen bool
-	origin        *editorTab
-	pane          *editorPane
-	query         string
-	options       searchOptions
-	groups        []searchResultGroup
-	rows          []searchResultRow
-	total         int
-	truncated     bool
-	dirty         bool
-	list          ui.ListState
-	split         ui.SplitterState
+	open, allOpen            bool
+	fixed                    bool
+	origin                   *editorTab
+	pane                     *editorPane
+	query                    string
+	options                  searchOptions
+	groups                   []searchResultGroup
+	rows                     []searchResultRow
+	total                    int
+	truncated                bool
+	dirty                    bool
+	collapsed                bool
+	files                    int
+	lineDigits, previewCells int
+	cellWidth                float32
+	resetHorizontal          bool
+	list                     ui.ListState
+	split                    ui.SplitterState
+}
+
+func (r *searchResults) begin() {
+	r.open, r.collapsed, r.resetHorizontal = true, false, true
+	if r.split.Ratio == 0 {
+		r.split.Ratio = 0.60
+	}
+	r.list = ui.ListState{Name: r.rowLabel, NoTypeahead: true}
+	r.list.ScrollTo(0, ui.ListStart)
 }
 
 func (m *editorApp) findAll(t *editorTab, allOpen bool) {
+	if m.startLargeDocumentSearch(t, allOpen, false) {
+		return
+	}
 	s := &t.search
 	if _, composing := s.query.Composition(); composing {
 		return
@@ -53,19 +177,22 @@ func (m *editorApp) findAll(t *editorTab, allOpen bool) {
 		return
 	}
 	r := &m.results
-	r.open, r.allOpen, r.origin, r.pane, r.query, r.options = true, allOpen, t, s.target, s.query.String(), s.options
-	r.groups = nil
-	if r.split.Ratio == 0 {
-		r.split.Ratio = 0.60
+	r.allOpen, r.origin, r.pane, r.query, r.options = allOpen, t, s.target, s.query.String(), s.options
+	if m.searchBatch != nil && !m.searchBatch.replacing {
+		m.searchBatch.origin.search.message = ""
+		m.searchBatch = nil
 	}
-	r.list = ui.ListState{}
-	r.list.Name = r.rowLabel
-	r.list.NoTypeahead = true
+	r.groups = nil
+	r.fixed, r.dirty = false, true
+	r.begin()
 	r.refresh(m)
 	s.close()
 }
 
 func (r *searchResults) refresh(m *editorApp) {
+	if r.fixed {
+		return
+	}
 	tabs := m.tabs
 	if slices.ContainsFunc(tabs, func(tab *editorTab) bool { return !tab.canSearchText() }) {
 		tabs = nil
@@ -111,21 +238,19 @@ func (r *searchResults) refresh(m *editorApp) {
 		g := searchResultGroup{tab: t, pane: p, source: p.text.String()}
 		limit := find.DefaultLimit - r.total
 		matches, truncated := query.Matches(nil, g.source, max(1, limit))
-		if limit == 0 {
-			if len(matches) > 0 {
-				r.truncated = true
-			}
-		} else {
+		g.truncated = truncated || limit == 0 && len(matches) > 0
+		if limit > 0 {
 			g.matches = matches
 			r.total += len(matches)
-			r.truncated = r.truncated || truncated
 		}
+		r.truncated = r.truncated || g.truncated
 		for _, old := range r.groups {
 			if old.tab == t {
 				g.collapsed = old.collapsed
 				break
 			}
 		}
+		g.collectLines()
 		groups = append(groups, g)
 	}
 	r.groups, r.dirty = groups, false
@@ -133,72 +258,53 @@ func (r *searchResults) refresh(m *editorApp) {
 }
 
 func (r *searchResults) buildRows() {
-	r.rows = nil
+	r.rows = r.rows[:0]
+	r.files, r.lineDigits, r.previewCells = 0, 1, 0
+	if r.total == 0 {
+		return
+	}
+	r.rows = append(r.rows, searchResultRow{group: -1, line: -1})
 	for i, g := range r.groups {
-		if len(g.matches) == 0 {
+		if len(g.lines) == 0 {
 			continue
 		}
-		r.rows = append(r.rows, searchResultRow{group: i, match: -1})
+		r.files++
+		if r.collapsed {
+			continue
+		}
+		r.rows = append(r.rows, searchResultRow{group: i, line: -1})
 		if g.collapsed {
 			continue
 		}
-		starts := []int{0}
-		for at, ch := range g.source {
-			if ch == '\n' {
-				starts = append(starts, at+1)
+		r.lineDigits = max(r.lineDigits, len(strconv.Itoa(g.lines[len(g.lines)-1].number)))
+		for j, line := range g.lines {
+			r.rows = append(r.rows, searchResultRow{group: i, line: j})
+			cells := line.cells
+			if line.clippedLeft {
+				cells++
 			}
-		}
-		previousFrom, previousLine, column := 0, -1, 1
-		for j, match := range g.matches {
-			line := sort.SearchInts(starts, match.Start+1) - 1
-			end := len(g.source)
-			if line+1 < len(starts) {
-				end = starts[line+1] - 1
+			if line.clippedRight {
+				cells++
 			}
-			from, to := match.Start, min(end, match.End)
-			prefixStart := from
-			for count := 0; prefixStart > starts[line] && count < 24; count++ {
-				_, size := utf8.DecodeLastRuneInString(g.source[starts[line]:prefixStart])
-				prefixStart -= size
+			if count := line.end - line.first; count > len(line.marks) {
+				cells += 12
 			}
-			before := g.source[prefixStart:from]
-			if prefixStart > starts[line] {
-				before = "…" + before
-			}
-			value := g.source[from:to]
-			if value == "" && match.End > end {
-				value = "↵"
-			}
-			if value == "" {
-				value = "│"
-			}
-			suffix := strings.TrimSuffix(g.source[to:end], "\r")
-			suffixEnd := 0
-			for count := 0; suffixEnd < len(suffix) && count < 100; count++ {
-				_, size := utf8.DecodeRuneInString(suffix[suffixEnd:])
-				suffixEnd += size
-			}
-			after := suffix[:suffixEnd]
-			if suffixEnd < len(suffix) || match.End > end {
-				after += "…"
-			}
-			if line != previousLine {
-				previousFrom, column = starts[line], 1
-			}
-			column += utf8.RuneCountInString(g.source[previousFrom:from])
-			previousFrom, previousLine = from, line
-			r.rows = append(r.rows, searchResultRow{group: i, match: j, line: line + 1, column: column, before: strings.ReplaceAll(before, "\t", "    "), value: value, after: strings.ReplaceAll(after, "\t", "    ")})
+			r.previewCells = max(r.previewCells, cells)
 		}
 	}
 }
 
 func (r *searchResults) rowLabel(index int) string {
 	row := r.rows[index]
+	if row.group < 0 {
+		return "结果搜索词 " + r.query
+	}
 	group := r.groups[row.group]
-	if row.match < 0 {
+	if row.line < 0 {
 		return "结果分组 " + group.tab.title()
 	}
-	return fmt.Sprintf("结果 %s 行 %d 列 %d", group.tab.title(), row.line, row.column)
+	line := group.lines[row.line]
+	return fmt.Sprintf("结果 %s 行 %d 列 %d", group.tab.title(), line.number, line.column)
 }
 
 func (m *editorApp) chooseSearchResult(index int) {
@@ -207,15 +313,29 @@ func (m *editorApp) chooseSearchResult(index int) {
 		return
 	}
 	row := r.rows[index]
+	if row.group < 0 {
+		r.collapsed = !r.collapsed
+		r.buildRows()
+		return
+	}
 	group := &r.groups[row.group]
-	if row.match < 0 {
+	if row.line < 0 {
 		group.collapsed = !group.collapsed
 		r.buildRows()
 		return
 	}
+	line := group.lines[row.line]
+	if group.stream != nil {
+		m.chooseLargeSearchResult(group, line.first)
+		return
+	}
 	if !slices.Contains(m.tabs, group.tab) || group.source != group.pane.text.String() {
 		r.refresh(m)
-		m.status = "搜索内容已更新，请重新选择结果"
+		if r.fixed {
+			m.status = "内容已变化，请重新查找"
+		} else {
+			m.status = "搜索内容已更新，请重新选择结果"
+		}
 		return
 	}
 	tab := group.tab
@@ -231,13 +351,13 @@ func (m *editorApp) chooseSearchResult(index int) {
 	s := &tab.search
 	s.query.SetSelection(text.Range{Start: 0, End: s.query.RuneCount()})
 	s.query.Insert(r.query)
-	s.target, s.options, s.matches, s.current, s.ready = group.pane, r.options, group.matches, row.match, false
+	s.target, s.options, s.matches, s.current, s.ready = group.pane, r.options, group.matches, line.first, false
 	s.replacing = s.replacing && group.pane == tab.source
 	s.reveal()
 	group.pane.view.Snapshot.Marks = group.matches
 	group.pane.focus = true
 	tab.source.focus = group.pane == tab.source
-	m.status = fmt.Sprintf("已定位 %s · 行 %d，列 %d", tab.title(), row.line, row.column)
+	m.status = fmt.Sprintf("已定位 %s · 行 %d，列 %d", tab.title(), line.number, line.column)
 }
 
 func (m *editorApp) copySearchResults() {
@@ -245,22 +365,24 @@ func (m *editorApp) copySearchResults() {
 	var out strings.Builder
 	fmt.Fprintf(&out, "搜索 %q · %d 个匹配\n", r.query, r.total)
 	for _, g := range r.groups {
-		if len(g.matches) == 0 {
+		if g.count() == 0 {
 			continue
 		}
-		name := g.tab.doc.path
-		if name == "" {
-			name = g.tab.title()
-		}
-		fmt.Fprintf(&out, "%s (%d 个匹配)\n", name, len(g.matches))
-		for _, match := range g.matches {
-			line := strings.Count(g.source[:match.Start], "\n") + 1
-			start := strings.LastIndex(g.source[:match.Start], "\n") + 1
-			end := len(g.source)
-			if next := strings.IndexByte(g.source[match.Start:], '\n'); next >= 0 {
-				end = match.Start + next
+		fmt.Fprintf(&out, "%s (%d 个匹配)\n", g.name(), g.count())
+		for _, line := range g.lines {
+			fmt.Fprintf(&out, "  行 %d: ", line.number)
+			if g.stream == nil {
+				out.WriteString(strings.TrimSuffix(g.source[line.sourceStart:line.sourceEnd], "\r"))
+			} else {
+				if line.clippedLeft {
+					out.WriteString("…")
+				}
+				out.WriteString(line.excerpt)
+				if line.clippedRight {
+					out.WriteString("…")
+				}
 			}
-			fmt.Fprintf(&out, "  行 %d: %s\n", line, g.source[start:end])
+			out.WriteByte('\n')
 		}
 	}
 	if r.truncated {
@@ -273,90 +395,12 @@ func (m *editorApp) copySearchResults() {
 	m.status = "已复制搜索结果"
 }
 
-func (m *editorApp) searchResultsView(c ui.C) {
-	r := &m.results
-	r.refresh(m)
-	files := 0
-	for _, g := range r.groups {
-		if len(g.matches) > 0 {
-			files++
-		}
-	}
-	ui.Column(c.Part("search-results")).FillWidth().Grow(1).MinHeight(0).Background(m.theme.Card).Children(func() {
-		ui.Row(c).FillWidth().Height(35).PadX(12).Gap(8).Items(ui.Center).Children(func() {
-			ui.Text(c, "搜索结果").Bold().FontSize(13)
-			pattern := strings.ReplaceAll(strings.ReplaceAll(r.query, "\r\n", "\n"), "\n", "↵")
-			summary := fmt.Sprintf("“%s” · %d 个匹配 · %d 个文档", pattern, r.total, files)
-			if r.truncated {
-				summary += " · 已截断至 10,000 项"
-			}
-			ui.Text(c, summary).FontSize(12).Muted().Grow(1).MinWidth(0).Ellipsis()
-			if ui.Button(c, "复制搜索结果").Icon(copyIcon).IconOnly().Ghost().Width(26).Height(26).Tooltip("复制搜索结果").Clicked() {
-				c.After(m.copySearchResults)
-			}
-			if ui.Button(c, "清空搜索结果").Ghost().Height(26).FontSize(12).Clicked() {
-				c.After(func() {
-					r.query = ""
-					r.origin, r.pane = nil, nil
-					r.truncated, r.dirty = false, false
-					r.groups = nil
-					r.rows = nil
-					r.total = 0
-					r.open = false
-					m.active.source.focus = true
-				})
-			}
-			if ui.Button(c, "关闭搜索结果").Icon(closeIcon).IconOnly().Ghost().Width(26).Height(26).Tooltip("关闭结果面板").Clicked() {
-				r.open = false
-				m.active.source.focus = true
-			}
-		})
-		if r.total == 0 {
-			ui.Text(c, "没有找到匹配内容").FontSize(13).Muted().Pad(14)
-			return
-		}
-		ui.List(c, &r.list, len(r.rows), func(item ui.ListRow) {
-			row := r.rows[item.Index]
-			group := r.groups[row.group]
-			item.Element.Height(28).PadX(12).Gap(6).Items(ui.Center).Clip().Children(func() {
-				if row.match < 0 {
-					icon := chevronDownIcon
-					if group.collapsed {
-						icon = chevronRightIcon
-					}
-					ui.Icon(item.C, icon).Width(14).Height(14)
-					name := group.tab.doc.path
-					if name == "" {
-						name = group.tab.title() + "（未保存）"
-					}
-					ui.Text(item.C, fmt.Sprintf("%s  (%d 个匹配)", name, len(group.matches))).FontSize(12).Bold().Grow(1).MinWidth(0).Ellipsis()
-					return
-				}
-				ui.Text(item.C, fmt.Sprintf("行 %d:%d", row.line, row.column)).Width(82).FontSize(12).Color(m.theme.Success)
-				ui.Row(item.C).Grow(1).MinWidth(0).Clip().Children(func() {
-					ui.Text(item.C, row.before).FontSize(12).Mono()
-					matchForeground := gfx.RGB(245, 214, 130)
-					if m.light {
-						matchForeground = gfx.RGB(106, 69, 9)
-					}
-					ui.Text(item.C, row.value).FontSize(12).Mono().Background(gfx.RGBA(190, 148, 38, 0.25)).Color(matchForeground)
-					ui.Text(item.C, row.after).FontSize(12).Mono().Grow(1).MinWidth(0).Ellipsis()
-				})
-			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("搜索结果列表")
-		index, submitted := r.list.Submitted()
-		if !submitted && r.list.Changed() {
-			index = r.list.Selected()
-			submitted = true
-		}
-		if submitted {
-			c.After(func() { m.chooseSearchResult(index) })
-		}
-	})
-}
-
 // 结果面板即使隐藏，也不能继续引用已关闭文档和其大段原文。
 func (r *searchResults) removeTab(tab *editorTab) {
+	if r.origin == tab && len(r.groups) == 1 && r.groups[0].stream != nil {
+		*r = searchResults{split: r.split}
+		return
+	}
 	if r.origin == tab {
 		r.origin, r.pane = nil, nil
 	}
@@ -365,9 +409,10 @@ func (r *searchResults) removeTab(tab *editorTab) {
 	if len(r.groups) == previous {
 		return
 	}
-	r.total, r.dirty = 0, true
+	r.total, r.dirty, r.truncated = 0, true, false
 	for _, group := range r.groups {
-		r.total += len(group.matches)
+		r.total += group.count()
+		r.truncated = r.truncated || group.truncated
 	}
 	r.buildRows()
 }

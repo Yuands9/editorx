@@ -216,8 +216,8 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	if m.templateDialog == nil || m.templateDialog.directory != deep || m.projectFolder != nil {
 		t.Fatal("new file did not target the last directory")
 	}
-	if _, err := s.Locate("button:模板"); err == nil || len(m.templateDialog.choices) != len(newTextFormats)+1 {
-		t.Fatal("project file creation offered templates while the template library was disabled")
+	if _, err := s.Locate("button:模板"); err != nil || m.sidebarPrefs.Templates {
+		t.Fatal("project file creation must offer templates with the sidebar button hidden")
 	}
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
 		check(s.Screenshot(filepath.Join(preview, "project-new-file.png")))
@@ -262,10 +262,6 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 		check(err)
 	}
 
-	click("button:设置")
-	click("button:侧栏")
-	click("switch:模板库")
-	click("button:关闭设置页")
 	check(s.RightClickLabel("src.main.java"))
 	click("menuitem:新建文件")
 	click("button:模板")
@@ -335,6 +331,103 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	click("button:创建文件夹")
 	_, err = s.Locate("docs")
 	check(err)
+}
+
+func TestProjectRenameThroughContextMenu(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	directory := t.TempDir()
+	root := filepath.Join(directory, "项目")
+	folder := filepath.Join(root, "src", "main")
+	file := filepath.Join(folder, "readme.txt")
+	existing := filepath.Join(folder, "existing.txt")
+	check(os.MkdirAll(folder, 0700))
+	check(os.WriteFile(file, []byte("original"), 0600))
+	check(os.WriteFile(existing, []byte("keep"), 0600))
+	store, err := openSessionStore(filepath.Join(directory, "data"))
+	check(err)
+	m := newEditorApp()
+	store.attach(m)
+	m.addProjects(root)
+	s := openTestSession(t, m)
+	check(s.Resize(1080, 675))
+	check(s.ClickLabel("src.main"))
+	check(s.ClickLabel("readme.txt"))
+	tab := m.active
+	tab.source.replace("unsaved draft")
+	check(s.Frame())
+
+	openRename := func(label, path string) {
+		t.Helper()
+		check(s.RightClickLabel(label))
+		check(s.ClickLabel("menuitem:重命名"))
+		if m.projectRename == nil || m.projectRename.path != path || m.projectRename.name.Text() != filepath.Base(path) {
+			t.Fatal("rename did not open with the selected entry's name")
+		}
+	}
+	rename := func(label, path, name string) {
+		t.Helper()
+		openRename(label, path)
+		m.projectRename.name.SetText(name)
+		check(s.Frame())
+		check(s.Keys("enter"))
+		if m.projectRename != nil || m.showError {
+			t.Fatalf("rename did not finish: %#v %s", m.projectRename, m.errorText)
+		}
+	}
+	openRename("readme.txt", file)
+	m.projectRename.name.SetText(filepath.Base(existing))
+	check(s.Frame())
+	check(s.ClickLabel("button:重命名"))
+	if m.projectRename == nil || !strings.Contains(m.projectRename.problem, "同名") {
+		t.Fatal("renaming to an existing file did not report a conflict")
+	}
+	for path, expected := range map[string]string{file: "original", existing: "keep"} {
+		contents, err := os.ReadFile(path)
+		check(err)
+		if string(contents) != expected {
+			t.Fatal("conflicting rename changed the data on disk")
+		}
+	}
+	check(s.Keys("escape"))
+
+	rename("readme.txt", file, "README.txt")
+	file = filepath.Join(folder, "README.txt")
+	_, err = s.Locate("README.txt")
+	check(err)
+	rename("src.main", folder, "lib")
+	folder = filepath.Join(root, "src", "lib")
+	_, err = s.Locate("src.lib")
+	check(err)
+	rename("项目", root, "项目归档")
+	newRoot := filepath.Join(directory, "项目归档")
+	newFile := filepath.Join(newRoot, "src", filepath.Base(folder), filepath.Base(file))
+	if m.workspace.project(newRoot) == nil || m.workspace.project(root) != nil ||
+		m.active != tab || tab.doc.path != newFile || !tab.modified() {
+		t.Fatal("rename did not preserve the project and the unsaved open tab")
+	}
+	_, err = s.Locate("README.txt")
+	check(err)
+	for _, item := range store.history {
+		if gitPathWithin(root, item.Path) {
+			t.Fatalf("recent entry still points at the old project: %s", item.Path)
+		}
+	}
+	if !m.saveTab(tab, false) {
+		t.Fatal("saving the renamed tab failed:", m.errorText)
+	}
+	contents, err := os.ReadFile(newFile)
+	check(err)
+	if string(contents) != "unsaved draft" {
+		t.Fatal("the renamed file lost the unsaved changes")
+	}
+	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("saving the renamed tab recreated the old path")
+	}
 }
 
 func TestProjectDeleteConfirmation(t *testing.T) {

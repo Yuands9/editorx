@@ -657,6 +657,7 @@ func (m *editorApp) openPasswordGroup(id, parent int) {
 	if id != 0 {
 		d.parent = group.Parent
 		d.name.SetText(group.Name)
+		d.name.Select(0, d.name.GetEditor().RuneCount())
 	}
 	v.dialog, v.revealed = d, false
 	m.vaultTouch()

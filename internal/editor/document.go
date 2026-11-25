@@ -9,41 +9,47 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 )
 
 type document struct {
 	path     string
 	saved    string
 	bom      bool
+	encoding textEncoding
 	eol      string
 	diskHash [32]byte
 }
 
-var (
-	errTextNotUTF8 = errors.New("此原型支持 UTF-8 文件，请先将文件转换为 UTF-8")
-	errTextHasNUL  = errors.New("文件含有空字符，请选择纯文本文件")
-)
+var errTextHasNUL = errors.New("文件含有空字符，无法作为文本编辑")
 
-func readDocument(path string) (document, error) {
+func readDocument(path string) (document, error) { return readDocumentAs(path, "") }
+
+func readDocumentAs(path string, requested textEncoding) (document, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return document{}, err
 	}
-	return decodeDocument(path, data)
+	return decodeDocumentAs(path, data, requested)
 }
 
 func decodeDocument(path string, data []byte) (document, error) {
-	doc := document{path: path, diskHash: sha256.Sum256(data), eol: "LF"}
-	doc.bom = bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf})
-	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
-	if !utf8.Valid(data) {
-		return document{}, errTextNotUTF8
+	return decodeDocumentAs(path, data, "")
+}
+
+func decodeDocumentAs(path string, data []byte, requested textEncoding) (document, error) {
+	enc, bom, err := detectTextEncoding(data, true, requested)
+	if err != nil {
+		return document{}, err
 	}
-	if bytes.IndexByte(data, 0) >= 0 {
-		return document{}, errTextHasNUL
+	doc := document{path: path, diskHash: sha256.Sum256(data), eol: "LF", encoding: enc, bom: bom}
+	if bom {
+		data = data[len(enc.bomPrefix()):]
 	}
-	value := string(data)
+	decoded, err := decodeTextEncoding(data, enc)
+	if err != nil {
+		return document{}, err
+	}
+	value := string(decoded)
 	crlf := strings.Count(value, "\r\n")
 	if crlf > 0 {
 		if strings.Count(value, "\n") == crlf {
@@ -66,8 +72,14 @@ func (doc *document) save(path, value string) error {
 		if sha256.Sum256(current) != doc.diskHash {
 			return errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
 		}
+		if value == doc.saved {
+			return nil
+		}
 	}
-	data := doc.fileBytes(value)
+	data, err := doc.fileBytes(value)
+	if err != nil {
+		return err
+	}
 	if err := writeFile(path, data); err != nil {
 		return err
 	}
@@ -75,23 +87,31 @@ func (doc *document) save(path, value string) error {
 	return nil
 }
 
-func (doc document) fileBytes(value string) []byte {
+func (doc document) fileBytes(value string) ([]byte, error) {
 	output := value
 	if doc.eol == "CRLF" {
 		output = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\n", "\r\n")
 	}
-	if doc.bom {
-		output = "\ufeff" + output
+	data, err := encodeText(output, doc.encoding)
+	if err != nil {
+		return nil, err
 	}
-	return []byte(output)
+	if doc.bom {
+		data = append(doc.encoding.bomPrefix(), data...)
+	}
+	return data, nil
 }
 
 func (doc document) create(path, value string) error {
+	data, err := doc.fileBytes(value)
+	if err != nil {
+		return err
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return err
 	}
-	_, err = file.Write(doc.fileBytes(value))
+	_, err = file.Write(data)
 	if err == nil {
 		err = file.Sync()
 	}
