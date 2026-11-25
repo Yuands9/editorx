@@ -9,16 +9,24 @@ type offlineArchive struct {
 }
 
 type offlineComponent struct {
-	ID, Label, Prefix string
-	Archives          []offlineArchive
-	Required          []string
+	ID, Label, Prefix, Directory string
+	Archives                     []offlineArchive
+	Files                        []offlineComponentFile
+	Required                     []string
 }
+
+type offlineComponentFile struct {
+	Name    string
+	Archive offlineArchive
+}
+
+var windowsEmbeddedPython = offlineArchive{"https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip", "9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38", 11441267}
 
 var offlineRuntime = offlineComponent{
 	ID: "runtime-1", Label: "运行时",
 	Required: []string{"python.exe", "python313.dll", "python313.zip", "msvcp140.dll", "ctranslate2/ctranslate2.dll", "sentencepiece/__init__.py"},
 	Archives: []offlineArchive{
-		{"https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip", "9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38", 11441267},
+		windowsEmbeddedPython,
 		{"https://files.pythonhosted.org/packages/4f/5c/ed3c4835ea69da2813a50d3c1b4b1b3c5145703eb615f93f2f4981850e2f/ctranslate2-4.9.1-cp313-cp313-win_amd64.whl", "cccffe88910e2ca5b8383d5ef323734dc03e200f5d3cf9949ece406b72423312", 23105788},
 		{"https://files.pythonhosted.org/packages/a3/39/41b3c56beb8ced46bfb346a638ca588741fcd10b6e1143d9143787e1c66d/sentencepiece-0.2.3-cp313-cp313-win_amd64.whl", "84e9def430ca8cc848b84adb304ffb77bff151cfc7dc66eb881f0385258f536b", 1655543},
 	},
@@ -37,6 +45,9 @@ func (component offlineComponent) downloadBytes() int64 {
 	var total int64
 	for _, archive := range component.Archives {
 		total += archive.Bytes
+	}
+	for _, file := range component.Files {
+		total += file.Archive.Bytes
 	}
 	return total
 }

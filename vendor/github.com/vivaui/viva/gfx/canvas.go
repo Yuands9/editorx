@@ -999,6 +999,11 @@ func (canvas *Canvas) TextWidthStyle(value string, style TextStyle) float32 {
 func (canvas *Canvas) Reset() {
 	canvas.afterPaint = nil
 	canvas.rotate()
+	// Recycled primitives can hold document text, bitmap pixels and editor placement.
+	clear(canvas.images)
+	clear(canvas.texts)
+	clear(canvas.hits)
+	clear(canvas.hitTexts)
 	canvas.rectangles = canvas.rectangles[:0]
 	canvas.triangles = canvas.triangles[:0]
 	canvas.shadows = canvas.shadows[:0]

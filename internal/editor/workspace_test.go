@@ -186,3 +186,144 @@ func TestLegacyFolderSessionMigrationAndPartialProjectAdd(t *testing.T) {
 		t.Fatal("new session still wrote the legacy workspace field")
 	}
 }
+
+func TestProjectCreateOnCompactFolder(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "项目")
+	top := filepath.Join(root, "src")
+	middle := filepath.Join(top, "main")
+	deep := filepath.Join(middle, "java")
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(os.MkdirAll(deep, 0700))
+	check(os.WriteFile(filepath.Join(deep, "已有文件.txt"), []byte("keep"), 0600))
+	m := newEditorApp()
+	m.dataDirectory = t.TempDir()
+	m.addProjects(root)
+	s := openTestSession(t, m)
+	check(s.Resize(1080, 675))
+	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
+	if len(m.workspace.rows) != 2 || m.workspace.rows[1].node.path != deep || m.workspace.rows[1].label != "src.main.java" {
+		t.Fatal("expected the whole single-directory chain to appear as one row under the project")
+	}
+
+	check(s.RightClickLabel("src.main.java"))
+	click("menuitem:新建文件")
+	if m.templateDialog == nil || m.templateDialog.directory != deep || m.projectFolder != nil {
+		t.Fatal("new file did not target the last directory")
+	}
+	click("textfield:搜索文件格式")
+	check(s.Type(".yaml"))
+	click("button:YAML · .yaml")
+	m.templateDialog.filename.SetText("app")
+	check(s.Frame())
+	click("button:创建文件")
+	config := filepath.Join(deep, "app.yaml")
+	data, err := os.ReadFile(config)
+	check(err)
+	if len(data) != 0 || m.active == nil || m.active.doc.path != config {
+		t.Fatal("creation did not add the requested format extension or open its file")
+	}
+	_, err = s.Locate("app.yaml")
+	check(err)
+
+	for _, filename := range []string{"app.custom", "Makefile", ".env", "placeholder.png"} {
+		check(s.RightClickLabel("src.main.java"))
+		click("menuitem:新建文件")
+		if choice := m.templateDialog.choices[m.templateDialog.selected]; choice.label() != "自定义" {
+			t.Fatal("new file should default to the custom filename")
+		}
+		previous := m.active
+		m.templateDialog.filename.SetText(filename)
+		check(s.Frame())
+		click("button:创建文件")
+		path := filepath.Join(deep, filename)
+		data, err := os.ReadFile(path)
+		check(err)
+		if len(data) != 0 || m.templateDialog != nil || m.showError {
+			t.Fatalf("did not create %s as an empty file", filename)
+		}
+		if filename == "placeholder.png" {
+			if m.active != previous {
+				t.Fatal("an empty image placeholder should only be created on disk")
+			}
+		} else if m.active == nil || m.active.doc.path != path {
+			t.Fatalf("did not open %s", filename)
+		}
+		_, err = s.Locate(filename)
+		check(err)
+	}
+
+	check(s.RightClickLabel("src.main.java"))
+	click("menuitem:新建文件")
+	click("button:模板")
+	click("button:接口响应示例 · 内置")
+	check(s.Frame())
+	click("button:创建文件")
+	data, err = os.ReadFile(filepath.Join(deep, "response.json"))
+	check(err)
+	if !json.Valid(data) || !strings.Contains(string(data), "success") {
+		t.Fatal("template did not create the rendered file in the selected directory")
+	}
+
+	check(s.RightClickLabel("src.main.java"))
+	click("menuitem:新建文件夹")
+	if m.projectFolder == nil || m.projectFolder.directory != deep || m.templateDialog != nil {
+		t.Fatal("new folder did not use the independent name dialog")
+	}
+	check(s.Type("assets.png"))
+	check(s.Keys("enter"))
+	if m.projectFolder != nil {
+		t.Fatal("Enter did not create the folder")
+	}
+	_, err = s.Locate("assets.png")
+	check(err)
+	info, err := os.Stat(filepath.Join(deep, "assets.png"))
+	check(err)
+	if !info.IsDir() {
+		t.Fatal("creation did not produce a directory")
+	}
+
+	check(s.RightClickLabel("src.main.java"))
+	click("menuitem:新建文件夹")
+	check(s.Type("app.yaml"))
+	click("button:创建文件夹")
+	if m.projectFolder == nil || !strings.Contains(m.projectFolder.problem, "同名") {
+		t.Fatal("the directory dialog did not report the existing file")
+	}
+	data, err = os.ReadFile(config)
+	check(err)
+	if len(data) != 0 {
+		t.Fatal("creating a conflicting folder changed an existing file")
+	}
+	check(s.Keys("escape"))
+
+	check(s.RightClickLabel("src.main.java"))
+	click("menuitem:上级目录")
+	click("menuitem:main")
+	click("menuitem:新建文件夹")
+	if m.projectFolder == nil || m.projectFolder.directory != middle {
+		t.Fatal("the ancestor action did not preserve access to a merged directory")
+	}
+	check(s.Type("test"))
+	click("button:创建文件夹")
+	_, err = s.Locate("src.main")
+	check(err)
+	_, err = s.Locate("java")
+	check(err)
+	_, err = s.Locate("test")
+	check(err)
+	if _, err := s.Locate("src.main.java"); err == nil {
+		t.Fatal("the tree kept merging through a directory with a sibling")
+	}
+
+	check(s.RightClickLabel("项目"))
+	click("menuitem:新建文件夹")
+	check(s.Type("docs"))
+	click("button:创建文件夹")
+	_, err = s.Locate("docs")
+	check(err)
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -255,13 +256,38 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 				if !e.key.Secure {
 					icon, title = hideSecretIcon, "隐藏密钥"
 				}
-				key := m.aiSettingsField(c.Part("key-input"), "API 密钥", placeholder, &e.key, keyDisabled, submitted).Action(icon, title)
-				if key.Changed() {
-					e.clearProbe(true)
-				}
-				if key.ActionClicked() {
-					c.After(e.toggleKeyVisibility)
-				}
+				ui.Row(c.Part("key-actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
+					key := m.aiSettingsField(c.Part("key-input"), "API 密钥", placeholder, &e.key, keyDisabled, submitted).
+						Grow(1).Basis(0).Action(icon, title)
+					if key.Changed() {
+						e.clearProbe(true)
+					}
+					if key.ActionClicked() {
+						c.After(e.toggleKeyVisibility)
+					}
+					if e.key.Secure {
+						return
+					}
+					canCopy := !keyDisabled && e.key.Text() != ""
+					copyKey := ui.Button(c.Part("copy-key"), "复制 API 密钥").Icon(copyIcon).IconOnly().Ghost().
+						Size(36, 36).Shrink(0).Tooltip("复制 API 密钥").Disabled(!canCopy)
+					copyRequested := copyKey.Clicked()
+					if canCopy && e.viewingSavedKey {
+						if key.Shortcut(ui.Primary, "a") {
+							e.key.Select(0, e.key.GetEditor().RuneCount())
+						}
+						if key.Shortcut(ui.Primary, "c") {
+							copyRequested = true
+						}
+					}
+					if copyRequested {
+						c.After(func() {
+							if err := app.SetClipboardText(e.key.Text()); err != nil {
+								e.problem = "无法复制 API 密钥：" + err.Error()
+							}
+						})
+					}
+				})
 				if hasSavedKey && ui.Checkbox(c.Part("clear-key"), &e.clearKey, "清除已保存的密钥").FontSize(12).Disabled(disabled).Changed() {
 					if e.clearKey && e.viewingSavedKey {
 						e.toggleKeyVisibility()

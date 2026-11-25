@@ -168,6 +168,8 @@ func (t *editorTab) modified() bool {
 
 type editorApp struct {
 	linkedFile         linkedFileState
+	imageOCR           *imageOCRDialog
+	imageAI            *imageAIDialog
 	theme              gfx.Theme
 	light              bool
 	tabs               []*editorTab
@@ -202,6 +204,7 @@ type editorApp struct {
 	fileMenu           bool
 	newFileMenu        bool
 	templateDialog     *templateDialogState
+	projectFolder      *projectFolderDialog
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
 	translationEnabled bool
@@ -304,6 +307,9 @@ func nextUntitledName(usedNames map[string]bool) string {
 
 func (m *editorApp) activate(t *editorTab) {
 	m.languageMenu = false
+	if m.active != t {
+		m.imageOCR, m.imageAI = nil, nil
+	}
 	if m.active != t && m.translation != nil {
 		m.translation.clearLookup()
 		m.translation.message, m.translation.problem = "", ""
@@ -891,8 +897,8 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 }
 
 func (m *editorApp) interactionBlocked() bool {
-	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
-		m.templateDialog != nil ||
+	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
+		m.templateDialog != nil || m.projectFolder != nil ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
@@ -958,11 +964,13 @@ func (m *editorApp) releaseWindowState() {
 	m.results = searchResults{}
 	m.ai = aiAssistant{}
 	m.translation, m.templateDialog, m.templatePanel = nil, nil, nil
+	m.projectFolder = nil
 	if m.desktop == nil {
 		m.update.close()
 	}
 	m.update, m.backup = editorUpdateState{}, editorBackupState{}
 	m.linkedFile = linkedFileState{}
+	m.imageOCR, m.imageAI = nil, nil
 	m.tabDrag = ui.DragState{}
 	m.tabGhost, m.groupGhost = nil, nil
 	m.rename = tabRenameState{}

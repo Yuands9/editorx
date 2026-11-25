@@ -433,11 +433,11 @@ func (canvas *Canvas) rotate() {
 	canvas.rectangles, old.rectangles = old.rectangles[:0], canvas.rectangles
 	canvas.triangles, old.triangles = old.triangles[:0], canvas.triangles
 	canvas.shadows, old.shadows = old.shadows[:0], canvas.shadows
-	canvas.images, old.images = old.images[:0], canvas.images
-	canvas.texts, old.texts = old.texts[:0], canvas.texts
+	canvas.images, old.images = old.images, canvas.images
+	canvas.texts, old.texts = old.texts, canvas.texts
 	canvas.runs, old.runs = old.runs[:0], canvas.runs
-	canvas.hits, old.hits = old.hits[:0], canvas.hits
-	canvas.hitTexts, old.hitTexts = old.hitTexts[:0], canvas.hitTexts
+	canvas.hits, old.hits = old.hits, canvas.hits
+	canvas.hitTexts, old.hitTexts = old.hitTexts, canvas.hitTexts
 	canvas.nativeViews, old.nativeViews = old.nativeViews[:0], canvas.nativeViews
 }
 

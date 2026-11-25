@@ -270,7 +270,7 @@ func (m *editorApp) refreshGitFiles(result gitResult, fileHashes map[string][32]
 	if m.workspace != nil {
 		for _, root := range m.workspace.roots {
 			if root.loaded && (gitPathWithin(result.status.root, root.path) || gitPathWithin(root.path, result.status.root)) {
-				m.refreshProject(root)
+				m.refreshProject(root, "")
 			}
 		}
 	}

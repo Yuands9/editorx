@@ -3,6 +3,7 @@ package editor
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,20 +15,22 @@ import (
 )
 
 type fileNode struct {
-	id        int
-	path      string
-	name      string
-	directory bool
-	expanded  bool
-	loaded    bool
-	children  []*fileNode
-	menuOpen  bool
-	loadError string
+	id                          int
+	path                        string
+	name                        string
+	directory                   bool
+	compactable, compactChecked bool
+	expanded                    bool
+	loaded                      bool
+	children                    []*fileNode
+	menuOpen                    bool
+	loadError                   string
 }
 
 type fileRow struct {
-	node  *fileNode
-	depth int
+	start, node *fileNode
+	label       string
+	depth       int
 }
 
 type folderTree struct {
@@ -43,7 +46,7 @@ func newFolderTree() *folderTree {
 	tree := &folderTree{}
 	tree.state.RowHeight = 30
 	tree.state.Indent = 14
-	tree.state.Key = func(i int) int { return tree.rows[i].node.id }
+	tree.state.Key = func(i int) int { return tree.rows[i].start.id }
 	tree.state.Node = func(i int) ui.TreeNode {
 		row := tree.rows[i]
 		node := ui.TreeNode{Depth: row.depth, Branch: row.node.directory, Expanded: row.node.expanded,
@@ -53,7 +56,7 @@ func newFolderTree() *folderTree {
 		}
 		return node
 	}
-	tree.state.Label = func(i int) string { return tree.rows[i].node.name }
+	tree.state.Label = func(i int) string { return tree.rows[i].label }
 	return tree
 }
 
@@ -85,10 +88,7 @@ func (tree *folderTree) readChildren(node *fileNode) error {
 		return err
 	}
 	for _, entry := range entries {
-		tree.nextID++
-		node.children = append(node.children, &fileNode{
-			id: tree.nextID, name: entry.Name(), path: filepath.Join(node.path, entry.Name()), directory: entry.IsDir(),
-		})
+		node.children = append(node.children, tree.newFileNode(node, entry))
 	}
 	sort.SliceStable(node.children, func(i, j int) bool {
 		a, b := node.children[i], node.children[j]
@@ -98,6 +98,34 @@ func (tree *folderTree) readChildren(node *fileNode) error {
 		return strings.ToLower(a.name) < strings.ToLower(b.name)
 	})
 	node.loaded, node.loadError = true, ""
+	return nil
+}
+
+func (tree *folderTree) newFileNode(parent *fileNode, entry os.DirEntry) *fileNode {
+	tree.nextID++
+	return &fileNode{id: tree.nextID, name: entry.Name(), path: filepath.Join(parent.path, entry.Name()),
+		directory: entry.IsDir(), compactable: entry.Type() == os.ModeDir}
+}
+
+func (tree *folderTree) compactChild(node *fileNode) *fileNode {
+	if !node.compactable {
+		return nil
+	}
+	if !node.loaded && !node.compactChecked {
+		node.compactChecked = true
+		// Discover single-directory chains without loading wide, collapsed branches.
+		if directory, err := os.Open(node.path); err == nil {
+			entries, err := directory.ReadDir(2)
+			directory.Close()
+			if (err == nil || errors.Is(err, io.EOF)) && len(entries) == 1 && entries[0].Type() == os.ModeDir {
+				node.children = []*fileNode{tree.newFileNode(node, entries[0])}
+				node.loaded = true
+			}
+		}
+	}
+	if len(node.children) == 1 && node.children[0].compactable {
+		return node.children[0]
+	}
 	return nil
 }
 
@@ -137,7 +165,14 @@ func (tree *folderTree) flatten() {
 	tree.rows = tree.rows[:0]
 	var visit func(*fileNode, int)
 	visit = func(node *fileNode, depth int) {
-		tree.rows = append(tree.rows, fileRow{node, depth})
+		start, label := node, node.name
+		if depth > 0 {
+			for child := tree.compactChild(node); child != nil; child = tree.compactChild(node) {
+				label += "." + child.name
+				node = child
+			}
+		}
+		tree.rows = append(tree.rows, fileRow{start: start, node: node, label: label, depth: depth})
 		if node.expanded {
 			for _, child := range node.children {
 				visit(child, depth+1)
@@ -268,7 +303,7 @@ func (m *editorApp) addProjects(paths ...string) {
 	}
 }
 
-func (m *editorApp) refreshProject(root *fileNode) {
+func (m *editorApp) refreshProject(root *fileNode, reveal string) {
 	tree := m.workspace
 	if tree == nil || !slices.Contains(tree.roots, root) {
 		return
@@ -278,9 +313,24 @@ func (m *editorApp) refreshProject(root *fileNode) {
 		m.fail(err)
 		return
 	}
-	err := tree.restoreExpanded(refreshed, expandedProjectFolders(root))
+	folders := expandedProjectFolders(root)
+	if reveal != "" {
+		for directory := filepath.Dir(reveal); ; directory = filepath.Dir(directory) {
+			folders = append(folders, directory)
+			if strings.EqualFold(directory, root.path) {
+				break
+			}
+		}
+	}
+	err := tree.restoreExpanded(refreshed, folders)
 	*root = *refreshed
 	tree.flatten()
+	if reveal != "" {
+		row := slices.IndexFunc(tree.rows, func(row fileRow) bool { return strings.EqualFold(row.node.path, reveal) })
+		if row >= 0 {
+			tree.state.ScrollIntoView(row)
+		}
+	}
 	m.status = "已刷新项目 " + root.name
 	if err != nil {
 		m.fail(fmt.Errorf("项目已刷新，部分子目录暂时无法读取。\n%w", err))
@@ -328,7 +378,7 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 			m.projectRow(c.KeyInt(node.id), tree.state.RowID(i), node, blocked)
 			return
 		}
-		place := c.KeyInt(node.id)
+		place := c.KeyInt(row.start.id)
 		entry := ui.Row(place).Fill().Gap(8).Items(ui.Center).PadRight(8)
 		if !node.directory {
 			// Tree reserves this space for the chevron on directory rows.
@@ -340,11 +390,27 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 				icon, color = folderIcon, m.theme.MutedForeground
 			}
 			ui.Icon(place, icon).Size(16, 16).Color(color)
-			name := ui.Text(place, node.name).FontSize(13).Grow(1).MinWidth(0).Ellipsis().LabelFor(tree.state.RowID(i))
+			name := ui.Text(place, row.label).FontSize(13).Grow(1).MinWidth(0).Ellipsis().LabelFor(tree.state.RowID(i))
+			if node != row.start {
+				name.Tooltip(node.path).TooltipOn(ui.TooltipRight)
+			}
 			if !blocked {
 				ui.ContextMenu(place, name, func(menu *ui.MenuItems) {
-					if node.directory && menu.Item("在此文件夹新建…").Icon(plusIcon).Clicked() {
-						place.After(func() { m.openTemplatePicker(node.path, false) })
+					if node.directory {
+						m.projectCreateActions(place, menu, node.path)
+						if node != row.start {
+							menu.Sub("上级目录", func(ancestors *ui.MenuItems) {
+								for path := filepath.Dir(node.path); ; path = filepath.Dir(path) {
+									ancestors.Sub(filepath.Base(path), func(items *ui.MenuItems) {
+										m.projectCreateActions(place, items, path)
+									})
+									if path == row.start.path {
+										break
+									}
+								}
+							})
+						}
+						menu.Separator()
 					}
 					if (node.directory || aiTextPath(node.path)) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 						place.After(func() { m.openAIAt(nil, node.path, node.directory) })
@@ -413,9 +479,8 @@ func (m *editorApp) projectRow(c ui.C, rowID gfx.ID, root *fileNode, blocked boo
 func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 	menu.WidthRange(180, 290)
 	menu.Label(root.name)
-	if menu.Item("在此文件夹新建…").Icon(plusIcon).Clicked() {
-		c.After(func() { m.openTemplatePicker(root.path, false) })
-	}
+	m.projectCreateActions(c, menu, root.path)
+	menu.Separator()
 	if menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 		c.After(func() { m.openAIAt(nil, root.path, true) })
 	}
@@ -429,7 +494,7 @@ func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 		c.After(func() { m.openLocalShell(root.path) })
 	}
 	if menu.Item("刷新项目").Icon(refreshIcon).Clicked() {
-		c.After(func() { m.refreshProject(root) })
+		c.After(func() { m.refreshProject(root, "") })
 	}
 	if menu.Item("移除项目").Icon(closeIcon).Clicked() {
 		c.After(func() { m.removeProject(root) })

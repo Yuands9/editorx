@@ -153,13 +153,38 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	if !m.ai.settings.key.Secure || eye.Bounds.X < field.Bounds.X || eye.Bounds.X+eye.Bounds.Width > field.Bounds.X+field.Bounds.Width {
 		t.Fatal("the saved key toggle is outside the masked input")
 	}
+	if _, err := s.Locate("button:复制 API 密钥"); err == nil {
+		t.Fatal("the hidden key offered a copy action")
+	}
 	click("button:显示密钥")
 	if m.ai.settings.key.Secure || m.ai.settings.key.Text() != key || m.ai.settings.dirty() {
 		t.Fatal("revealing the saved key changed the configuration")
 	}
+	click("button:复制 API 密钥")
+	if s.Driver().Clipboard() != key {
+		t.Fatal("the copy button did not copy the saved key")
+	}
+
+	s.Driver().SetClipboard("copy-before-shortcut")
+	click("API 密钥")
+	handled, err := s.Driver().ShortcutChord(gfx.ModifierControl, 'a')
+	check(err)
+	selection := m.ai.settings.key.GetEditor().Selection()
+	if !handled || selection.Start != 0 || selection.End != len(key) {
+		t.Fatal("Ctrl+A did not select the saved key")
+	}
+	handled, err = s.Driver().ShortcutChord(gfx.ModifierControl, 'c')
+	check(err)
+	if !handled || s.Driver().Clipboard() != key || m.ai.settings.dirty() {
+		t.Fatal("Ctrl+C did not copy the saved key without editing the configuration")
+	}
+
 	click("button:隐藏密钥")
 	if !m.ai.settings.key.Secure || m.ai.settings.key.Text() != "" {
 		t.Fatal("hiding the key did not clear the revealed value")
+	}
+	if _, err := s.Locate("button:复制 API 密钥"); err == nil {
+		t.Fatal("the copy action remained visible after hiding the key")
 	}
 	click("button:模型配置")
 	check(s.Resize(900, 560))

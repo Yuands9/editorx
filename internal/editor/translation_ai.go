@@ -97,17 +97,6 @@ func (m *editorApp) updateSelectionTranslation(c ui.C) {
 	state.hasOutput = true
 }
 
-func translationServiceLabel(profile aiSettings) string {
-	name := profile.Name
-	if strings.TrimSpace(name) == "" {
-		name = aiProviderLabel(profile.Provider)
-	}
-	if profile.Model == "" {
-		return name
-	}
-	return name + " · " + profile.Model
-}
-
 func (m *editorApp) translationAIAction(c ui.C, state *translationPanelState, blocked bool) {
 	if state.request != nil {
 		if ui.Button(c, "取消 AI 翻译").Secondary().Grow(1).Basis(0).Height(32).FontSize(12).
@@ -135,7 +124,7 @@ func (m *editorApp) translationAIAction(c ui.C, state *translationPanelState, bl
 		}
 		menu.Label("选择翻译服务")
 		for _, profile := range state.aiServices {
-			if menu.Item(translationServiceLabel(profile)).Clicked() {
+			if menu.Item(aiServiceModelLabel(profile)).Clicked() {
 				c.After(func() { m.startSelectionTranslation(profile) })
 			}
 		}

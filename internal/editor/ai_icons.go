@@ -37,20 +37,21 @@ var aiLogoBitmaps = sync.OnceValue(func() map[string]gfx.Bitmap {
 	return images
 })
 
-var aiIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
-	gfx.MoveTo(8, 4.5), gfx.LineTo(16, 4.5), gfx.QuadTo(20, 4.5, 20, 8.5),
-	gfx.LineTo(20, 16.5), gfx.QuadTo(20, 20.5, 16, 20.5), gfx.LineTo(8, 20.5),
-	gfx.QuadTo(4, 20.5, 4, 16.5), gfx.LineTo(4, 8.5), gfx.QuadTo(4, 4.5, 8, 4.5), gfx.ClosePath(),
-	gfx.MoveTo(4, 10), gfx.LineTo(2.25, 10), gfx.LineTo(2.25, 14), gfx.LineTo(4, 14),
-	gfx.MoveTo(20, 10), gfx.LineTo(21.75, 10), gfx.LineTo(21.75, 14), gfx.LineTo(20, 14),
-	gfx.MoveTo(8.5, 10.5), gfx.LineTo(8.5, 10.9),
-	gfx.MoveTo(15.5, 10.5), gfx.LineTo(15.5, 10.9),
-	gfx.MoveTo(9.4, 15.6), gfx.LineTo(14.6, 15.6),
+var aiIcon = gfx.Icon{ViewBox: 24, Stroke: 1.55, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(4.5, 15.75), gfx.LineTo(4.5, 8.5), gfx.QuadTo(4.5, 6.5, 6.5, 6.5),
+	gfx.LineTo(17.5, 6.5), gfx.QuadTo(19.5, 6.5, 19.5, 8.5),
+	gfx.LineTo(19.5, 15.75), gfx.QuadTo(19.5, 17.75, 17.5, 17.75),
+	gfx.LineTo(6.5, 17.75), gfx.QuadTo(4.5, 17.75, 4.5, 15.75), gfx.ClosePath(),
+	gfx.MoveTo(8, 2.5), gfx.LineTo(12, 2.5), gfx.LineTo(12, 6.5),
+	gfx.MoveTo(2.5, 12.25), gfx.LineTo(4.5, 12.25),
+	gfx.MoveTo(19.5, 12.25), gfx.LineTo(21.5, 12.25),
+	gfx.MoveTo(9.3, 11.4), gfx.LineTo(9.3, 13.1),
+	gfx.MoveTo(14.7, 11.4), gfx.LineTo(14.7, 13.1),
 }}
 
 func (m *editorApp) aiAssistantMark(c ui.C, size float32) {
-	ui.Row(c).Size(size, size).Shrink(0).Radius(size * .30).Background(m.theme.CardElevated).Center().Children(func() {
-		ui.Icon(c, aiIcon).Size(size*.72, size*.72).Color(m.theme.Foreground)
+	ui.Row(c).Size(size, size).Shrink(0).Center().Children(func() {
+		ui.Icon(c, aiIcon).Size(size*.77, size*.77).Color(m.theme.MutedForeground)
 	})
 }
 

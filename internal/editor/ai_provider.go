@@ -360,16 +360,22 @@ func (settings aiSettings) infer(ctx context.Context, system string, messages []
 	default:
 		return aiCompletion{}, errors.New("无法识别此配置的 API 协议")
 	}
+	reply, err := settings.requestAICompletion(ctx, protocol, payload, onDelta)
+	var responseErr aiHTTPError
+	if effort != "" && errors.As(err, &responseErr) && (responseErr.status == 400 || responseErr.status == 422) {
+		return aiCompletion{}, fmt.Errorf("%w。可将思考水平切回「服务默认」后重试", err)
+	}
+	return reply, err
+}
+
+func (settings aiSettings) requestAICompletion(ctx context.Context, protocol aiProtocol, payload any, onDelta func(string)) (aiCompletion, error) {
 	request, err := json.Marshal(payload)
 	if err != nil {
 		return aiCompletion{}, err
 	}
+	streaming := onDelta != nil
 	response, err := settings.openResponse(ctx, http.MethodPost, string(protocol), request, streaming)
 	if err != nil {
-		var responseErr aiHTTPError
-		if effort != "" && errors.As(err, &responseErr) && (responseErr.status == 400 || responseErr.status == 422) {
-			return aiCompletion{}, fmt.Errorf("%w。可将思考水平切回「服务默认」后重试", err)
-		}
 		return aiCompletion{}, err
 	}
 	defer response.Body.Close()

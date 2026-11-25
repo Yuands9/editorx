@@ -985,6 +985,9 @@ func (painter *painter) publish() (platform.Frame, error) {
 		painter.syncSemantics(!hitStructuresUnchanged && structuresUnchanged)
 		painter.recordHitStructures()
 		if !sameAccessibility(painter.accessibility, painter.lastAccess) {
+			if len(painter.accessibility) < len(painter.lastAccess) {
+				clear(painter.lastAccess[len(painter.accessibility):])
+			}
 			painter.lastAccess = append(painter.lastAccess[:0], painter.accessibility...)
 			frame.Accessibility = painter.accessibility
 		}
@@ -1068,6 +1071,7 @@ func (painter *painter) trim() {
 	if slots := painter.semantics.Slots(); slots > trimAt && painter.semantics.Len()*trimRatio < slots {
 		painter.semantics = semantic.NewWithCapacity("Viva", len(painter.hitScratch)+1)
 		painter.semanticIDs = painter.semanticIDs[:0]
+		clear(painter.semanticChanges)
 		painter.semanticChanges = painter.semanticChanges[:0]
 		painter.semanticsDirty = true
 	}
@@ -1327,6 +1331,7 @@ func (painter *painter) disableTextInput() platform.TextInputUpdate {
 	}
 	painter.textEpoch++
 	painter.textEnabled = false
+	painter.nativeText = platform.TextInput{}
 	return platform.TextInputUpdate{Changed: true}
 }
 
@@ -1548,7 +1553,11 @@ func sameHits(published, current []gfx.Hit) bool {
 // recordHitStructures keeps the state that lets the next repaint skip the
 // region and semantic mirror when nothing that feeds them changed.
 func (painter *painter) recordHitStructures() {
-	painter.publishedHits = append(painter.publishedHits[:0], painter.canvas.Hits()...)
+	hits := painter.canvas.Hits()
+	if len(hits) < len(painter.publishedHits) {
+		clear(painter.publishedHits[len(hits):])
+	}
+	painter.publishedHits = append(painter.publishedHits[:0], hits...)
 	painter.publishedFocus = painter.focus.Focused()
 	painter.publishedTrap = painter.canvas.TrappedFocusScope()
 	painter.publishedInitial = painter.canvas.InitialFocus()
@@ -1561,6 +1570,8 @@ func (painter *painter) recordHitStructures() {
 		painter.publishedSelection = painter.activeText.State.Selection
 		painter.publishedCompose = painter.activeText.State.Composition
 		painter.publishedComposing = painter.activeText.State.Composing
+	} else {
+		painter.publishedText = ""
 	}
 	painter.hitsPublished = true
 	painter.semanticsDirty = false
@@ -1569,6 +1580,7 @@ func (painter *painter) recordHitStructures() {
 // syncSemantics mirrors the canvas hit list into the retained semantic tree
 // and the flattened accessibility payload.
 func (painter *painter) syncSemantics(incremental bool) {
+	clear(painter.semanticChanges)
 	root := painter.semantics.Root()
 	// Blocks are occluders, not targets: they have no accessible meaning. Labels
 	// are no nodes either; their words name the control they label.
@@ -1675,6 +1687,9 @@ func (painter *painter) syncSemantics(incremental bool) {
 	}
 	if labelled && (needsLabelMap || pendingCount > 0) {
 		painter.nameFromLabels(hits)
+	}
+	if len(hits) < len(painter.hitScratch) {
+		clear(painter.hitScratch[len(hits):])
 	}
 	painter.hitScratch = hits
 

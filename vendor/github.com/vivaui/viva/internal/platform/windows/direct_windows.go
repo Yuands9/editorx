@@ -498,7 +498,9 @@ func (rasterizer *directRasterizer) grid(pixels []byte, label platform.TextLabel
 	fill(scratch, width, height, d2dColor{})
 	target.begin(d2dColor{A: 1}, d2dAntialiasGrayscale)
 	var drawErr error
-	for _, piece := range rasterizer.gridPieces(label, pitch) {
+	pieces := rasterizer.gridPieces(label, pitch)
+	defer clear(pieces)
+	for _, piece := range pieces {
 		target.setColor(piece.color)
 		if err := rasterizer.drawRun(target, family, fallback, size, piece.weight, piece.run, piece.text, piece.left, piece.span, pitch, baseline, pieceClip{}); err != nil && drawErr == nil {
 			drawErr = err

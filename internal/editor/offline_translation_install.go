@@ -25,7 +25,11 @@ type offlineInstallation struct {
 }
 
 func offlineComponentPath(directory string, component offlineComponent) string {
-	return filepath.Join(directory, offlineTranslationDirectory, component.ID)
+	namespace := component.Directory
+	if namespace == "" {
+		namespace = offlineTranslationDirectory
+	}
+	return filepath.Join(directory, namespace, component.ID)
 }
 
 func readOfflineInstallation(directory string, component offlineComponent) (*offlineInstallation, error) {
@@ -81,6 +85,16 @@ func installOfflineComponent(ctx context.Context, client *http.Client, directory
 		if err := os.Remove(path); err != nil {
 			return nil, err
 		}
+	}
+	for _, file := range component.Files {
+		target := filepath.Join(temporary, file.Name)
+		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+			return nil, err
+		}
+		if err := downloadOfflineArchive(ctx, client, file.Archive, target, progress); err != nil {
+			return nil, err
+		}
+		info.Bytes += file.Archive.Bytes
 	}
 	if component.ID == offlineRuntime.ID {
 		// SentencePiece's official wheel already carries this redistributable DLL.

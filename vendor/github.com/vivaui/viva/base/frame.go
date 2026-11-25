@@ -308,7 +308,9 @@ func (View *View) Begin(Surface *gfx.Canvas, Palette Theme, bounds Rect) *Frame 
 	f.Surface, f.Palette, f.bounds, f.done = Surface, Palette, bounds, false
 	f.Nodes = f.Nodes[:0]
 	f.Lines = f.Lines[:0]
+	clear(f.Exts) // hit placement can reference a document's editor
 	f.Exts = append(f.Exts[:0], Extra{})
+	clear(f.Images)
 	f.Images = f.Images[:0]
 	f.addons = f.addons[:0]
 	clear(f.Binds) // a binding holds pointers into the model: not past the frame

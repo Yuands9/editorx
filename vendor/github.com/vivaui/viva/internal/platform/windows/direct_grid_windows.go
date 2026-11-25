@@ -74,6 +74,8 @@ func (rasterizer *directRasterizer) gridLCD(pixels []byte, label platform.TextLa
 	pitch := label.CellWidth * scale
 	baseline := float32(platform.TextBaseline(label, height, scale))
 	pieces := rasterizer.gridPieces(label, pitch)
+	// Grid runs are substrings of the document. Keep the array for reuse, without retaining its text.
+	defer clear(pieces)
 	columns := rasterizer.ownedColumns(label, pieces, family, fallback, size, pitch, width)
 	if err := rasterizer.useGDI(pieces, family, size, width, height); err != nil {
 		return err

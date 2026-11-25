@@ -109,6 +109,11 @@ func imageToVivaBitmap(decoded image.Image) gfx.Bitmap {
 	return gfx.Bitmap{Pix: pixels.Pix, Width: size.X, Height: size.Y, Stride: pixels.Stride, ID: imageSequence.Add(1), Version: 1}
 }
 
+func validImageBitmap(bitmap gfx.Bitmap) bool {
+	return bitmap.Width > 0 && bitmap.Height > 0 && bitmap.Width <= 16384 && bitmap.Height <= 16384 &&
+		bitmap.Stride >= bitmap.Width*4 && bitmap.Stride <= len(bitmap.Pix)/bitmap.Height
+}
+
 func (picture *imageDocument) changeZoom(factor float32) {
 	zoom := picture.zoom
 	if zoom == 0 {
@@ -140,7 +145,7 @@ func (picture *imageDocument) pointer(event gfx.PointerEvent) gfx.EventResult {
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
-func (m *editorApp) imageView(c ui.C, t *editorTab) {
+func (m *editorApp) imageView(c ui.C, t *editorTab, blocked bool) {
 	picture := t.picture
 	if picture.errorText != "" {
 		ui.Text(c, picture.errorText).FillWidth().Pad(24)
@@ -167,6 +172,12 @@ func (m *editorApp) imageView(c ui.C, t *editorTab) {
 			picture.changeZoom(1.2)
 		}
 		ui.Slot(c).Grow(1)
+		if ui.Button(c.Part("image-ocr"), "识别文字").Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
+			c.After(m.showImageOCR)
+		}
+		if ui.Button(c.Part("image-ai"), "AI 识图").Icon(aiIcon).Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
+			c.After(m.openImageAI)
+		}
 		ui.Text(c, "滚轮缩放 · 拖动查看").FontSize(12).Muted()
 	})
 	control := ui.Control(c, "图片查看区", &picture.handlers).FillWidth().Grow(1).MinHeight(0)

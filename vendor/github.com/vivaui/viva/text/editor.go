@@ -1,6 +1,8 @@
 package text
 
 import (
+	"unicode/utf8"
+
 	"github.com/vivaui/viva/internal/bidi"
 	"github.com/vivaui/viva/internal/grapheme"
 )
@@ -133,7 +135,12 @@ type Editor struct {
 func NewEditor(initial string) *Editor {
 	runes := []rune(initial)
 	end := len(runes)
-	return &Editor{runes: runes, anchor: end, caret: end}
+	editor := &Editor{runes: runes, anchor: end, caret: end}
+	if utf8.ValidString(initial) {
+		// Share the original UTF-8 snapshot until the first edit needs a new one.
+		editor.text, editor.textValid = initial, true
+	}
+	return editor
 }
 
 // String returns the current UTF-8 text. The conversion is cached until the

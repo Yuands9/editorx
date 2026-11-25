@@ -334,3 +334,212 @@ new file mode 100644
 +		t.Fatal("cache could not reuse a released entry")
 +	}
 +}
+diff --git a/vendor/github.com/vivaui/viva/app/painter.go b/vendor/github.com/vivaui/viva/app/painter.go
+index 0da1ad0..a3dd2e7 100644
+--- a/vendor/github.com/vivaui/viva/app/painter.go
++++ b/vendor/github.com/vivaui/viva/app/painter.go
+@@ -985,6 +985,9 @@ func (painter *painter) publish() (platform.Frame, error) {
+ 		painter.syncSemantics(!hitStructuresUnchanged && structuresUnchanged)
+ 		painter.recordHitStructures()
+ 		if !sameAccessibility(painter.accessibility, painter.lastAccess) {
++			if len(painter.accessibility) < len(painter.lastAccess) {
++				clear(painter.lastAccess[len(painter.accessibility):])
++			}
+ 			painter.lastAccess = append(painter.lastAccess[:0], painter.accessibility...)
+ 			frame.Accessibility = painter.accessibility
+ 		}
+@@ -1068,6 +1071,7 @@ func (painter *painter) trim() {
+ 	if slots := painter.semantics.Slots(); slots > trimAt && painter.semantics.Len()*trimRatio < slots {
+ 		painter.semantics = semantic.NewWithCapacity("Viva", len(painter.hitScratch)+1)
+ 		painter.semanticIDs = painter.semanticIDs[:0]
++		clear(painter.semanticChanges)
+ 		painter.semanticChanges = painter.semanticChanges[:0]
+ 		painter.semanticsDirty = true
+ 	}
+@@ -1327,6 +1331,7 @@ func (painter *painter) disableTextInput() platform.TextInputUpdate {
+ 	}
+ 	painter.textEpoch++
+ 	painter.textEnabled = false
++	painter.nativeText = platform.TextInput{}
+ 	return platform.TextInputUpdate{Changed: true}
+ }
+ 
+@@ -1548,7 +1553,11 @@ func sameHits(published, current []gfx.Hit) bool {
+ // recordHitStructures keeps the state that lets the next repaint skip the
+ // region and semantic mirror when nothing that feeds them changed.
+ func (painter *painter) recordHitStructures() {
+-	painter.publishedHits = append(painter.publishedHits[:0], painter.canvas.Hits()...)
++	hits := painter.canvas.Hits()
++	if len(hits) < len(painter.publishedHits) {
++		clear(painter.publishedHits[len(hits):])
++	}
++	painter.publishedHits = append(painter.publishedHits[:0], hits...)
+ 	painter.publishedFocus = painter.focus.Focused()
+ 	painter.publishedTrap = painter.canvas.TrappedFocusScope()
+ 	painter.publishedInitial = painter.canvas.InitialFocus()
+@@ -1561,6 +1570,8 @@ func (painter *painter) recordHitStructures() {
+ 		painter.publishedSelection = painter.activeText.State.Selection
+ 		painter.publishedCompose = painter.activeText.State.Composition
+ 		painter.publishedComposing = painter.activeText.State.Composing
++	} else {
++		painter.publishedText = ""
+ 	}
+ 	painter.hitsPublished = true
+ 	painter.semanticsDirty = false
+@@ -1569,6 +1580,7 @@ func (painter *painter) recordHitStructures() {
+ // syncSemantics mirrors the canvas hit list into the retained semantic tree
+ // and the flattened accessibility payload.
+ func (painter *painter) syncSemantics(incremental bool) {
++	clear(painter.semanticChanges)
+ 	root := painter.semantics.Root()
+ 	// Blocks are occluders, not targets: they have no accessible meaning. Labels
+ 	// are no nodes either; their words name the control they label.
+@@ -1676,6 +1688,9 @@ func (painter *painter) syncSemantics(incremental bool) {
+ 	if labelled && (needsLabelMap || pendingCount > 0) {
+ 		painter.nameFromLabels(hits)
+ 	}
++	if len(hits) < len(painter.hitScratch) {
++		clear(painter.hitScratch[len(hits):])
++	}
+ 	painter.hitScratch = hits
+ 
+ 	if fast && labelled && (needsLabelMap || pendingCount > 0) {
+diff --git a/vendor/github.com/vivaui/viva/base/frame.go b/vendor/github.com/vivaui/viva/base/frame.go
+index 12a1f8c..6b06ebc 100644
+--- a/vendor/github.com/vivaui/viva/base/frame.go
++++ b/vendor/github.com/vivaui/viva/base/frame.go
+@@ -308,7 +308,9 @@ func (View *View) Begin(Surface *gfx.Canvas, Palette Theme, bounds Rect) *Frame
+ 	f.Surface, f.Palette, f.bounds, f.done = Surface, Palette, bounds, false
+ 	f.Nodes = f.Nodes[:0]
+ 	f.Lines = f.Lines[:0]
++	clear(f.Exts) // hit placement can reference a document's editor
+ 	f.Exts = append(f.Exts[:0], Extra{})
++	clear(f.Images)
+ 	f.Images = f.Images[:0]
+ 	f.addons = f.addons[:0]
+ 	clear(f.Binds) // a binding holds pointers into the model: not past the frame
+diff --git a/vendor/github.com/vivaui/viva/gfx/canvas.go b/vendor/github.com/vivaui/viva/gfx/canvas.go
+index 64f79a6..cf7c2c5 100644
+--- a/vendor/github.com/vivaui/viva/gfx/canvas.go
++++ b/vendor/github.com/vivaui/viva/gfx/canvas.go
+@@ -999,6 +999,11 @@ func (canvas *Canvas) TextWidthStyle(value string, style TextStyle) float32 {
+ func (canvas *Canvas) Reset() {
+ 	canvas.afterPaint = nil
+ 	canvas.rotate()
++	// Recycled primitives can hold document text, bitmap pixels and editor placement.
++	clear(canvas.images)
++	clear(canvas.texts)
++	clear(canvas.hits)
++	clear(canvas.hitTexts)
+ 	canvas.rectangles = canvas.rectangles[:0]
+ 	canvas.triangles = canvas.triangles[:0]
+ 	canvas.shadows = canvas.shadows[:0]
+diff --git a/vendor/github.com/vivaui/viva/gfx/replay.go b/vendor/github.com/vivaui/viva/gfx/replay.go
+index dac77c6..21019d6 100644
+--- a/vendor/github.com/vivaui/viva/gfx/replay.go
++++ b/vendor/github.com/vivaui/viva/gfx/replay.go
+@@ -433,11 +433,11 @@ func (canvas *Canvas) rotate() {
+ 	canvas.rectangles, old.rectangles = old.rectangles[:0], canvas.rectangles
+ 	canvas.triangles, old.triangles = old.triangles[:0], canvas.triangles
+ 	canvas.shadows, old.shadows = old.shadows[:0], canvas.shadows
+-	canvas.images, old.images = old.images[:0], canvas.images
+-	canvas.texts, old.texts = old.texts[:0], canvas.texts
++	canvas.images, old.images = old.images, canvas.images
++	canvas.texts, old.texts = old.texts, canvas.texts
+ 	canvas.runs, old.runs = old.runs[:0], canvas.runs
+-	canvas.hits, old.hits = old.hits[:0], canvas.hits
+-	canvas.hitTexts, old.hitTexts = old.hitTexts[:0], canvas.hitTexts
++	canvas.hits, old.hits = old.hits, canvas.hits
++	canvas.hitTexts, old.hitTexts = old.hitTexts, canvas.hitTexts
+ 	canvas.nativeViews, old.nativeViews = old.nativeViews[:0], canvas.nativeViews
+ }
+ 
+diff --git a/vendor/github.com/vivaui/viva/internal/framebuild/framebuild.go b/vendor/github.com/vivaui/viva/internal/framebuild/framebuild.go
+index 04ef159..e108699 100644
+--- a/vendor/github.com/vivaui/viva/internal/framebuild/framebuild.go
++++ b/vendor/github.com/vivaui/viva/internal/framebuild/framebuild.go
+@@ -283,6 +283,8 @@ func (builder *Builder) applyClipping() {
+ 	builder.clipped = builder.clipped[:0]
+ 	builder.clippedPaths = builder.clippedPaths[:0]
+ 	builder.clippedSoft = builder.clippedSoft[:0]
++	clear(builder.clippedTexts)
++	clear(builder.clippedImages)
+ 	builder.clippedTexts = builder.clippedTexts[:0]
+ 	builder.clippedImages = builder.clippedImages[:0]
+ 	builder.clippedTextBefores = builder.clippedTextBefores[:0]
+@@ -673,6 +675,7 @@ func (builder *Builder) setRectangle(id scene.ID, rectangle gfx.Rectangle) {
+ // in the previous frame showed, so a picture made of many bitmaps (see
+ // gfx.Surface) stages just the ones that changed.
+ func (builder *Builder) syncLabels() {
++	clear(builder.labels)
+ 	builder.labels = builder.labels[:0]
+ 	builder.labelImage = builder.labelImage[:0]
+ 	images := builder.clippedImages
+@@ -1123,6 +1126,12 @@ func SameImageBitmap(a, b gfx.Image) bool {
+ // live in the canvas, which is rewritten by the next paint, so they are copied.
+ func (builder *Builder) saveContent() {
+ 	builder.lastFontGeneration = builder.canvas.FontGeneration()
++	if len(builder.clippedImages) < len(builder.lastImages) {
++		clear(builder.lastImages[len(builder.clippedImages):])
++	}
++	if len(builder.clippedTexts) < len(builder.lastTexts) {
++		clear(builder.lastTexts[len(builder.clippedTexts):])
++	}
+ 	builder.lastImages = append(builder.lastImages[:0], builder.clippedImages...)
+ 	builder.lastLabelImage = append(builder.lastLabelImage[:0], builder.labelImage...)
+ 	builder.lastTexts = append(builder.lastTexts[:0], builder.clippedTexts...)
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/direct_grid_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/direct_grid_windows.go
+index 8bad25b..143d90d 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/direct_grid_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/direct_grid_windows.go
+@@ -74,6 +74,8 @@ func (rasterizer *directRasterizer) gridLCD(pixels []byte, label platform.TextLa
+ 	pitch := label.CellWidth * scale
+ 	baseline := float32(platform.TextBaseline(label, height, scale))
+ 	pieces := rasterizer.gridPieces(label, pitch)
++	// Grid runs are substrings of the document. Keep the array for reuse, without retaining its text.
++	defer clear(pieces)
+ 	columns := rasterizer.ownedColumns(label, pieces, family, fallback, size, pitch, width)
+ 	if err := rasterizer.useGDI(pieces, family, size, width, height); err != nil {
+ 		return err
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/direct_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/direct_windows.go
+index 2e159b3..e4d7ee2 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/direct_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/direct_windows.go
+@@ -498,7 +498,9 @@ func (rasterizer *directRasterizer) grid(pixels []byte, label platform.TextLabel
+ 	fill(scratch, width, height, d2dColor{})
+ 	target.begin(d2dColor{A: 1}, d2dAntialiasGrayscale)
+ 	var drawErr error
+-	for _, piece := range rasterizer.gridPieces(label, pitch) {
++	pieces := rasterizer.gridPieces(label, pitch)
++	defer clear(pieces)
++	for _, piece := range pieces {
+ 		target.setColor(piece.color)
+ 		if err := rasterizer.drawRun(target, family, fallback, size, piece.weight, piece.run, piece.text, piece.left, piece.span, pitch, baseline, pieceClip{}); err != nil && drawErr == nil {
+ 			drawErr = err
+diff --git a/vendor/github.com/vivaui/viva/text/editor.go b/vendor/github.com/vivaui/viva/text/editor.go
+index b7f52b3..9e422e1 100644
+--- a/vendor/github.com/vivaui/viva/text/editor.go
++++ b/vendor/github.com/vivaui/viva/text/editor.go
+@@ -1,6 +1,8 @@
+ package text
+ 
+ import (
++	"unicode/utf8"
++
+ 	"github.com/vivaui/viva/internal/bidi"
+ 	"github.com/vivaui/viva/internal/grapheme"
+ )
+@@ -133,7 +135,12 @@ type Editor struct {
+ func NewEditor(initial string) *Editor {
+ 	runes := []rune(initial)
+ 	end := len(runes)
+-	return &Editor{runes: runes, anchor: end, caret: end}
++	editor := &Editor{runes: runes, anchor: end, caret: end}
++	if utf8.ValidString(initial) {
++		// Share the original UTF-8 snapshot until the first edit needs a new one.
++		editor.text, editor.textValid = initial, true
++	}
++	return editor
+ }
+ 
+ // String returns the current UTF-8 text. The conversion is cached until the

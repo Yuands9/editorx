@@ -283,6 +283,8 @@ func (builder *Builder) applyClipping() {
 	builder.clipped = builder.clipped[:0]
 	builder.clippedPaths = builder.clippedPaths[:0]
 	builder.clippedSoft = builder.clippedSoft[:0]
+	clear(builder.clippedTexts)
+	clear(builder.clippedImages)
 	builder.clippedTexts = builder.clippedTexts[:0]
 	builder.clippedImages = builder.clippedImages[:0]
 	builder.clippedTextBefores = builder.clippedTextBefores[:0]
@@ -673,6 +675,7 @@ func (builder *Builder) setRectangle(id scene.ID, rectangle gfx.Rectangle) {
 // in the previous frame showed, so a picture made of many bitmaps (see
 // gfx.Surface) stages just the ones that changed.
 func (builder *Builder) syncLabels() {
+	clear(builder.labels)
 	builder.labels = builder.labels[:0]
 	builder.labelImage = builder.labelImage[:0]
 	images := builder.clippedImages
@@ -1123,6 +1126,12 @@ func SameImageBitmap(a, b gfx.Image) bool {
 // live in the canvas, which is rewritten by the next paint, so they are copied.
 func (builder *Builder) saveContent() {
 	builder.lastFontGeneration = builder.canvas.FontGeneration()
+	if len(builder.clippedImages) < len(builder.lastImages) {
+		clear(builder.lastImages[len(builder.clippedImages):])
+	}
+	if len(builder.clippedTexts) < len(builder.lastTexts) {
+		clear(builder.lastTexts[len(builder.clippedTexts):])
+	}
 	builder.lastImages = append(builder.lastImages[:0], builder.clippedImages...)
 	builder.lastLabelImage = append(builder.lastLabelImage[:0], builder.labelImage...)
 	builder.lastTexts = append(builder.lastTexts[:0], builder.clippedTexts...)

@@ -53,20 +53,26 @@ func builtInTemplates() []documentTemplate {
 	}
 }
 
+func validWindowsEntryName(name string) bool {
+	return name != "" && len([]rune(name)) <= 255 && filepath.Base(name) == name && filepath.IsLocal(name) &&
+		!strings.HasSuffix(name, ".") && !strings.HasSuffix(name, " ") &&
+		!strings.ContainsAny(name, "\x3c\x3e:\"/\\|?*") && strings.IndexFunc(name, unicode.IsControl) < 0
+}
+
 func validateTextFilename(name string) error {
-	if name == "" || len([]rune(name)) > 255 || filepath.Base(name) != name || !filepath.IsLocal(name) ||
-		strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") ||
-		strings.ContainsAny(name, "\x3c\x3e:\"/\\|?*") || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+	if !validWindowsEntryName(name) {
 		return errors.New("请输入有效的 Windows 文件名")
 	}
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".xmind":
-		return errors.New("请选择可编辑的文本文件名")
-	}
-	if isImageFile(name) {
+	if hasNonTextExtension(name) {
 		return errors.New("请选择可编辑的文本文件名")
 	}
 	return nil
+}
+
+func hasNonTextExtension(name string) bool {
+	extension := filepath.Ext(name)
+	return isImageFile(name) || previewFormat(name) != "" || officeKind(name) != "" ||
+		strings.EqualFold(extension, ".doc") || strings.EqualFold(extension, ".xls")
 }
 
 func validateTemplate(template documentTemplate) error {
@@ -204,6 +210,9 @@ func (m *editorApp) createTextDraft(filename, body string, doc document) *editor
 }
 
 func (m *editorApp) createTextFile(directory, filename, body string, doc document) error {
+	if !validWindowsEntryName(filename) {
+		return errors.New("请输入有效的 Windows 文件名")
+	}
 	path := filepath.Join(directory, filename)
 	if m.tabAtPath(path) != nil {
 		return errors.New("同一路径已在标签中打开，请换一个名称")
@@ -215,7 +224,11 @@ func (m *editorApp) createTextFile(directory, filename, body string, doc documen
 		return fmt.Errorf("无法新建 %s：%w", filename, err)
 	}
 	if root := m.projectRoot(directory); root != "" {
-		m.refreshProject(m.workspace.project(root))
+		m.refreshProject(m.workspace.project(root), path)
+	}
+	if hasNonTextExtension(filename) {
+		m.status = "已创建文件 " + filename
+		return nil
 	}
 	m.load(path)
 	return nil

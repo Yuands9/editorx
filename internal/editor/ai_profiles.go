@@ -66,6 +66,17 @@ func aiProviderLabel(id string) string {
 	return "自定义服务"
 }
 
+func aiServiceModelLabel(profile aiSettings) string {
+	name := profile.Name
+	if strings.TrimSpace(name) == "" {
+		name = aiProviderLabel(profile.Provider)
+	}
+	if profile.Model == "" {
+		return name
+	}
+	return name + " · " + profile.Model
+}
+
 type aiProfiles struct {
 	DefaultID   int          `json:"default_id,omitempty"`
 	DefaultMode int          `json:"default_mode,omitempty"`

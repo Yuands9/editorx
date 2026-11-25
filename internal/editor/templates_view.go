@@ -15,6 +15,7 @@ import (
 
 var newTextFormats = [...]struct{ label, extension string }{
 	{"纯文本", ".txt"}, {"Markdown", ".md"}, {"JSON", ".json"}, {"HTML", ".html"},
+	{"YAML", ".yaml"}, {"XML", ".xml"}, {"CSV", ".csv"},
 }
 
 type templateChoice struct {
@@ -26,7 +27,7 @@ type templateDialogState struct {
 	split                                 ui.SplitterState
 	inSidebar, details                    bool
 	open, saving, inserting, projectScope bool
-	variableOpen                          bool
+	variableOpen, templatesOnly           bool
 	directory, project, problem, warning  string
 	target                                textEditTarget
 	choices                               []templateChoice
@@ -146,7 +147,14 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 	directory := state.directory
 	if directory != "" {
 		state.project = m.projectRoot(directory)
-		state.choices = append(state.choices, templateChoice{template: documentTemplate{Filename: m.untitledName(".txt"), EOL: "CRLF"}})
+		state.choices = append(state.choices, templateChoice{template: documentTemplate{
+			Name: "自定义", Filename: m.untitledName(""), EOL: "CRLF",
+		}})
+		for _, format := range newTextFormats {
+			state.choices = append(state.choices, templateChoice{template: documentTemplate{
+				Name: format.label, Filename: m.untitledName(format.extension), EOL: "CRLF",
+			}})
+		}
 	}
 	if state.project != "" {
 		m.addTemplateChoices(state, state.project, "项目")
@@ -171,6 +179,7 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 	state.selectTemplate(selected)
 	state.list.ScrollIntoView(selected)
 	if state.directory != "" {
+		state.updateTemplateOptions()
 		m.templateDialog = state
 		return
 	}
@@ -214,9 +223,16 @@ func (state *templateDialogState) filterTemplates() {
 		return
 	}
 	state.filter = query
+	state.updateTemplateOptions()
+}
+
+func (state *templateDialogState) updateTemplateOptions() {
 	state.options = state.options[:0]
 	for i, choice := range state.choices {
-		if strings.Contains(strings.ToLower(choice.label()+" "+choice.template.Filename), query) {
+		if state.directory != "" && state.templatesOnly != (choice.scope != "") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(choice.label()+" "+choice.template.Filename), state.filter) {
 			state.options = append(state.options, i)
 		}
 	}
@@ -231,7 +247,10 @@ func (state *templateDialogState) filterTemplates() {
 
 func (choice templateChoice) label() string {
 	if choice.scope == "" {
-		return "空白文件"
+		if extension := filepath.Ext(choice.template.Filename); extension != "" {
+			return choice.template.Name + " · " + extension
+		}
+		return choice.template.Name
 	}
 	return choice.template.Name + " · " + choice.scope
 }
@@ -256,7 +275,7 @@ func (m *editorApp) showTemplateDialog(c ui.C) {
 	case state.inserting:
 		title, action = "插入模板", "应用到文档"
 	case state.directory != "":
-		title, action = "在此文件夹新建", "创建文件"
+		title, action = "新建文件", "创建文件"
 	}
 	dismissed := ui.ModalWith(c, &state.open, title, ui.ModalSpec{Width: width}, func() {
 		if state.saving {
@@ -456,9 +475,29 @@ func (m *editorApp) saveTemplate(state *templateDialogState, useNow bool) error 
 }
 
 func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
-	m.assetHeading(c, templateIcon, "从熟悉的内容开始", "① 选择模板   →   ② 填写变量、查看预览   →   ③ 新建文档或插入选区")
 	if state.directory != "" {
-		ui.Wrap(c, state.directory).FillWidth().Muted().FontSize(12)
+		ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Wrap(c, state.directory).FillWidth().Muted().FontSize(12)
+			ui.Row(c.Part("creation-mode")).Gap(4).Pad(3).Radius(10).Background(m.theme.Background).Children(func() {
+				for index, label := range []string{"常见格式", "模板"} {
+					templates := index == 1
+					button := ui.Button(c.KeyInt(index), label).Ghost().Width(95).Height(30)
+					if state.templatesOnly == templates {
+						button.Secondary()
+					}
+					if button.Clicked() && state.templatesOnly != templates {
+						c.After(func() {
+							state.templatesOnly = templates
+							state.search.SetText("")
+							state.filter = ""
+							state.updateTemplateOptions()
+						})
+					}
+				}
+			})
+		})
+	} else {
+		m.assetHeading(c, templateIcon, "从熟悉的内容开始", "① 选择模板   →   ② 填写变量、查看预览   →   ③ 新建文档或插入选区")
 	}
 	if state.warning != "" {
 		ui.Wrap(c, state.warning).FillWidth().FontSize(12).Color(m.theme.Danger)
@@ -472,7 +511,11 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 	}
 	ui.Row(c).FillWidth().Gap(12).Children(func() {
 		ui.Column(c.Part("catalog")).Width(230).Shrink(0).Gap(6).Children(func() {
-			ui.TextField(c.Part("search"), &state.search, "搜索模板", "搜索名称或后缀").FillWidth()
+			searchLabel := "搜索模板"
+			if state.directory != "" && !state.templatesOnly {
+				searchLabel = "搜索文件格式"
+			}
+			ui.TextField(c.Part("search"), &state.search, searchLabel, "搜索名称或后缀").FillWidth()
 			state.filterTemplates()
 			m.templateList(c.Part("list"), state, false)
 			if state.directory == "" && ui.Button(c, "新建模板…").Icon(plusIcon).Ghost().FillWidth().Clicked() {
@@ -485,7 +528,7 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 		})
 		ui.Column(c.Part("details")).Grow(1).MinWidth(0).Pad(12).Radius(12).Background(m.theme.Muted).Gap(7).Children(func() {
 			if state.selected < 0 {
-				ui.Wrap(c, "没有找到匹配的模板，可以试试其他名称或后缀。").FillWidth().Muted()
+				ui.Wrap(c, "没有找到匹配的名称或后缀。").FillWidth().Muted()
 				return
 			}
 			m.templatePreview(c, state, false)
@@ -517,13 +560,15 @@ func (m *editorApp) templateList(c ui.C, state *templateDialogState, blocked boo
 			ui.Row(row.C).Size(32, 36).Shrink(0).Radius(7).Background(fill).Center().Children(func() {
 				ui.Icon(row.C, icon).Size(21, 21).Color(ink)
 			})
-			name := choice.template.Name
-			if choice.scope == "" {
-				name = "空白文件"
+			detail := filepath.Ext(choice.template.Filename)
+			if choice.scope != "" {
+				detail = choice.scope + " · " + documentFormat(choice.template.Filename)
+			} else if detail == "" {
+				detail = "任意后缀，也可省略"
 			}
 			ui.Column(row.C).Grow(1).MinWidth(0).Gap(4).Children(func() {
-				ui.Text(row.C, name).FillWidth().Ellipsis().FontSize(13).Bold()
-				ui.Text(row.C, choice.scope+" · "+documentFormat(choice.template.Filename)).Muted().FontSize(11)
+				ui.Text(row.C, choice.template.Name).FillWidth().Ellipsis().FontSize(13).Bold()
+				ui.Text(row.C, detail).Muted().FontSize(11)
 			})
 		})
 		if item.Clicked() && !blocked {
@@ -571,8 +616,7 @@ func (m *editorApp) templatePreview(c ui.C, state *templateDialogState, blocked 
 	if !state.inserting {
 		ui.TextField(c.Part("filename"), &state.filename, "文件名", "新文档的文件名").FillWidth().Disabled(blocked)
 	}
-	if template.Name == "" {
-		ui.Wrap(c, "从空白开始。创建后直接输入内容，Ctrl+N 也能随时新建空白标签。").FillWidth().Muted().FontSize(12)
+	if choice.scope == "" {
 		return
 	}
 	ui.Scroll(c.Part("preview-area")).FillWidth().Height(235).Scrollbars().Children(func() {
@@ -622,7 +666,11 @@ func (state *templateDialogState) previewFilename() string {
 	if state.inserting {
 		return state.choices[state.selected].template.Filename
 	}
-	return state.filename.Text()
+	name := strings.TrimSpace(state.filename.Text())
+	if state.directory != "" && name != "" && filepath.Ext(name) == "" {
+		name += filepath.Ext(state.choices[state.selected].template.Filename)
+	}
+	return name
 }
 
 func (state *templateDialogState) fieldValues() []string {
@@ -634,14 +682,17 @@ func (state *templateDialogState) fieldValues() []string {
 }
 
 func (m *editorApp) useTemplate(state *templateDialogState) error {
-	template := state.choices[state.selected].template
-	filename := strings.TrimSpace(state.previewFilename())
+	choice := state.choices[state.selected]
+	template := choice.template
+	filename := state.previewFilename()
 	if !state.inserting {
 		if _, composing := state.filename.GetEditor().Composition(); composing {
 			return errors.New("请先完成中文选词")
 		}
-		if err := validateTextFilename(filename); err != nil {
-			return err
+		if choice.scope != "" || state.directory == "" {
+			if err := validateTextFilename(filename); err != nil {
+				return err
+			}
 		}
 	}
 	for i := range state.values {
@@ -649,9 +700,13 @@ func (m *editorApp) useTemplate(state *templateDialogState) error {
 			return errors.New("请先完成中文选词")
 		}
 	}
-	body, err := renderTemplate(template, filename, state.fieldValues(), state.inserting)
-	if err != nil && template.Name != "" {
-		return err
+	var body string
+	if choice.scope != "" {
+		var err error
+		body, err = renderTemplate(template, filename, state.fieldValues(), state.inserting)
+		if err != nil {
+			return err
+		}
 	}
 	if state.inserting {
 		value, start, end, err := state.target.current(m.active)

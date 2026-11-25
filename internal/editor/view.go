@@ -28,6 +28,8 @@ func (m *editorApp) page(c ui.C) {
 	m.updateProjectGit(c)
 	m.updateLocalShell()
 	m.updateLinkedFile(c.Part("link-download"))
+	m.updateImageOCR(c.Part("image-ocr-job"))
+	m.updateImageAI(c.Part("image-ai-job"))
 	blocked := m.interactionBlocked()
 	if !blocked && m.appSettings.shortcutEdit.action == shortcutNone && m.shortcutPressed(c, shortcutOpenSettings) {
 		c.After(m.toggleApplicationSettings)
@@ -58,7 +60,10 @@ func (m *editorApp) page(c ui.C) {
 	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
 	m.linkedFileDialog(c.Part("link-dialog"))
+	m.imageOCRView(c.Part("image-ocr-dialog"))
+	m.imageAIView(c.Part("image-ai-dialog"))
 	m.showTemplateDialog(c.Part("template-dialog"))
+	m.showProjectFolderDialog(c.Part("project-folder-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.dialogs(c)
 }
@@ -537,7 +542,7 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 		case "HTML":
 			m.htmlView(c, t, blocked)
 		case "图片":
-			m.imageView(c, t)
+			m.imageView(c, t, blocked)
 		case "PDF", "XMind", "Word":
 			m.documentPreviewView(c, t, blocked)
 		case "JSON":
