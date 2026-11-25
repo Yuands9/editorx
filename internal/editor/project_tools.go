@@ -91,7 +91,8 @@ func (m *editorApp) toolDirectory() string {
 }
 
 func (m *editorApp) useTool(name string) {
-	if m.tools.active == name {
+	returningFromVault := m.leavePasswordVault()
+	if m.tools.active == name && !returningFromVault {
 		m.tools.active = ""
 		m.focusActiveSource()
 		return

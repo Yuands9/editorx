@@ -128,12 +128,14 @@ func TestSidebarButtonsWithoutDocumentAndAlignment(t *testing.T) {
 		}
 	}
 	m.showSettings(settingsSidebar)
+	rows := [][2]string{{"保存文件", "查找内容"}, {"自动折行", "AI 助手"}, {"Git", "终端"}, {"翻译", "密码本"}, {"模板库", "颜色主题"}}
 	for _, width := range []int{900, 1440} {
 		if err := s.Resize(width, 900); err != nil {
 			t.Fatal(err)
 		}
 		var leftX, rightX float32
-		for index, labels := range [][2]string{{"模板库", "翻译"}, {"保存文件", "查找内容"}, {"自动折行", "AI 助手"}, {"Git", "终端"}} {
+		var previousY float32 = -1
+		for index, labels := range rows {
 			left, err := s.Locate("switch:" + labels[0])
 			if err != nil {
 				t.Fatal(err)
@@ -145,20 +147,36 @@ func TestSidebarButtonsWithoutDocumentAndAlignment(t *testing.T) {
 			if index == 0 {
 				leftX, rightX = left.Bounds.X, right.Bounds.X
 			}
-			if left.Bounds.X != leftX || right.Bounds.X != rightX {
+			if left.Bounds.X != leftX || right.Bounds.X != rightX || leftX >= rightX {
 				t.Fatal("switch columns do not align", labels, left.Bounds, right.Bounds)
 			}
-		}
-		last, err := s.Locate("switch:颜色主题")
-		if err != nil || last.Bounds.X != leftX {
-			t.Fatal("last switch should align with the left column", last.Bounds, err)
+			if left.Bounds.Y != right.Bounds.Y || left.Bounds.Y <= previousY {
+				t.Fatal("switches are out of order", labels, left.Bounds, right.Bounds)
+			}
+			previousY = left.Bounds.Y
 		}
 	}
 	if err := s.ClickLabel("switch:翻译"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Locate("button:翻译"); err != nil {
-		t.Fatal("settings did not immediately show the selected button", err)
+	for _, label := range []string{"密码本", "模板库"} {
+		if err := s.ClickLabel("switch:" + label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	railLabels := map[string]string{"密码本": "打开密码本", "颜色主题": "切换颜色主题"}
+	var previousY float32 = -1
+	for _, row := range rows {
+		for _, label := range row {
+			if railLabel := railLabels[label]; railLabel != "" {
+				label = railLabel
+			}
+			hit, err := s.Locate("button:" + label)
+			if err != nil || hit.Bounds.Y <= previousY {
+				t.Fatal("sidebar buttons do not follow the settings order", label, hit.Bounds, err)
+			}
+			previousY = hit.Bounds.Y
+		}
 	}
 	if err := s.ClickLabel("button:翻译"); err != nil {
 		t.Fatal(err)

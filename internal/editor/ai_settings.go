@@ -212,6 +212,10 @@ func (m *editorApp) reloadAIProfiles() error {
 
 func (m *editorApp) toggleAIPanel() {
 	a := &m.ai
+	if m.leavePasswordVault() && a.open {
+		a.focusPrompt = true
+		return
+	}
 	if !a.open {
 		m.openAIAt(m.active, "", false)
 		return

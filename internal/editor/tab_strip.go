@@ -229,7 +229,7 @@ func tabCardWidth(canvas *gfx.Canvas, title string, modified bool) float32 {
 }
 
 func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx float32, modified, blocked bool) {
-	active := tab == m.active
+	active := tab == m.active && !m.vaultActive()
 	card := ui.Column(c).Absolute().Left(tabStripInset+dx).Top(tabStripItemTop).Size(width-2*tabStripInset, tabStripItemSize)
 	if active || tab.group == nil {
 		background := m.theme.Background

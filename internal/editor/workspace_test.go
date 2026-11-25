@@ -2,6 +2,7 @@ package editor
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,12 +216,16 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	if m.templateDialog == nil || m.templateDialog.directory != deep || m.projectFolder != nil {
 		t.Fatal("new file did not target the last directory")
 	}
-	click("textfield:搜索文件格式")
-	check(s.Type(".yaml"))
+	if _, err := s.Locate("button:模板"); err == nil || len(m.templateDialog.choices) != len(newTextFormats)+1 {
+		t.Fatal("project file creation offered templates while the template library was disabled")
+	}
+	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
+		check(s.Screenshot(filepath.Join(preview, "project-new-file.png")))
+	}
+	check(s.Type("app"))
 	click("button:YAML · .yaml")
-	m.templateDialog.filename.SetText("app")
-	check(s.Frame())
-	click("button:创建文件")
+	click("textfield:文件名")
+	check(s.Keys("enter"))
 	config := filepath.Join(deep, "app.yaml")
 	data, err := os.ReadFile(config)
 	check(err)
@@ -257,6 +262,10 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 		check(err)
 	}
 
+	click("button:设置")
+	click("button:侧栏")
+	click("switch:模板库")
+	click("button:关闭设置页")
 	check(s.RightClickLabel("src.main.java"))
 	click("menuitem:新建文件")
 	click("button:模板")
@@ -326,4 +335,87 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	click("button:创建文件夹")
 	_, err = s.Locate("docs")
 	check(err)
+}
+
+func TestProjectDeleteConfirmation(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := filepath.Join(t.TempDir(), "删除测试")
+	folder := filepath.Join(root, "src", "main", "java")
+	projectFile := filepath.Join(root, "main.txt")
+	nestedFile := filepath.Join(folder, "nested.txt")
+	check(os.MkdirAll(folder, 0700))
+	check(os.WriteFile(projectFile, []byte("original"), 0600))
+	check(os.WriteFile(nestedFile, []byte("nested"), 0600))
+
+	m := newEditorApp()
+	m.dataDirectory = t.TempDir()
+	m.addProjects(root)
+	s := openTestSession(t, m)
+	check(s.Resize(1080, 675))
+	openDelete := func(label, path, title string) {
+		t.Helper()
+		check(s.RightClickLabel(label))
+		check(s.ClickLabel("menuitem:删除"))
+		if m.projectDelete == nil || m.projectDelete.path != path || !s.HasText(title) {
+			t.Fatal("did not show a confirmation for the selected path")
+		}
+		_, err := os.Lstat(path)
+		check(err)
+	}
+	deleteEntry := func(label, path, title string) {
+		t.Helper()
+		openDelete(label, path, title)
+		check(s.ClickLabel("button:确认删除"))
+		if m.showError || !strings.HasPrefix(m.status, "已删除 ") {
+			t.Fatalf("delete did not finish: %s / %s", m.status, m.errorText)
+		}
+	}
+	notOnDisk := func(path string) {
+		t.Helper()
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s still exists: %v", path, err)
+		}
+	}
+	contentIs := func(path, expected string) {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		check(err)
+		if string(data) != expected {
+			t.Fatalf("unexpected content at %s: %q", path, data)
+		}
+	}
+
+	openDelete("main.txt", projectFile, "删除文件？")
+	check(s.ClickLabel("button:取消"))
+	if m.projectDelete != nil {
+		t.Fatal("cancelling removed the file or recorded a deletion")
+	}
+	contentIs(projectFile, "original")
+
+	openDelete("src.main.java", folder, "删除文件夹？")
+	check(s.Keys("escape"))
+	if m.projectDelete != nil {
+		t.Fatal("dismissing the dialog removed the folder or recorded a deletion")
+	}
+	contentIs(nestedFile, "nested")
+
+	deleteEntry("main.txt", projectFile, "删除文件？")
+	notOnDisk(projectFile)
+	deleteEntry("src.main.java", folder, "删除文件夹？")
+	notOnDisk(folder)
+	deleteEntry("删除测试", root, "删除文件夹？")
+	notOnDisk(root)
+	if m.workspace != nil {
+		t.Fatal("deleted project remained in the tree")
+	}
+	stash, err := filepath.Glob(filepath.Join(filepath.Dir(root), projectTrashPrefix+"*"))
+	check(err)
+	if len(stash) != 0 {
+		t.Fatal("project deletion created EditorX recovery folders")
+	}
 }

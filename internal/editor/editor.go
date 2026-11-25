@@ -97,20 +97,23 @@ func (t *editorTab) format() string {
 	if t.picture != nil {
 		return "图片"
 	}
-	name := t.doc.path
-	if name == "" {
-		name = t.name
+	if t.languageOverride != "" {
+		return t.languageOverride
 	}
-	if filepath.Ext(name) == "" && t.languageOverride == "JSON" {
+	if t.doc.path != "" {
+		return documentFormat(t.doc.path)
+	}
+	if filepath.Ext(t.name) != "" {
+		return documentFormat(t.name)
+	}
+	if t.jsonCompare {
 		return "JSON"
 	}
-	if t.doc.path == "" && filepath.Ext(name) == "" {
-		if t.jsonCompare {
-			return "JSON"
-		}
-		return t.detectFormat()
-	}
-	return documentFormat(name)
+	return t.detectFormat()
+}
+
+func (t *editorTab) comparingJSON() bool {
+	return t.jsonCompare && t.format() == "JSON"
 }
 
 func documentFormat(name string) string {
@@ -167,6 +170,7 @@ func (t *editorTab) modified() bool {
 }
 
 type editorApp struct {
+	passwordVault      *passwordVaultView
 	linkedFile         linkedFileState
 	imageOCR           *imageOCRDialog
 	imageAI            *imageAIDialog
@@ -205,6 +209,8 @@ type editorApp struct {
 	newFileMenu        bool
 	templateDialog     *templateDialogState
 	projectFolder      *projectFolderDialog
+	projectDelete      *projectDeleteDialog
+
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
 	translationEnabled bool
@@ -306,6 +312,7 @@ func nextUntitledName(usedNames map[string]bool) string {
 }
 
 func (m *editorApp) activate(t *editorTab) {
+	m.leavePasswordVault()
 	m.languageMenu = false
 	if m.active != t {
 		m.imageOCR, m.imageAI = nil, nil
@@ -344,7 +351,10 @@ func (m *editorApp) activate(t *editorTab) {
 
 func (m *editorApp) focusActiveSource() {
 	if t := m.active; t != nil {
-		t.source.focus = t.markdownMode != "预览" && !t.readOnlyPreview()
+		format := t.format()
+		t.source.focus = !t.readOnlyPreview() && t.office == nil &&
+			(format != "Markdown" || t.markdownMode != "预览") &&
+			(format != "HTML" || t.htmlMode != "预览")
 	}
 }
 
@@ -757,6 +767,9 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 			}
 		},
 		OnCloseRequest: func(allow func()) {
+			if m.passwordVault != nil {
+				m.passwordVault.lock()
+			}
 			if m.desktop == nil {
 				if m.appSettings.open {
 					m.closeSettings()
@@ -834,13 +847,13 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 	defer close(stop)
 	err = app.RunApplication(func(application *app.Application) error {
 		desktop.application = application
-		stopActivation, err = listenForEditorActivation(directory, func(paths []string) bool {
+		stopActivation, desktop.watchPasswordSession, err = listenForEditorActivation(directory, func(paths []string) bool {
 			if desktop.exiting {
 				return false
 			}
 			application.Post(func() { desktop.present(paths) })
 			return true
-		})
+		}, desktop.lockPasswordVaults)
 		if err != nil {
 			return err
 		}
@@ -898,7 +911,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 
 func (m *editorApp) interactionBlocked() bool {
 	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.update.open ||
-		m.templateDialog != nil || m.projectFolder != nil ||
+		m.templateDialog != nil || m.projectFolder != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
@@ -948,6 +961,9 @@ func (m *editorApp) openLaunchPaths(paths []string) {
 func (m *editorApp) releaseWindowState() {
 	if m.windowClosed {
 		return
+	}
+	if m.passwordVault != nil {
+		m.closePasswordVault()
 	}
 	state := m.snapshotSession()
 	m.closedSession = &state

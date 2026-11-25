@@ -23,7 +23,7 @@ var settingSections = []struct {
 }{
 	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、询问保存、不再询问", themeIcon},
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
-	{settingsSidebar, "左侧、右侧、显示按钮、模板库、本地词库、AI 翻译", leftPanelIcon},
+	{settingsSidebar, "左侧、右侧、显示按钮、模板库、本地词库、AI 翻译、密码本", leftPanelIcon},
 	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
 	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
@@ -60,6 +60,7 @@ func (m *editorApp) showSettings(section string) {
 		return
 	}
 	if !settings.open {
+		m.leavePasswordVault()
 		if m.dataDirectory == "" {
 			m.dataDirectory, _ = editorDataDirectory()
 		}

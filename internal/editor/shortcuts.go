@@ -165,6 +165,25 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 	if m.appSettings.open {
 		return false
 	}
+	if m.vaultActive() {
+		switch action {
+		case shortcutCloseTab:
+			m.closePasswordVault()
+			return true
+		case shortcutFind:
+			m.passwordVault.focusSearch = m.passwordVault.store != nil
+			return true
+		case shortcutNextTab, shortcutPreviousTab:
+			if m.active == nil {
+				return false
+			}
+			m.activate(m.active)
+			return true
+		case shortcutNewFile, shortcutNewWindow, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutGit, shortcutTerminal:
+		default:
+			return false
+		}
+	}
 	switch action {
 	case shortcutNewFile:
 		m.newDocument()

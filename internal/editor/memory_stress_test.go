@@ -55,6 +55,7 @@ func TestNativeMemoryStress(t *testing.T) {
 	t.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(output, "WebView2"))
 	textPath, jsonPath, imagePath := filepath.Join(directory, "large.txt"), filepath.Join(directory, "large.json"), filepath.Join(directory, "large.png")
 	htmlPath, sheetPath, wordPath := filepath.Join(directory, "page.html"), filepath.Join(directory, "book.xlsx"), filepath.Join(directory, "document.docx")
+	pdfPath := filepath.Join(directory, "large.pdf")
 	write := func(path string, data []byte) {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
@@ -80,6 +81,7 @@ func TestNativeMemoryStress(t *testing.T) {
 	write(htmlPath, []byte("<!doctype html><meta charset=utf-8><h1>内存测试</h1>"+strings.Repeat("<p>本地 HTML 中文预览</p>", 2000)))
 	write(sheetPath, sampleWorkbook(t))
 	write(wordPath, sampleDocx(t))
+	write(pdfPath, makeLargePDF(largeOpenPictures(t)))
 	observations, err := os.Create(filepath.Join(output, "go-memory.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -128,6 +130,7 @@ func TestNativeMemoryStress(t *testing.T) {
 			for _, tab := range m.tabs {
 				tab.html.close()
 				tab.office.close()
+				tab.preview.close()
 			}
 			application.Quit()
 		}
@@ -165,7 +168,7 @@ func TestNativeMemoryStress(t *testing.T) {
 							record("loading", cycle, 0, 0)
 							loadStart = time.Now()
 							loaded = nil
-							for _, path := range []string{textPath, jsonPath, imagePath, htmlPath, sheetPath, wordPath} {
+							for _, path := range []string{textPath, jsonPath, imagePath, htmlPath, sheetPath, wordPath, pdfPath} {
 								m.load(path)
 								tab := m.active
 								loaded = append(loaded, tab)
@@ -186,6 +189,15 @@ func TestNativeMemoryStress(t *testing.T) {
 										return
 									}
 									if !tab.office.ready {
+										return
+									}
+								}
+								if tab.preview != nil && tab.preview.kind == "PDF" {
+									if tab.preview.issue != "" {
+										finish(fmt.Errorf("PDF: %s", tab.preview.issue))
+										return
+									}
+									if !tab.preview.ready {
 										return
 									}
 								}

@@ -5,9 +5,9 @@ package editor
 import "embed"
 
 const (
-	officeAssetDirectory = "assets/office-public"
+	officeAssetDirectory = "assets/office-public/packed"
 	hasWordEditor        = false
 )
 
-//go:embed assets/office-public
+//go:embed assets/office-public/packed
 var officeAssets embed.FS

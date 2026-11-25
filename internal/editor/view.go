@@ -12,6 +12,18 @@ import (
 
 const workspaceInset = 8
 
+func skipButtonTabStop(button ui.Box, id gfx.ID) {
+	button.DrawOver(func(d *ui.DrawContext) {
+		hits := d.Canvas.Hits()
+		for i := len(hits) - 1; i >= 0; i-- {
+			if hits[i].ID == id && hits[i].Role == gfx.RoleButton && !hits[i].IsLabel {
+				hits[i].SkipTab = true
+				return
+			}
+		}
+	})
+}
+
 func (m *editorApp) workspacePanel(c ui.C) ui.Box {
 	return ui.Column(c).FillHeight().MinWidth(0).Radius(m.theme.Metrics.RadiusSurface).
 		Background(m.theme.Background).Clip()
@@ -48,7 +60,7 @@ func (m *editorApp) page(c ui.C) {
 		}
 	})
 	if !m.appSettings.open {
-		if m.active != nil && !blocked {
+		if !m.vaultActive() && m.active != nil && !blocked {
 			m.searchDialog(c, m.active)
 		}
 		m.historyDialog(c)
@@ -64,11 +76,28 @@ func (m *editorApp) page(c ui.C) {
 	m.imageAIView(c.Part("image-ai-dialog"))
 	m.showTemplateDialog(c.Part("template-dialog"))
 	m.showProjectFolderDialog(c.Part("project-folder-dialog"))
+	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
+	m.passwordVaultModal(c.Part("password-vault-dialog"))
 	m.dialogs(c)
 }
 
 func (m *editorApp) editorPage(c ui.C, blocked bool) {
+	if m.vaultActive() {
+		if !blocked {
+			m.editorShortcuts(c)
+			if ui.Shortcut(c, 0, "escape") {
+				c.After(func() {
+					if v := m.passwordVault; v != nil {
+						v.revealed = false
+						v.password.Secure, v.confirmation.Secure = true, true
+					}
+				})
+			}
+		}
+		m.passwordVaultPage(c, blocked)
+		return
+	}
 	t := m.active
 	if t != nil {
 		isJSON := t.format() == "JSON"
@@ -195,13 +224,19 @@ func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 func (m *editorApp) toolRail(c ui.C, blocked bool) {
 	ui.Column(c).Width(44).Shrink(0).FillHeight().PadX(6).PadY(workspaceInset + 4).Gap(6).Children(func() {
 		t := m.active
+		vaultActive := m.vaultActive()
 		if !m.sidebarPrefs.HideSave {
 			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
 			if t != nil && t.modified() {
 				save.Secondary().ButtonRecipe(m.pinButtonRecipe)
 			}
 			if save.Clicked() {
-				c.After(func() { m.saveTab(t, false) })
+				c.After(func() {
+					if m.leavePasswordVault() {
+						m.focusActiveSource()
+					}
+					m.saveTab(t, false)
+				})
 			}
 		}
 		if !m.sidebarPrefs.HideSearch {
@@ -210,7 +245,11 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				searchHint = "Office 文档请使用文档内的查找功能"
 			}
 			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(searchHint).Clicked() {
-				c.After(func() { m.closeSettings(); t.openSearch() })
+				c.After(func() {
+					m.closeSettings()
+					m.leavePasswordVault()
+					t.openSearch()
+				})
 			}
 		}
 		if !m.sidebarPrefs.HideWrap {
@@ -219,12 +258,17 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				wrap.Secondary()
 			}
 			if wrap.Clicked() {
-				t.toggleWrap()
+				c.After(func() {
+					if m.leavePasswordVault() {
+						m.focusActiveSource()
+					}
+					t.toggleWrap()
+				})
 			}
 		}
 		if !m.sidebarPrefs.HideAI {
 			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(32).Height(34).Tooltip("AI 助手").Disabled(blocked)
-			if m.ai.open || m.ai.hasPendingRequest() {
+			if !vaultActive && (m.ai.open || m.ai.hasPendingRequest()) {
 				assistant.Secondary()
 			}
 			if assistant.Clicked() {
@@ -239,7 +283,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				continue
 			}
 			entry := ui.Button(c.Key(tool.name), tool.name).Icon(tool.icon).IconOnly().Ghost().Width(32).Height(34).Tooltip(tool.name).Disabled(blocked)
-			if m.tools.active == tool.name {
+			if !vaultActive && m.tools.active == tool.name {
 				entry.Secondary()
 			}
 			if entry.Clicked() {
@@ -249,16 +293,29 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 		if m.translationEnabled {
 			button := ui.Button(c.Part("translation"), "翻译").Icon(translationIcon).IconOnly().Ghost().Size(32, 34).
 				Tooltip("翻译").Disabled(blocked)
-			if m.translation != nil {
+			if !vaultActive && m.translation != nil {
 				button.Secondary()
 			}
 			if button.Clicked() {
 				c.After(func() { m.closeSettings(); m.toggleTranslation() })
 			}
 		}
+		if m.sidebarPrefs.PasswordVault {
+			label := "打开密码本"
+			if vaultActive {
+				label = "关闭密码本"
+			}
+			button := ui.Button(c.Part("password-vault"), label).Icon(passwordVaultIcon).IconOnly().Ghost().Size(32, 34).Tooltip(label).Disabled(blocked)
+			if vaultActive {
+				button.Secondary()
+			}
+			if button.Clicked() {
+				c.After(m.togglePasswordVault)
+			}
+		}
 		if m.sidebarPrefs.Templates {
 			button := ui.Button(c.Part("templates"), "模板库").Icon(templateIcon).IconOnly().Ghost().Size(32, 34).Tooltip("模板库").Disabled(blocked)
-			if m.templatePanel != nil {
+			if !vaultActive && m.templatePanel != nil {
 				button.Secondary()
 			}
 			if button.Clicked() {
@@ -314,6 +371,18 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			m.showHistory = true
 		}
 		menu.Separator()
+		if menu.Item("密码本").Icon(passwordVaultIcon).Clicked() {
+			c.After(m.openPasswordVault)
+		}
+		if m.vaultActive() {
+			if menu.Item("关闭密码本").Icon(closeIcon).Clicked() {
+				c.After(m.closePasswordVault)
+			}
+			if menu.Item("设置").Icon(settingsIcon).Clicked() {
+				c.After(m.openApplicationSettings)
+			}
+			return
+		}
 		if m.translationEnabled {
 			if menu.Item("翻译").Icon(translationIcon).Checked(m.translation != nil).Clicked() {
 				c.After(m.toggleTranslation)
@@ -416,9 +485,9 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 		blocked = m.handleGroupDoubleClick(c)
 	}
 	ui.Row(c).FillWidth().Height(tabStripHeight + 4).PadX(4).Items(ui.Center).Children(func() {
-		if !m.showFiles {
+		if !m.showFiles || m.vaultActive() {
 			m.mainMenu(c, m.active, blocked)
-			if ui.Button(c, "展开文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip(m.shortcutHint("显示左侧主菜单", shortcutFiles)).Disabled(blocked).Clicked() {
+			if !m.vaultActive() && ui.Button(c, "展开文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip(m.shortcutHint("显示左侧主菜单", shortcutFiles)).Disabled(blocked).Clicked() {
 				c.After(m.toggleFiles)
 			}
 			for _, action := range []struct {
@@ -435,6 +504,31 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 		}
 		scroll := ui.Scroll(c).Sideways().Scrollbars().Grow(1).MinWidth(0).FillHeight()
 		m.tabStrip(c, scroll, blocked)
+		if m.passwordVault != nil {
+			vaultTab := ui.Row(c.Part("vault-tab")).Height(34).PadX(3).Shrink(0).Items(ui.Center).Radius(11).
+				Background(m.theme.Background).Border(1, m.theme.Border)
+			hint := "打开密码本"
+			if m.vaultActive() {
+				vaultTab.Background(m.theme.CardElevated)
+				hint = "返回编辑区"
+			}
+			vaultTab.Children(func() {
+				if ui.Button(c.Part("select"), "密码本").Icon(passwordVaultIcon).Ghost().Height(28).Radius(8).
+					Tooltip(hint).Disabled(blocked).Clicked() {
+					c.After(func() {
+						if m.leavePasswordVault() {
+							m.focusActiveSource()
+							return
+						}
+						m.openPasswordVault()
+					})
+				}
+				if ui.Button(c.Part("close"), "关闭密码本标签").Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Radius(8).
+					Tooltip("关闭密码本标签").Disabled(blocked).Clicked() {
+					c.After(m.closePasswordVault)
+				}
+			})
+		}
 		if ui.Button(c, "新建标签").Icon(plusIcon).IconOnly().Ghost().Size(30, 30).MarginX(5).
 			Shrink(0).Radius(10).Tooltip(m.shortcutHint("新建标签", shortcutNewFile)).Disabled(blocked).Clicked() {
 			c.After(m.newDocument)
@@ -530,13 +624,14 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 }
 
 func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
-	t.source.view.Snapshot.Language = t.syntaxLanguage()
+	format := t.format()
+	t.source.view.Snapshot.Language = format
 	t.source.syntaxDisabled = t.languageOverride == "纯文本"
-	if t.format() != "JSON" {
+	if format != "JSON" {
 		t.source.view.Snapshot.MarkLayers = nil
 	}
 	ui.Column(c.KeyInt(t.id)).FillWidth().Grow(1).MinHeight(0).Children(func() {
-		switch t.format() {
+		switch format {
 		case "XLSX", "DOCX":
 			m.officeView(c, t, blocked)
 		case "HTML":
@@ -643,7 +738,7 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 	if blocked {
 		m.languageMenu = false
 	}
-	button := ui.Button(c, t.syntaxLanguage()).Icon(chevronDownIcon).Ghost().Height(24).FontSize(12).PadX(7).Tooltip("切换语法高亮").Disabled(blocked)
+	button := ui.Button(c, t.format()).Icon(chevronDownIcon).Ghost().Height(24).FontSize(12).PadX(7).Tooltip("切换文件类型").Disabled(blocked)
 	if button.Clicked() {
 		m.languageMenu = !m.languageMenu
 	}
@@ -651,20 +746,14 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 		menu.Above()
 		menu.WidthRange(160, 190)
 		menu.RowHeight(28)
-		menu.Label("语法高亮")
+		menu.Label("文件类型")
 		if menu.Item("自动识别").Checked(t.languageOverride == "").Clicked() {
-			c.After(func() {
-				t.languageOverride = ""
-				m.focusActiveSource()
-			})
+			c.After(func() { m.selectLanguage(t, "") })
 		}
 		menu.Separator()
 		addLanguage := func(items *ui.MenuItems, language string) {
 			if items.Item(language).Checked(t.languageOverride == language).Clicked() {
-				c.After(func() {
-					t.languageOverride = language
-					m.focusActiveSource()
-				})
+				c.After(func() { m.selectLanguage(t, language) })
 			}
 		}
 		for _, language := range syntaxLanguages {

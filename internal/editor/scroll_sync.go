@@ -25,18 +25,19 @@ func (t *editorTab) syncViews(canvas *gfx.Canvas) {
 	leftY, leftMax := left.ScrollY(), left.MaxScrollY()
 	rightY, rightMax := t.markdown.Offset, max(0, t.markdown.Height()-t.previewHeight)
 	pane := t.result
-	if t.jsonCompare {
+	comparing := kind == "JSON" && t.jsonCompare
+	if comparing {
 		pane = t.comparison
 	}
 	if kind == "JSON" {
-		if !t.jsonCompare && t.resultError != "" {
+		if !comparing && t.resultError != "" {
 			state.ready = false
 			return
 		}
 		rightY, rightMax = pane.view.Code.ScrollY(), pane.view.Code.MaxScrollY()
 	}
 	mode := kind
-	if t.jsonCompare {
+	if comparing {
 		mode += ":compare"
 	}
 	source, result := t.source.text.String(), pane.text.String()

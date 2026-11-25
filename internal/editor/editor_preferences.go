@@ -148,7 +148,7 @@ func (p *editorPane) applyEditorPreferences(preferences editorPreferences) {
 
 func (t *editorTab) applyDefaultWrap(preferences editorPreferences) {
 	if !t.wrapOverride {
-		t.setWrap(preferences.wraps(t.syntaxLanguage()))
+		t.setWrap(preferences.wraps(t.format()))
 	}
 }
 

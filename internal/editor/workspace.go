@@ -88,6 +88,9 @@ func (tree *folderTree) readChildren(node *fileNode) error {
 		return err
 	}
 	for _, entry := range entries {
+		if isProjectTrashDirectory(entry) {
+			continue
+		}
 		node.children = append(node.children, tree.newFileNode(node, entry))
 	}
 	sort.SliceStable(node.children, func(i, j int) bool {
@@ -403,6 +406,8 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 								for path := filepath.Dir(node.path); ; path = filepath.Dir(path) {
 									ancestors.Sub(filepath.Base(path), func(items *ui.MenuItems) {
 										m.projectCreateActions(place, items, path)
+										items.Separator()
+										m.projectDeleteAction(place, items, path, true)
 									})
 									if path == row.start.path {
 										break
@@ -422,10 +427,13 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 						}
 						place.After(func() { m.openExplorerFolder(path) })
 					}
+					menu.Separator()
+					m.projectDeleteAction(place, menu, node.path, node.directory)
 				})
 			}
 		})
 	}).FillWidth().Grow(1).MinHeight(0).MarginX(8)
+
 	if blocked {
 		return
 	}
@@ -499,4 +507,6 @@ func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 	if menu.Item("移除项目").Icon(closeIcon).Clicked() {
 		c.After(func() { m.removeProject(root) })
 	}
+	menu.Separator()
+	m.projectDeleteAction(c, menu, root.path, true)
 }

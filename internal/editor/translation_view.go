@@ -132,6 +132,9 @@ func (m *editorApp) openTranslation(lookup bool) {
 }
 
 func (m *editorApp) toggleTranslation() {
+	if m.leavePasswordVault() && m.translation != nil {
+		return
+	}
 	if m.translation != nil {
 		m.translation = nil
 		m.focusActiveSource()

@@ -132,5 +132,5 @@ func writeFileAtomically(path string, write func(io.Writer) error) error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempPath, path)
+	return replaceSavedFile(tempPath, path)
 }

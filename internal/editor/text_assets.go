@@ -110,7 +110,7 @@ func captureTextTarget(tab *editorTab, requireSelection bool, limit int) (textEd
 }
 
 func editableTextSource(tab *editorTab) bool {
-	return aiTextTab(tab) && !tab.jsonCompare && !tab.source.readOnly &&
+	return aiTextTab(tab) && !tab.comparingJSON() && !tab.source.readOnly &&
 		(tab.format() != "Markdown" || tab.markdownMode != "预览") &&
 		(tab.format() != "HTML" || tab.htmlMode != "预览")
 }

@@ -259,6 +259,7 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 				ui.Row(c.Part("key-actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
 					key := m.aiSettingsField(c.Part("key-input"), "API 密钥", placeholder, &e.key, keyDisabled, submitted).
 						Grow(1).Basis(0).Action(icon, title)
+					skipButtonTabStop(key, key.ActionID())
 					if key.Changed() {
 						e.clearProbe(true)
 					}

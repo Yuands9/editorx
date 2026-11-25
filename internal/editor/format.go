@@ -15,14 +15,27 @@ func supportedSyntaxLanguage(name string) bool {
 	return slices.Contains(syntaxLanguages[:], name) || slices.Contains(dataSyntaxLanguages[:], name) || codeSyntaxByName[name] != nil
 }
 
-func (t *editorTab) syntaxLanguage() string {
-	if t.languageOverride != "" {
-		return t.languageOverride
+func (m *editorApp) selectLanguage(t *editorTab, language string) {
+	previous := t.format()
+	if language == "" && t.languageOverride != "" {
+		t.detectedSource, t.detectedFormat = "", ""
 	}
-	return t.format()
+	t.languageOverride = language
+	current := t.format()
+	if previous == "JSON" && current != "JSON" {
+		t.jsonMenu, t.diffMenus = false, [2]bool{}
+		t.result.text.CancelComposition()
+		t.comparison.text.CancelComposition()
+		t.result.focus, t.result.focused = false, false
+		t.comparison.focus, t.comparison.focused = false, false
+	}
+	if previous == "HTML" && current != "HTML" {
+		t.html.close()
+	}
+	m.focusActiveSource()
 }
 
-// 只对没有后缀的未保存文档推断；明确的文件名始终优先。
+// 自动识别只对没有后缀的未保存文档推断正文类型。
 func (t *editorTab) detectFormat() string {
 	if _, composing := t.source.text.Composition(); composing {
 		if t.detectedFormat != "" {
@@ -59,7 +72,7 @@ func (t *editorTab) detectFormat() string {
 		}
 	}
 	// 未命名 JSON 暂时不完整时保留双栏，清空左侧仍可回到起始页。
-	if kind == "纯文本" && t.detectedFormat == "JSON" && t.languageOverride == "" && (value != "" || t.result.focused) {
+	if kind == "纯文本" && t.detectedFormat == "JSON" && (value != "" || t.result.focused) {
 		kind = "JSON"
 	}
 	if t.detectedFormat != "" && kind != t.detectedFormat {

@@ -3,6 +3,9 @@ package editor
 import "github.com/vivaui/viva/ui"
 
 func (m *editorApp) toggleTemplates() {
+	if m.leavePasswordVault() && m.templatePanel != nil {
+		return
+	}
 	if m.templatePanel != nil {
 		m.templatePanel = nil
 		m.focusActiveSource()

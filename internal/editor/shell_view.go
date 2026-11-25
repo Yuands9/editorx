@@ -269,7 +269,7 @@ func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 			view := shell.view
 			// The native host applies the view's visibility after this render.
 			m.post(func() {
-				if m.tools.active == "终端" && m.tools.terminal == shell && shell.view == view && !m.appSettings.open && !m.interactionBlocked() {
+				if m.tools.active == "终端" && m.tools.terminal == shell && shell.view == view && !m.appSettings.open && !m.vaultActive() && !m.interactionBlocked() {
 					view.Focus()
 				}
 			})

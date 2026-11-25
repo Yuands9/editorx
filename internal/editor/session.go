@@ -280,7 +280,7 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 			if item.JSONResultKind == "" {
 				item.JSONResultKind = "JSON"
 			}
-		} else if tab.format() == "JSON" {
+		} else {
 			item.Result.Content = ""
 		}
 		if tab.office != nil {

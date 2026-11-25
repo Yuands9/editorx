@@ -593,9 +593,89 @@ func TestStatusLanguagePicker(t *testing.T) {
 	restored := newEditorApp()
 	restored.restoreSession(m.snapshotSession())
 	for index, want := range []string{"INI", "YAML", "Java"} {
-		if got := restored.tabs[index].syntaxLanguage(); got != want {
+		if got := restored.tabs[index].format(); got != want {
 			t.Fatalf("restored tab %d language = %q, want %q", index, got, want)
 		}
+	}
+}
+
+func TestStatusLanguagePickerSwitchesJSONEditor(t *testing.T) {
+	const source = "{\"name\":\"第一行\"}\n{\"name\":\"第二行\"}"
+	for _, saved := range []bool{false, true} {
+		name := "自动识别的未命名标签"
+		if saved {
+			name = "已有后缀的 JSON 文件"
+		}
+		t.Run(name, func(t *testing.T) {
+			m := newEditorApp()
+			if saved {
+				path := filepath.Join(t.TempDir(), "sample.json")
+				if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+					t.Fatal(err)
+				}
+				m.load(path)
+			} else {
+				m.newDocument()
+				m.active.source.replace(source)
+			}
+			tab := m.active
+			s := openTestSession(t, m)
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			expectJSON := func() {
+				t.Helper()
+				_, err := s.Locate("button:格式化")
+				if err != nil || !s.HasText("JSON 处理失败") {
+					t.Fatalf("JSON workbench or parse error missing: %v", err)
+				}
+			}
+			expectSinglePane := func(want string) {
+				t.Helper()
+				if _, err := s.Locate("button:格式化"); err == nil || s.HasText("JSON 处理失败") {
+					t.Fatal("JSON workbench is still visible")
+				}
+				if tab.format() != want || tab.source.view.Snapshot.Language != want || tab.source.view.Snapshot.FoldGutter {
+					t.Fatalf("unexpected editor mode: %q / %q", tab.format(), tab.source.view.Snapshot.Language)
+				}
+				if got := tab.source.text.CommittedString(); got != source {
+					t.Fatalf("switching mode changed the original text: %q", got)
+				}
+			}
+			expectJSON()
+
+			check(s.ClickLabel("button:JSON"))
+			check(s.ClickLabel("menuitem:纯文本"))
+			expectSinglePane("纯文本")
+			check(s.Type("可编辑"))
+			if !strings.Contains(tab.source.text.CommittedString(), "可编辑") {
+				t.Fatal("the single-pane editor did not receive input")
+			}
+			_, err := s.Driver().ShortcutChord(gfx.ModifierControl, 'z')
+			check(err)
+			expectSinglePane("纯文本")
+
+			check(s.ClickLabel("button:纯文本"))
+			check(s.ClickLabel("menuitem:数据与日志"))
+			check(s.ClickLabel("menuitem:JSON Lines"))
+			expectSinglePane("JSON Lines")
+
+			restored := newEditorApp()
+			restored.restoreSession(m.snapshotSession())
+			if restored.active.format() != "JSON Lines" || restored.active.source.text.CommittedString() != source {
+				t.Fatal("restoring the session lost the selected format or original text")
+			}
+
+			check(s.ClickLabel("button:JSON Lines"))
+			check(s.ClickLabel("menuitem:自动识别"))
+			expectJSON()
+			if tab.source.text.CommittedString() != source {
+				t.Fatal("returning to JSON changed the original text")
+			}
+		})
 	}
 }
 

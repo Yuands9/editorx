@@ -33,7 +33,16 @@ var sendMessageTimeout = editorUser.NewProc("SendMessageTimeoutW")
 var destroyActivationWindow = editorUser.NewProc("DestroyWindow")
 var defaultActivationProcedure = editorUser.NewProc("DefWindowProcW")
 var activationClassName, _ = syscall.UTF16PtrFromString(editorActivationClass)
-var activationHandlers sync.Map // HWND -> func([]string) bool
+
+type editorActivationHandlers struct {
+	activate      func([]string) bool
+	lockPasswords func()
+}
+
+var activationHandlers sync.Map // HWND -> editorActivationHandlers
+var passwordWTS = syscall.NewLazyDLL("wtsapi32.dll")
+var passwordRegisterSession = passwordWTS.NewProc("WTSRegisterSessionNotification")
+var passwordUnregisterSession = passwordWTS.NewProc("WTSUnRegisterSessionNotification")
 
 // The same mutex also guards the session against older EditorX builds.
 func claimEditorInstance(directory string, paths []string) (func(), error) {
@@ -124,26 +133,47 @@ var registerActivationClass = sync.OnceValues(func() (uintptr, error) {
 	return module, nil
 })
 
-func listenForEditorActivation(directory string, activate func([]string) bool) (func(), error) {
+func listenForEditorActivation(directory string, activate func([]string) bool, lockPasswords func()) (func(), func() bool, error) {
 	module, err := registerActivationClass()
 	if err != nil {
-		return nil, fmt.Errorf("无法注册窗口唤起服务：%w", err)
+		return nil, nil, fmt.Errorf("无法注册窗口唤起服务：%w", err)
 	}
 	title := activationWindowTitle(directory)
 	window, _, err := editorUser.NewProc("CreateWindowExW").Call(0,
 		uintptr(unsafe.Pointer(activationClassName)), uintptr(unsafe.Pointer(title)),
 		0, 0, 0, 0, 0, messageOnlyWindow, 0, module, 0)
 	if window == 0 {
-		return nil, fmt.Errorf("无法启动窗口唤起服务：%w", err)
+		return nil, nil, fmt.Errorf("无法启动窗口唤起服务：%w", err)
 	}
-	activationHandlers.Store(window, activate)
+	activationHandlers.Store(window, editorActivationHandlers{activate: activate, lockPasswords: lockPasswords})
+	watching := false
+	watch := func() bool {
+		if !watching && passwordRegisterSession.Find() == nil {
+			result, _, _ := passwordRegisterSession.Call(window, 0) // NOTIFY_FOR_THIS_SESSION
+			watching = result != 0
+		}
+		return watching
+	}
 	return func() {
+		if watching {
+			passwordUnregisterSession.Call(window)
+		}
 		activationHandlers.Delete(window)
 		destroyActivationWindow.Call(window)
-	}, nil
+	}, watch, nil
 }
 
 func activationWindowProcedure(window, message, wParam, lParam uintptr) uintptr {
+	const sessionChange = 0x02B1 // WM_WTSSESSION_CHANGE
+	if message == sessionChange {
+		switch wParam {
+		case 2, 4, 6, 7: // Console disconnect, remote disconnect, logoff, and session lock.
+			if handler, ok := activationHandlers.Load(window); ok {
+				handler.(editorActivationHandlers).lockPasswords()
+			}
+		}
+		return 0
+	}
 	if message != copyDataMessage {
 		result, _, _ := defaultActivationProcedure.Call(window, message, wParam, lParam)
 		return result
@@ -165,7 +195,7 @@ func activationWindowProcedure(window, message, wParam, lParam uintptr) uintptr 
 			return 0
 		}
 	}
-	if handler.(func([]string) bool)(paths) {
+	if handler.(editorActivationHandlers).activate(paths) {
 		return 1
 	}
 	return 0

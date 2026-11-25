@@ -1,4 +1,4 @@
-param([string]$SourceDirectory = (Split-Path $PSScriptRoot -Parent), [string]$Label = 'candidate', [int]$Cycles = 6, [int]$TimeoutSeconds = 210, [string]$ExecutablePath = '', [string[]]$Files = @(), [int]$ObserveSeconds = 12)
+param([string]$SourceDirectory = (Split-Path $PSScriptRoot -Parent), [string]$Label = 'candidate', [int]$Cycles = 6, [int]$TimeoutSeconds = 210, [string]$ExecutablePath = '', [string[]]$Files = @(), [int]$ObserveSeconds = 12, [switch]$PublicRelease)
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
 $devDirectory = Join-Path $projectDirectory '.dev'
@@ -25,7 +25,12 @@ try {
         } else {
             '.'
         }
-        & $go test -mod=vendor -c -o $testExecutable $editorPackage
+        $goOptions = @('-mod=vendor')
+        if ($PublicRelease) {
+            & (Join-Path $PSScriptRoot 'web-assets.ps1') -PublicRelease
+            $goOptions += @('-tags', 'editorx_public')
+        }
+        & $go test @goOptions -c -o $testExecutable $editorPackage
         if ($LASTEXITCODE -ne 0) { throw 'Memory test build failed' }
     }
     Add-Type -TypeDefinition @"

@@ -28,6 +28,7 @@ type templateDialogState struct {
 	inSidebar, details                    bool
 	open, saving, inserting, projectScope bool
 	variableOpen, templatesOnly           bool
+	projectTemplates                      bool
 	directory, project, problem, warning  string
 	target                                textEditTarget
 	choices                               []templateChoice
@@ -60,7 +61,7 @@ func (m *editorApp) newFileOptions(c ui.C, menu *ui.MenuItems) {
 }
 
 func (m *editorApp) templateSaveActions(c ui.C, menu *ui.MenuItems, tab *editorTab) {
-	if !aiTextTab(tab) || tab.jsonCompare {
+	if !aiTextTab(tab) || tab.comparingJSON() {
 		return
 	}
 	if menu.Item("将文档存为模板…").Clicked() {
@@ -74,7 +75,7 @@ func (m *editorApp) templateSaveActions(c ui.C, menu *ui.MenuItems, tab *editorT
 
 func (m *editorApp) sourceEditor(c ui.C, tab *editorTab, blocked bool) ui.Box {
 	box := tab.source.declare(c, "代码编辑区", !blocked)
-	if blocked || !m.translationEnabled {
+	if blocked {
 		return box
 	}
 	span := tab.source.text.Selection()
@@ -82,15 +83,18 @@ func (m *editorApp) sourceEditor(c ui.C, tab *editorTab, blocked bool) ui.Box {
 		return box
 	}
 	ui.ContextMenu(c, box, func(menu *ui.MenuItems) {
-		if menu.Item("翻译选区…").Icon(translationIcon).Clicked() {
+		if m.translationEnabled && menu.Item("翻译选区…").Icon(translationIcon).Clicked() {
 			c.After(func() { m.openTranslation(true) })
+		}
+		if menu.Item("识别到密码本…").Icon(passwordVaultIcon).Clicked() {
+			c.After(func() { m.openPasswordSelection(tab) })
 		}
 	})
 	return box
 }
 
 func (m *editorApp) openTemplateSave(tab *editorTab, selection bool) {
-	if !aiTextTab(tab) || tab.jsonCompare {
+	if !aiTextTab(tab) || tab.comparingJSON() {
 		return
 	}
 	if _, composing := tab.source.text.Composition(); composing {
@@ -147,6 +151,7 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 	directory := state.directory
 	if directory != "" {
 		state.project = m.projectRoot(directory)
+		state.projectTemplates = m.sidebarPrefs.Templates
 		state.choices = append(state.choices, templateChoice{template: documentTemplate{
 			Name: "自定义", Filename: m.untitledName(""), EOL: "CRLF",
 		}})
@@ -156,12 +161,14 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 			}})
 		}
 	}
-	if state.project != "" {
-		m.addTemplateChoices(state, state.project, "项目")
-	}
-	m.addTemplateChoices(state, "", "个人")
-	for _, template := range builtInTemplates() {
-		state.choices = append(state.choices, templateChoice{template, "内置"})
+	if directory == "" || state.projectTemplates {
+		if state.project != "" {
+			m.addTemplateChoices(state, state.project, "项目")
+		}
+		m.addTemplateChoices(state, "", "个人")
+		for _, template := range builtInTemplates() {
+			state.choices = append(state.choices, templateChoice{template, "内置"})
+		}
 	}
 	state.options = make([]int, len(state.choices))
 	for i := range state.options {
@@ -180,6 +187,7 @@ func (m *editorApp) loadTemplatePicker(state *templateDialogState, preferred, sc
 	state.list.ScrollIntoView(selected)
 	if state.directory != "" {
 		state.updateTemplateOptions()
+		state.filename.Select(0, state.filename.GetEditor().RuneCount())
 		m.templateDialog = state
 		return
 	}
@@ -266,6 +274,7 @@ func (m *editorApp) showTemplateDialog(c ui.C) {
 		return
 	}
 	title, action, width := "模板库", "创建草稿", float32(840)
+	filenameSubmitted := false
 	switch {
 	case state.saving:
 		title, action, width = "存为模板", "保存", 620
@@ -276,6 +285,9 @@ func (m *editorApp) showTemplateDialog(c ui.C) {
 		title, action = "插入模板", "应用到文档"
 	case state.directory != "":
 		title, action = "新建文件", "创建文件"
+		if !state.templatesOnly {
+			width = 500
+		}
 	}
 	dismissed := ui.ModalWith(c, &state.open, title, ui.ModalSpec{Width: width}, func() {
 		if state.saving {
@@ -283,6 +295,9 @@ func (m *editorApp) showTemplateDialog(c ui.C) {
 			return
 		}
 		m.templatePickerForm(c, state)
+		if state.directory != "" && !state.templatesOnly {
+			filenameSubmitted = m.projectFileFormatForm(c, state)
+		}
 		if state.problem != "" {
 			ui.Wrap(c, state.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 		}
@@ -311,7 +326,11 @@ func (m *editorApp) showTemplateDialog(c ui.C) {
 		if state.inserting && ui.Button(c, "改为创建草稿").Ghost().Clicked() {
 			state.inserting, state.target, state.problem = false, textEditTarget{}, ""
 		}
-		if ui.Button(c, action).Disabled(!state.saving && state.selected < 0).Clicked() {
+		ready := state.saving || state.selected >= 0
+		if state.directory != "" && !state.templatesOnly {
+			ready = ready && strings.TrimSpace(state.filename.Text()) != ""
+		}
+		if ui.Button(c, action).Disabled(!ready).Clicked() || ready && filenameSubmitted {
 			c.After(func() {
 				if state.saving {
 					if err := m.saveTemplate(state, false); err != nil {
@@ -477,7 +496,11 @@ func (m *editorApp) saveTemplate(state *templateDialogState, useNow bool) error 
 func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 	if state.directory != "" {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Wrap(c, state.directory).FillWidth().Muted().FontSize(12)
+			ui.Text(c, state.directory).FillWidth().Ellipsis().Muted().FontSize(12).
+				Hit(ui.ID(c.Part("project-location")), state.directory).Tooltip(state.directory)
+			if !state.projectTemplates {
+				return
+			}
 			ui.Row(c.Part("creation-mode")).Gap(4).Pad(3).Radius(10).Background(m.theme.Background).Children(func() {
 				for index, label := range []string{"常见格式", "模板"} {
 					templates := index == 1
@@ -496,6 +519,9 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 				}
 			})
 		})
+		if !state.templatesOnly {
+			return
+		}
 	} else {
 		m.assetHeading(c, templateIcon, "从熟悉的内容开始", "① 选择模板   →   ② 填写变量、查看预览   →   ③ 新建文档或插入选区")
 	}
@@ -511,11 +537,7 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 	}
 	ui.Row(c).FillWidth().Gap(12).Children(func() {
 		ui.Column(c.Part("catalog")).Width(230).Shrink(0).Gap(6).Children(func() {
-			searchLabel := "搜索模板"
-			if state.directory != "" && !state.templatesOnly {
-				searchLabel = "搜索文件格式"
-			}
-			ui.TextField(c.Part("search"), &state.search, searchLabel, "搜索名称或后缀").FillWidth()
+			ui.TextField(c.Part("search"), &state.search, "搜索模板", "搜索名称或后缀").FillWidth()
 			state.filterTemplates()
 			m.templateList(c.Part("list"), state, false)
 			if state.directory == "" && ui.Button(c, "新建模板…").Icon(plusIcon).Ghost().FillWidth().Clicked() {
@@ -534,6 +556,45 @@ func (m *editorApp) templatePickerForm(c ui.C, state *templateDialogState) {
 			m.templatePreview(c, state, false)
 		})
 	})
+}
+
+func (m *editorApp) projectFileFormatForm(c ui.C, state *templateDialogState) bool {
+	submitted := false
+	ui.Column(c.Part("project-file-format")).FillWidth().Gap(8).PadTop(8).Children(func() {
+		ui.Text(c, "文件名").FontSize(12).Bold()
+		filename := ui.TextField(c.Part("filename"), &state.filename, "文件名", "输入文件名，可自定义后缀").
+			FillWidth().Height(36).AutoFocus()
+		submitted = filename.Submitted()
+
+		const perRow = 3
+		for start := 0; start < len(state.options); start += perRow {
+			ui.Row(c.KeyInt(start)).FillWidth().Gap(6).Children(func() {
+				for offset := 0; offset < perRow; offset++ {
+					if start+offset >= len(state.options) {
+						ui.Slot(c).Width(0).Grow(1)
+						break
+					}
+					index := state.options[start+offset]
+					choice := state.choices[index]
+					button := ui.Button(c.KeyInt(index), choice.label()).Ghost().Height(30).Width(0).MinWidth(0).Grow(1).FontSize(12)
+					if state.selected == index {
+						button.Secondary()
+					}
+					if state.selected != index && button.Clicked() {
+						c.After(func() {
+							name := state.filename.Text()
+							customName := name != state.choices[state.selected].template.Filename
+							state.selectTemplate(index)
+							if customName {
+								state.filename.SetText(name)
+							}
+						})
+					}
+				}
+			})
+		}
+	})
+	return submitted
 }
 
 func (m *editorApp) templateList(c ui.C, state *templateDialogState, blocked bool) {

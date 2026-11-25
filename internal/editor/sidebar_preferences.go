@@ -3,15 +3,16 @@ package editor
 import "github.com/vivaui/viva/ui"
 
 type sidebarPreferences struct {
-	Position     string `json:"position,omitempty"`
-	HideSave     bool   `json:"hideSave,omitempty"`
-	HideSearch   bool   `json:"hideSearch,omitempty"`
-	HideWrap     bool   `json:"hideWrap,omitempty"`
-	HideAI       bool   `json:"hideAI,omitempty"`
-	HideGit      bool   `json:"hideGit,omitempty"`
-	HideTerminal bool   `json:"hideTerminal,omitempty"`
-	HideTheme    bool   `json:"hideTheme,omitempty"`
-	Templates    bool   `json:"templates,omitempty"`
+	Position      string `json:"position,omitempty"`
+	HideSave      bool   `json:"hideSave,omitempty"`
+	HideSearch    bool   `json:"hideSearch,omitempty"`
+	HideWrap      bool   `json:"hideWrap,omitempty"`
+	HideAI        bool   `json:"hideAI,omitempty"`
+	HideGit       bool   `json:"hideGit,omitempty"`
+	HideTerminal  bool   `json:"hideTerminal,omitempty"`
+	HideTheme     bool   `json:"hideTheme,omitempty"`
+	Templates     bool   `json:"templates,omitempty"`
+	PasswordVault bool   `json:"passwordVault,omitempty"`
 }
 
 func (preferences sidebarPreferences) normalized() sidebarPreferences {
@@ -48,6 +49,9 @@ func (preferences sidebarPreferences) withChanges(before, after sidebarPreferenc
 	}
 	if before.Templates != after.Templates {
 		preferences.Templates = after.Templates
+	}
+	if before.PasswordVault != after.PasswordVault {
+		preferences.PasswordVault = after.PasswordVault
 	}
 	return preferences.normalized()
 }
@@ -108,10 +112,11 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 		value    *bool
 		inverted bool
 	}{
-		{"模板库", &draft.Sidebar.Templates, false}, {"翻译", &draft.TranslationEnabled, false},
 		{"保存文件", &draft.Sidebar.HideSave, true}, {"查找内容", &draft.Sidebar.HideSearch, true},
 		{"自动折行", &draft.Sidebar.HideWrap, true}, {"AI 助手", &draft.Sidebar.HideAI, true},
-		{"Git", &draft.Sidebar.HideGit, true}, {"终端", &draft.Sidebar.HideTerminal, true}, {"颜色主题", &draft.Sidebar.HideTheme, true},
+		{"Git", &draft.Sidebar.HideGit, true}, {"终端", &draft.Sidebar.HideTerminal, true},
+		{"翻译", &draft.TranslationEnabled, false}, {"密码本", &draft.Sidebar.PasswordVault, false},
+		{"模板库", &draft.Sidebar.Templates, false}, {"颜色主题", &draft.Sidebar.HideTheme, true},
 	}
 	ui.Column(c).FillWidth().Pad(12).Gap(8).Radius(12).Border(1, m.theme.Border).Children(func() {
 		for row := 0; row < len(options); row += 2 {
@@ -131,5 +136,5 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 			})
 		}
 	})
-	ui.Wrap(c, "模板库和翻译默认隐藏。显示翻译按钮不会下载词库或启动模型；设置按钮始终保留。").FillWidth().Muted().FontSize(12)
+	ui.Wrap(c, "模板库、翻译和密码本默认隐藏。设置按钮始终保留。").FillWidth().Muted().FontSize(12)
 }

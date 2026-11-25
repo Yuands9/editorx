@@ -6,6 +6,47 @@ $frontend = Join-Path $project 'office-ui'
 $assetRoot = Join-Path $project 'internal\editor\assets'
 $officeAssetDirectory = if ($PublicRelease) { 'office-public' } else { 'office' }
 $assets = Join-Path $assetRoot $officeAssetDirectory
+$devDirectory = Join-Path $project '.dev'
+
+function Install-CompressedOfficeAssets([string]$source) {
+    if ((Resolve-Path -LiteralPath $source).ProviderPath -ne $source -or
+        ((Get-Item -LiteralPath $source).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'Unexpected directory for compressed office assets.'
+    }
+
+    $packed = Join-Path $source 'packed'
+    if (Test-Path -LiteralPath $packed -PathType Container) { return }
+
+    $temporary = Join-Path $devDirectory ('office-packed-' + [Guid]::NewGuid().ToString('N'))
+    [IO.Directory]::CreateDirectory($temporary) | Out-Null
+    foreach ($file in Get-ChildItem -LiteralPath $source -Recurse -File) {
+        $relative = [IO.Path]::GetRelativePath($source, $file.FullName)
+        if (@(($relative -split '[\\/]') -match '^[._]').Count -ne 0) { continue }
+        $destination = Join-Path $temporary $relative
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
+        # Page HTML stays available for the existing per-request theme injection.
+        if ($file.Length -ge 1024 -and $file.Extension -ne '.html') {
+            $gzipPath = $destination + '.gz'
+            $output = [IO.File]::Create($gzipPath)
+            try {
+                $gzip = [IO.Compression.GZipStream]::new($output, [IO.Compression.CompressionLevel]::Optimal, $true)
+                try {
+                    $inputStream = $file.OpenRead()
+                    try { $inputStream.CopyTo($gzip) } finally { $inputStream.Dispose() }
+                } finally { $gzip.Dispose() }
+            } finally { $output.Dispose() }
+            if ((Get-Item -LiteralPath $gzipPath).Length -lt $file.Length) { continue }
+            [IO.File]::Delete($gzipPath)
+        }
+        [IO.File]::Copy($file.FullName, $destination)
+    }
+    if ((Resolve-Path -LiteralPath $temporary).ProviderPath -ne $temporary -or
+        ((Get-Item -LiteralPath $temporary).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'Unexpected compressed office asset stage.'
+    }
+    [IO.Directory]::Move($temporary, $packed)
+}
+
 $expected = @('main.js', 'xlsx.html', 'pdf.html', 'pdf-resources\pdf.worker.min.mjs', 'THIRD-PARTY-NOTICES.txt')
 $buildOptions = @()
 if ($PublicRelease) {
@@ -15,9 +56,11 @@ if ($PublicRelease) {
     $expected += 'docx.html'
 }
 $missing = @($expected | Where-Object { !(Test-Path -LiteralPath (Join-Path $assets $_) -PathType Leaf) })
-if (!$Force -and $missing.Count -eq 0) { return }
+if (!$Force -and $missing.Count -eq 0) {
+    Install-CompressedOfficeAssets $assets
+    return
+}
 
-$devDirectory = Join-Path $project '.dev'
 $env:NPM_CONFIG_CACHE = Join-Path $devDirectory 'npm-cache'
 $env:TEMP = Join-Path $devDirectory 'tmp'
 $env:TMP = $env:TEMP
@@ -51,6 +94,8 @@ foreach ($name in $expected) {
         throw "The frontend build did not produce $name."
     }
 }
+
+Install-CompressedOfficeAssets $stage
 
 if (Test-Path -LiteralPath $assets) {
     if ((Resolve-Path -LiteralPath $assets).ProviderPath -ne $assets -or

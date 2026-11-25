@@ -2,11 +2,17 @@ package editor
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
+	"io"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,12 +38,105 @@ func serveLocalDocument(assets fs.FS, route func(http.ResponseWriter, *http.Requ
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if !route(w, r, path) {
+		if !route(w, r, path) && !serveCompressedOfficeAsset(w, r, assets, path) {
 			static.ServeHTTP(w, r)
 		}
 	})}
 	go server.Serve(listener)
 	return server, "http://" + host + prefix, nil
+}
+
+func serveCompressedOfficeAsset(w http.ResponseWriter, r *http.Request, assets fs.FS, path string) bool {
+	if (r.Method != http.MethodGet && r.Method != http.MethodHead) || !fs.ValidPath(path) {
+		return false
+	}
+	file, err := assets.Open(path + ".gz")
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	content, ok := file.(io.ReadSeeker)
+	if !ok {
+		http.Error(w, "办公预览资源读取失败", http.StatusInternalServerError)
+		return true
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Add("Vary", "Accept-Encoding")
+	if r.Header.Get("Range") == "" && acceptsOfficeGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
+		info, err := file.Stat()
+		if err != nil {
+			http.Error(w, "办公预览资源读取失败", http.StatusInternalServerError)
+			return true
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+		if r.Method != http.MethodHead {
+			_, _ = io.Copy(w, content)
+		}
+		return true
+	}
+
+	// The last four bytes of a gzip member give the decoded size. All bundled assets fit in uint32.
+	var size [4]byte
+	if _, err = content.Seek(-int64(len(size)), io.SeekEnd); err == nil {
+		_, err = io.ReadFull(content, size[:])
+	}
+	if err == nil {
+		_, err = content.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		http.Error(w, "办公预览资源读取失败", http.StatusInternalServerError)
+		return true
+	}
+	decoded, err := gzip.NewReader(content)
+	if err != nil {
+		http.Error(w, "办公预览资源解压失败", http.StatusInternalServerError)
+		return true
+	}
+	defer decoded.Close()
+	if r.Header.Get("Range") != "" {
+		body, err := io.ReadAll(decoded)
+		if err != nil {
+			http.Error(w, "办公预览资源解压失败", http.StatusInternalServerError)
+			return true
+		}
+		http.ServeContent(w, r, path, time.Time{}, bytes.NewReader(body))
+		return true
+	}
+	w.Header().Set("Content-Length", strconv.FormatUint(uint64(binary.LittleEndian.Uint32(size[:])), 10))
+	if r.Method != http.MethodHead {
+		_, _ = io.Copy(w, decoded)
+	}
+	return true
+}
+
+func acceptsOfficeGzip(header string) bool {
+	wildcard := false
+	for option := range strings.SplitSeq(header, ",") {
+		encoding, parameters, _ := strings.Cut(option, ";")
+		encoding = strings.TrimSpace(encoding)
+		if !strings.EqualFold(encoding, "gzip") && encoding != "*" {
+			continue
+		}
+		allowed := true
+		for parameter := range strings.SplitSeq(parameters, ";") {
+			key, value, _ := strings.Cut(parameter, "=")
+			if strings.EqualFold(strings.TrimSpace(key), "q") {
+				quality, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+				allowed = err == nil && quality > 0 && quality <= 1
+				break
+			}
+		}
+		if strings.EqualFold(encoding, "gzip") {
+			return allowed
+		}
+		wildcard = allowed
+	}
+	return wildcard
 }
 
 func serveEditorPage(w http.ResponseWriter, r *http.Request, assets fs.FS, path string) {

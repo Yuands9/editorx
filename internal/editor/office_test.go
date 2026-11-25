@@ -3,11 +3,15 @@ package editor
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -211,6 +215,54 @@ func TestOfficeLoopback(t *testing.T) {
 		t.Fatal(response.Status)
 	}
 }
+func TestOfficeCompressedAssets(t *testing.T) {
+	assets, err := fs.Sub(officeAssets, officeAssetDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed, err := fs.ReadFile(assets, "xlsx.js.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name, method, accept, byteRange, encoding string
+		status                                    int
+		body                                      []byte
+		length                                    int
+	}{
+		{name: "compressed", method: "GET", accept: "br, gzip;q=0.8", encoding: "gzip", status: 200, body: compressed, length: len(compressed)},
+		{name: "identity", method: "GET", accept: "*;q=1, gzip;q=0", status: 200, body: decoded, length: len(decoded)},
+		{name: "head", method: "HEAD", status: 200, length: len(decoded)},
+		{name: "range", method: "GET", accept: "gzip", byteRange: "bytes=10-19", status: 206, body: decoded[10:20], length: 10},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, "/xlsx.js", nil)
+			request.Header.Set("Accept-Encoding", test.accept)
+			request.Header.Set("Range", test.byteRange)
+			result := httptest.NewRecorder()
+			if !serveCompressedOfficeAsset(result, request, assets, "xlsx.js") {
+				t.Fatal("packed asset could not be served at its original URL")
+			}
+			if result.Code != test.status || result.Header().Get("Content-Encoding") != test.encoding ||
+				result.Header().Get("Content-Length") != strconv.Itoa(test.length) ||
+				!strings.Contains(result.Header().Get("Content-Type"), "javascript") ||
+				!bytes.Equal(result.Body.Bytes(), test.body) {
+				t.Fatalf("unexpected asset response: %d, headers=%v, body length=%d", result.Code, result.Header(), result.Body.Len())
+			}
+		})
+	}
+}
+
 func TestOfficeBrowserFixture(t *testing.T) {
 	if os.Getenv("VIVA_OFFICE_BROWSER") != "1" {
 		t.Skip("browser fixture is opt-in")

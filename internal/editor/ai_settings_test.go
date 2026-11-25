@@ -156,9 +156,25 @@ func TestAIProfileManagementAndConnectionProbe(t *testing.T) {
 	if _, err := s.Locate("button:复制 API 密钥"); err == nil {
 		t.Fatal("the hidden key offered a copy action")
 	}
+	clearKey, err := s.Locate("清除已保存的密钥")
+	check(err)
+	click("API 密钥")
+	check(s.Driver().Key(gfx.KeyTab, 0))
+	if s.Driver().Snapshot().Focused != clearKey.ID {
+		t.Fatal("Tab from the API key did not skip the visibility button")
+	}
+	check(s.Driver().Key(gfx.KeyTab, gfx.ModifierShift))
+	if s.Driver().Snapshot().Focused != field.ID {
+		t.Fatal("Shift+Tab did not return directly to the API key")
+	}
 	click("button:显示密钥")
 	if m.ai.settings.key.Secure || m.ai.settings.key.Text() != key || m.ai.settings.dirty() {
 		t.Fatal("revealing the saved key changed the configuration")
+	}
+	field, err = s.Locate("API 密钥")
+	check(err)
+	if !paintedTextInBounds(s.Snapshot().Texts, key, field.Bounds) {
+		t.Fatal("the revealed key was not painted inside its input")
 	}
 	click("button:复制 API 密钥")
 	if s.Driver().Clipboard() != key {

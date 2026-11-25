@@ -10,15 +10,16 @@ import (
 )
 
 type editorDesktop struct {
-	application *app.Application
-	store       *sessionStore
-	preferences applicationPreferences
-	tray        *app.StatusItem
-	lastActive  *editorApp
-	exiting     bool
-	updateFile  string
-	updated     installedEditorUpdate
-	update      editorUpdateState
+	application          *app.Application
+	store                *sessionStore
+	preferences          applicationPreferences
+	tray                 *app.StatusItem
+	lastActive           *editorApp
+	exiting              bool
+	updateFile           string
+	updated              installedEditorUpdate
+	update               editorUpdateState
+	watchPasswordSession func() bool
 }
 
 func (d *editorDesktop) syncTray() error {
@@ -124,6 +125,15 @@ func (d *editorDesktop) close(window *editorApp, allow func()) {
 	})
 }
 
+func (d *editorDesktop) lockPasswordVaults() {
+	for _, window := range d.store.windows {
+		if window.passwordVault != nil {
+			window.passwordVault.lock()
+			window.invalidator.Invalidate()
+		}
+	}
+}
+
 func (d *editorDesktop) closeLastWindow(window *editorApp) {
 	d.lastActive = window
 	if d.preferences.ExitOnClose {
@@ -181,6 +191,7 @@ func (d *editorDesktop) quit() {
 		return
 	}
 	d.exiting = true
+	d.lockPasswordVaults()
 	d.flushForExit(0)
 }
 
