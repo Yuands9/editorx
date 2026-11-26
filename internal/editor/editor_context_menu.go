@@ -96,8 +96,26 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 				c.After(m.openGotoLine)
 			}
 		}
+		if !pane.readOnly && tab.largeText == nil {
+			menu.Sub("多光标与列编辑", func(items *ui.MenuItems) {
+				if m.shortcutMenu(items.Item("选择下一个相同内容").Icon(blankMenuIcon), shortcutSelectNext).Clicked() {
+					c.After(func() { pane.selectNextOccurrence(false); pane.focus = true })
+				}
+				if m.shortcutMenu(items.Item("选择全部相同内容").Icon(blankMenuIcon), shortcutSelectAllMatches).Clicked() {
+					c.After(func() { pane.selectNextOccurrence(true); pane.focus = true })
+				}
+				if m.shortcutMenu(items.Item("拆分为多行选区").Icon(blankMenuIcon), shortcutSplitSelection).Clicked() {
+					c.After(func() { pane.splitSelectionLines(); pane.focus = true })
+				}
+				items.Separator()
+				items.Label("Alt+单击添加光标 · Alt+拖动列选择")
+			}).Icon(blankMenuIcon)
+		}
 		if !source {
 			return
+		}
+		if historyEditableTab(tab) && menu.Item("与其他文本对比…").Icon(historyCompareIcon).Clicked() {
+			c.After(m.openTextComparePicker)
 		}
 		if tab.doc.path != "" && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
 			c.After(func() { m.openHistoryComparison(tab.doc.path, localHistoryVersion{}) })

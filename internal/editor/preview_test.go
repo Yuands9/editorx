@@ -164,7 +164,7 @@ func TestRenderPreview(t *testing.T) {
 				if !m.fileMenu {
 					t.Fatal("menu closed unexpectedly")
 				}
-				if _, err := session.Locate("另存为…"); err != nil {
+				if _, err := session.Locate("快速打开文件…"); err != nil {
 					t.Fatal(err)
 				}
 			}

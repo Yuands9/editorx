@@ -24,6 +24,9 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 		if menu.Item("关闭标签").Icon(closeIcon).Clicked() {
 			c.After(func() { m.closeTab(tab) })
 		}
+		if m.shortcutMenu(menu.Item("恢复关闭标签").Icon(blankMenuIcon).Disabled(len(m.closedTabs) == 0), shortcutReopenTab).Clicked() {
+			c.After(m.reopenClosedTab)
+		}
 		if aiTextTab(tab) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 			c.After(func() { m.openAIAt(tab, "", false) })
 		}

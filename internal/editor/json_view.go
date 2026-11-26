@@ -10,7 +10,7 @@ import (
 var jsonExtraActions = [...]string{"Form-Data", "转义", "去转义", "Unicode 编码", "Unicode 解码"}
 
 func (m *editorApp) jsonToolbar(c ui.C, t *editorTab, blocked bool) {
-	ui.Row(c).FillWidth().Height(48).PadX(12).Gap(4).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Height(40).PadX(8).Gap(2).Items(ui.Center).Children(func() {
 		if !t.jsonCompare {
 			ui.Row(c).Pad(3).Gap(2).Radius(16).Background(m.theme.Card).Children(func() {
 				for _, action := range []string{"格式化", "压缩", "键排序"} {
@@ -62,6 +62,13 @@ func (m *editorApp) jsonToolbar(c ui.C, t *editorTab, blocked bool) {
 			})
 		}
 		ui.Slot(c).Grow(1)
+		sync := ui.Button(c.Part("sync-scroll"), "同步滚动").Icon(linkIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Tooltip("左右面板同步滚动；点击切换")
+		if t.scroll.enabled {
+			sync.Secondary()
+		}
+		if sync.Clicked() {
+			t.scroll.enabled, t.scroll.ready = !t.scroll.enabled, false
+		}
 		for _, indent := range []int{2, 4} {
 			button := ui.Button(c.Part("json-indent").KeyInt(indent), fmt.Sprintf("%d 空格", indent)).Ghost().Height(28).FontSize(11).Disabled(blocked).Tooltip("格式化缩进")
 			if t.jsonIndent == indent {
@@ -89,7 +96,9 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 		resultMatchesSource = source == t.result.text.String()
 		if resultMatchesSource && t.result.foldSource != source {
 			t.source.updateFolds()
-			t.result.foldSource, t.result.folds = source, t.source.folds
+			if t.source.foldSource == source {
+				t.result.foldSource, t.result.folds = source, t.source.folds
+			}
 			clear(t.result.collapsed)
 		} else {
 			t.result.updateFolds()
@@ -112,14 +121,17 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 		ui.Column(c).Grow(1).FillHeight().MinWidth(0).Radius(16).Background(m.theme.Card).Clip().Children(func() {
 			ui.Row(c).FillWidth().Height(38).PadX(10).Gap(2).Items(ui.Center).Children(func() {
 				title := t.jsonAction + "结果"
+				if t.jsonPreview != nil {
+					title += " · 正在更新…"
+				}
 				if t.resultDraft {
 					title = "右侧草稿"
 				}
 				ui.Text(c, title).FontSize(12).Bold().Grow(1).MinWidth(0).Ellipsis().Hit(ui.ID(c), title).Tooltip(title)
-				if ui.Button(c, "复制").Icon(copyIcon).IconOnly().Ghost().Width(28).Height(28).Disabled(blocked || t.resultError != "").Tooltip("复制完整结果").Clicked() {
+				if ui.Button(c, "复制").Icon(copyIcon).IconOnly().Ghost().Width(28).Height(28).Disabled(blocked || t.jsonPreview != nil || t.resultError != "").Tooltip("复制完整结果").Clicked() {
 					c.After(func() { m.copyResult(t) })
 				}
-				if ui.Button(c, "另存").Icon(exportIcon).IconOnly().Ghost().Width(28).Height(28).Disabled(blocked || t.resultError != "").Tooltip("另存处理结果").Clicked() {
+				if ui.Button(c, "另存").Icon(exportIcon).IconOnly().Ghost().Width(28).Height(28).Disabled(blocked || t.jsonPreview != nil || t.resultError != "").Tooltip("另存处理结果").Clicked() {
 					c.After(func() { m.exportResult(t) })
 				}
 				ui.Slot(c).Width(1).Height(14).Background(m.theme.Border)
@@ -164,7 +176,7 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 				}
 				ui.Text(c, status).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis().Hit(ui.ID(c), status).Tooltip(status)
 				if label := t.jsonResultApplyLabel(resultMatchesSource); label != "" {
-					if ui.Button(c.Part("apply-result"), label).Ghost().Height(24).FontSize(11).Disabled(blocked || t.jsonComposing()).Clicked() {
+					if ui.Button(c.Part("apply-result"), label).Ghost().Height(24).FontSize(11).Disabled(blocked || t.jsonPreview != nil || t.jsonComposing()).Clicked() {
 						c.After(func() { m.applyResult(t) })
 					}
 				}

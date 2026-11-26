@@ -153,6 +153,7 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 		t.Fatal("vault was activated without an explicit action")
 	}
 	click("主菜单")
+	click("menuitem:工具与模板")
 	click("menuitem:密码本")
 	v := m.passwordVault
 	if v == nil || !m.vaultActive() || !s.HasText("创建本机密码本") || !s.HasText("请选择至少 8 个字符的主密码。忘记主密码将无法解锁。") {

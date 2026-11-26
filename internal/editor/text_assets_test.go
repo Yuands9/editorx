@@ -38,6 +38,7 @@ func TestDocumentTemplatesThroughUI(t *testing.T) {
 	m.activate(source)
 	check(s.Frame())
 	click("主菜单")
+	click("menuitem:工具与模板")
 	click("menuitem:将文档存为模板…")
 	if m.templateDialog == nil || m.templateDialog.body.Text() != original {
 		t.Fatal("the whole document was not copied into the template")
@@ -62,6 +63,7 @@ func TestDocumentTemplatesThroughUI(t *testing.T) {
 	}
 	check(s.Driver().Key(gfx.KeyEscape, 0))
 	click("主菜单")
+	click("menuitem:工具与模板")
 	click("menuitem:将选区存为模板…")
 	form := m.templateDialog
 	if form == nil || form.body.Text() != selected {
@@ -146,6 +148,7 @@ func TestDocumentTemplatesThroughUI(t *testing.T) {
 	m.addProjects(project)
 	check(s.Frame())
 	click("主菜单")
+	click("menuitem:工具与模板")
 	click("menuitem:将文档存为模板…")
 	click("combobox:保存到")
 	click("option:项目 · " + filepath.Base(project))

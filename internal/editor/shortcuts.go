@@ -23,6 +23,11 @@ const (
 	shortcutCloseTab
 	shortcutNextTab
 	shortcutPreviousTab
+	shortcutQuickOpen
+	shortcutCommandPalette
+	shortcutReopenTab
+	shortcutSaveAll
+	shortcutDirectorySearch
 	shortcutFind
 	shortcutReplace
 	shortcutFindNext
@@ -34,6 +39,11 @@ const (
 	shortcutNextBookmark
 	shortcutPreviousBookmark
 	shortcutDuplicateLine
+	shortcutSelectNext
+	shortcutSelectAllMatches
+	shortcutSplitSelection
+	shortcutCaretAbove
+	shortcutCaretBelow
 	shortcutDeleteLine
 	shortcutFiles
 	shortcutOutline
@@ -57,6 +67,16 @@ var editorShortcutSpecs = [editorShortcutCount]struct {
 	shortcutCloseTab:         {"closeTab", "关闭当前标签", keymap.Chord{Modifiers: ui.Ctrl, Char: 'w'}},
 	shortcutNextTab:          {"nextTab", "下一个标签", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyTab}},
 	shortcutPreviousTab:      {"previousTab", "上一个标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Key: gfx.KeyTab}},
+	shortcutQuickOpen:        {"quickOpen", "快速打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'p'}},
+	shortcutCommandPalette:   {"commandPalette", "命令面板", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'p'}},
+	shortcutReopenTab:        {"reopenTab", "恢复关闭标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 't'}},
+	shortcutSaveAll:          {"saveAll", "全部保存", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 's'}},
+	shortcutDirectorySearch:  {"directorySearch", "在目录中查找", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'f'}},
+	shortcutSelectNext:       {"selectNext", "选择下一个相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 'd'}},
+	shortcutSelectAllMatches: {"selectAllMatches", "选择全部相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'd'}},
+	shortcutSplitSelection:   {"splitSelection", "拆分为多行选区", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'l'}},
+	shortcutCaretAbove:       {"caretAbove", "向上添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyUp}},
+	shortcutCaretBelow:       {"caretBelow", "向下添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyDown}},
 	shortcutFind:             {"find", "查找", keymap.Chord{Modifiers: ui.Ctrl, Char: 'f'}},
 	shortcutReplace:          {"replace", "替换", keymap.Chord{Modifiers: ui.Ctrl, Char: 'r'}},
 	shortcutFindNext:         {"findNext", "下一个匹配", keymap.Chord{Key: gfx.KeyF3}},
@@ -81,8 +101,17 @@ type shortcutOverrides map[string]keymap.Chord
 
 func (bindings shortcutOverrides) chord(action editorShortcut) keymap.Chord {
 	spec := editorShortcutSpecs[action]
+	if len(bindings) == 0 {
+		return spec.chord
+	}
 	if chord, found := bindings[spec.id]; found && (chord == (keymap.Chord{}) || assignableEditorShortcut(chord)) {
 		return chord
+	}
+	// Existing custom bindings take precedence when a new default is introduced.
+	for other := shortcutNewFile; other < editorShortcutCount; other++ {
+		if other != action && spec.chord.Valid() && bindings[editorShortcutSpecs[other].id] == spec.chord {
+			return keymap.Chord{}
+		}
 	}
 	return spec.chord
 }
@@ -197,12 +226,20 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 			}
 			m.activate(m.active)
 			return true
-		case shortcutNewFile, shortcutNewWindow, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutGit, shortcutTerminal:
+		case shortcutNewFile, shortcutNewWindow, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutGit, shortcutTerminal, shortcutQuickOpen, shortcutCommandPalette, shortcutReopenTab, shortcutSaveAll:
 		default:
 			return false
 		}
 	}
 	switch action {
+	case shortcutDirectorySearch:
+		m.openDirectorySearch("")
+	case shortcutQuickOpen, shortcutCommandPalette:
+		m.openNavigationPalette(action == shortcutCommandPalette)
+	case shortcutReopenTab:
+		m.reopenClosedTab()
+	case shortcutSaveAll:
+		m.saveAllTabs()
 	case shortcutNewFile:
 		m.newDocument()
 	case shortcutNewWindow:
@@ -228,6 +265,28 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 			return false
 		}
 		switch action {
+		case shortcutSelectNext, shortcutSelectAllMatches, shortcutSplitSelection, shortcutCaretAbove, shortcutCaretBelow:
+			if !editableTextSource(tab) || tab.largeText != nil {
+				return false
+			}
+			pane := tab.source
+			if tab.format() == "JSON" && tab.result.focused {
+				pane = tab.result
+			}
+			if _, composing := pane.text.Composition(); composing {
+				return false
+			}
+			switch action {
+			case shortcutSelectNext, shortcutSelectAllMatches:
+				pane.selectNextOccurrence(action == shortcutSelectAllMatches)
+			case shortcutSplitSelection:
+				pane.splitSelectionLines()
+			case shortcutCaretAbove:
+				pane.addVerticalCaret(-1)
+			case shortcutCaretBelow:
+				pane.addVerticalCaret(1)
+			}
+			pane.focus = true
 		case shortcutFind:
 			tab.openSearch()
 		case shortcutReplace:
@@ -275,6 +334,9 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 				return false
 			}
 			command.Apply(tab.source.text)
+			if tab.source.recording != nil {
+				tab.source.recording.append(macroStep{Code: command})
+			}
 			tab.source.focus = true
 		case shortcutWrap:
 			if !tab.canSearchText() && (tab.largeText == nil || tab.largeText.editing == nil) {

@@ -13,12 +13,13 @@ import (
 )
 
 type document struct {
-	path     string
-	saved    string
-	bom      bool
-	encoding textEncoding
-	eol      string
-	diskHash [32]byte
+	formatDirty bool
+	path        string
+	saved       string
+	bom         bool
+	encoding    textEncoding
+	eol         string
+	diskHash    [32]byte
 }
 
 var (
@@ -54,14 +55,16 @@ func decodeDocumentAs(path string, data []byte, requested textEncoding) (documen
 		return document{}, err
 	}
 	value := string(decoded)
-	crlf := strings.Count(value, "\r\n")
-	if crlf > 0 {
-		if strings.Count(value, "\n") == crlf {
-			doc.eol = "CRLF"
-			value = strings.ReplaceAll(value, "\r\n", "\n")
-		} else {
-			doc.eol = "混合"
-		}
+	crlf, cr, lf := strings.Count(value, "\r\n"), strings.Count(value, "\r"), strings.Count(value, "\n")
+	switch {
+	case crlf > 0 && cr == crlf && lf == crlf:
+		doc.eol = "CRLF"
+		value = strings.ReplaceAll(value, "\r\n", "\n")
+	case cr > 0 && lf == 0:
+		doc.eol = "CR"
+		value = strings.ReplaceAll(value, "\r", "\n")
+	case cr > 0:
+		doc.eol = "混合"
 	}
 	doc.saved = value
 	return doc, nil
@@ -95,7 +98,7 @@ func (doc *document) save(path, value string, history *localHistoryStore) error 
 	if err != nil {
 		return err
 	}
-	if original != nil && value == doc.saved {
+	if original != nil && value == doc.saved && !doc.formatDirty {
 		return nil
 	}
 	data, err := doc.fileBytes(value)
@@ -107,13 +110,19 @@ func (doc *document) save(path, value string, history *localHistoryStore) error 
 		return err
 	}
 	doc.path, doc.saved, doc.diskHash = path, value, digest
+	doc.formatDirty = false
 	return nil
 }
 
 func (doc document) fileBytes(value string) ([]byte, error) {
 	output := value
-	if doc.eol == "CRLF" {
-		output = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\n", "\r\n")
+	if doc.eol == "LF" || doc.eol == "CRLF" || doc.eol == "CR" {
+		output = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
+		if doc.eol == "CRLF" {
+			output = strings.ReplaceAll(output, "\n", "\r\n")
+		} else if doc.eol == "CR" {
+			output = strings.ReplaceAll(output, "\n", "\r")
+		}
 	}
 	data, err := encodeText(output, doc.encoding)
 	if err != nil {

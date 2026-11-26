@@ -25,7 +25,7 @@ func sameTextFile(a, b os.FileInfo) bool {
 }
 
 func indexLargeText(ctx context.Context, path string, enc textEncoding) (largeLineIndex, error) {
-	file, err := os.Open(path)
+	file, err := openSharedTextFile(path)
 	if err != nil {
 		return largeLineIndex{}, err
 	}

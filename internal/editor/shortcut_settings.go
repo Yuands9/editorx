@@ -18,6 +18,20 @@ type shortcutEditState struct {
 
 func (m *editorApp) shortcutSettings(c ui.C) {
 	edit := &m.appSettings.shortcutEdit
+	current := shortcutPresetName(m.keyBindings)
+	ui.Row(c.Part("presets")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
+		ui.Text(c, "快捷键预设").Bold().Grow(1)
+		choices := []string{"EditorX", "Notepad++", "Sublime Text", "EditPlus"}
+		if current == "自定义" {
+			choices = append(choices, current)
+		}
+		selected := current
+		ui.Select(c, &selected, choices, func(value string) string { return value }).Label("快捷键预设").Width(170).Height(32)
+		if selected != current && selected != "自定义" {
+			c.After(func() { m.applyShortcutPreset(selected) })
+		}
+	})
+	ui.Wrap(c, "切换预设会替换当前快捷键，之后仍可逐项修改。预设覆盖已支持的操作；支持多光标选词、目录查找和列编辑。").FillWidth().FontSize(12).Muted()
 	ui.Row(c.Part("help")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
 		ui.Wrap(c, "点击快捷键后，按下新的组合键。").Grow(1).FontSize(12).Muted()
 		if ui.Button(c.Part("reset-all"), "恢复默认快捷键").Ghost().Height(30).
@@ -29,8 +43,8 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 		title       string
 		first, last editorShortcut
 	}{
-		{"文件与标签", shortcutNewFile, shortcutPreviousTab},
-		{"查找与编辑", shortcutFind, shortcutDeleteLine},
+		{"文件与标签", shortcutNewFile, shortcutSaveAll},
+		{"查找与编辑", shortcutDirectorySearch, shortcutDeleteLine},
 		{"工作区", shortcutFiles, shortcutOpenSettings},
 	} {
 		ui.Text(c, group.title).Bold().FontSize(14).Height(22)

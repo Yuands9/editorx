@@ -9,11 +9,13 @@ EditorX 是一个 Windows 多格式文本编辑器。Go 和 Viva 负责窗口、
 | 区域 | 主要入口 | 职责 |
 | --- | --- | --- |
 | 窗口和设置 | `editor.go`、`view.go`、`theme.go`、`settings_view.go`、`application_settings.go`、`sidebar_preferences.go` | 窗口、布局、主题、设置入口与持久化 |
-| 编辑与文件 | `pane.go`、`document.go`、`text_encoding.go`、`format.go`、`text_actions.go`、`text_bookmarks.go` | 文本缓冲、输入法、编码、语法识别、文本操作、书签和保存 |
+| 效率入口 | `shortcuts.go`、`shortcut_presets.go`、`navigation_palette.go`、`workspace_actions.go`、`main_menu.go` | 快捷键预设、快速文件检索、命令面板、有限关闭记录、顺序批量保存与分组菜单 |
+| 编辑与文件 | `pane.go`、`pane_multicursor.go`、`document.go`、`document_io.go`、`text_encoding.go`、`text_conversion.go`、`format.go`、`text_actions.go`、`text_bookmarks.go` | 文本缓冲、输入法、编码、语法识别、文本操作、书签和保存 |
 | 大文件 | `large_text.go`、`large_text_view.go`、`large_edit_buffer.go`、`large_edit_view.go`、`large_edit_workflow.go`、`large_edit_draft.go` | 按页浏览、全文编辑、全局位置、流式保存和草稿 |
 | 标签和项目 | `tab_strip.go`、`tab_groups.go`、`workspace.go`、`project_rename_windows.go`、`project_delete_windows.go` | 标签分组、项目树、多目录工作区、新建、重命名和删除 |
-| 查找与替换 | `search.go`、`search_dialog.go`、`search_replace.go`、`search_large_documents.go`、`large_edit_query.go`、`search_results.go`、`search_results_view.go` | 查找浮窗、全文扫描、跨文档替换、结果分组和定位 |
-| JSON | `json_tools.go`、`json_diff.go` | 格式化、转换和对比 |
+| 查找与替换 | `directory_search.go`、`search.go`、`search_dialog.go`、`search_replace.go`、`search_large_documents.go`、`large_edit_query.go`、`search_results.go`、`search_results_view.go` | 查找浮窗、全文扫描、跨文档替换、结果分组和定位 |
+| 高频工作流 | `workflow_compare.go`、`file_watch.go`、`workflow_macro.go`、`workflow_macro_job.go`、`workflow_tools.go`、`workflow_view.go` | 通用对比、文件监听、日志跟随、宏与外部工具 |
+| JSON | `json_tools.go`、`json_diff.go`、`json_background.go`、`json_folds.go`、`json_folds_async.go` | 格式化、转换和对比 |
 | 模板与翻译 | `templates.go`、`templates_view.go`、`templates_sidebar.go`、`translation_library.go`、`translation_dictionary.go`、`translation_view.go`、`translation_ai.go`、`document_translation.go` | 模板保存与复用、个人／项目译文匹配、选区和整篇流式翻译 |
 | 离线整句 | `offline_translation_packages.go`、`offline_translation_install.go`、`offline_translation_windows.go`、`offline_translation_view.go`、`offline_translation_worker.py` | 固定组件清单、按需安装、Argos 中英 CPU 推理进程、资源释放与实测 |
 | 预览与 Office | `html_preview.go`、`markdown.go`、`document_preview.go`、`pdf_preview.go`、`office.go`、`office_workbook.go`、`document_server.go`、`office-ui/src` | 文档分流、嵌入页面、渲染、编辑和原格式保存 |
@@ -64,6 +66,15 @@ EditorX 是一个 Windows 多格式文本编辑器。Go 和 Viva 负责窗口、
 - 密码本默认新建一个分组，支持嵌套和同站点多账号。粘贴文本或 Markdown 表格后，先解析成可编辑的候选条目，确认后保存。分组右键支持重命名、新建子分组、新建条目和删除确认。
 - `passwords.edxvault` 使用 AES-GCM 保存条目。启用主密码时最少 8 个字符，从主密码派生密钥。关闭主密码时，由当前 Windows 用户的 DPAPI 保护随机密钥。默认闲置 5 分钟锁定、复制密码 20 秒后清理剪贴板，两项均可调整或关闭。
 - 忘记主密码时可归档当前库并创建空库。之后用旧密码解锁归档，可选择合并当前库再恢复。恢复时也会归档被替换的当前库。跨设备迁移可使用独立密码保护的加密备份。
+
+## 快速操作与资源边界
+
+- 快捷键预设复用 application-settings.json 的 shortcuts 字段。通过有效按键集合识别预设，自定义后不额外保存一份预设状态。新增默认键碰到用户已有的自定义键时，让已有配置优先；面板和菜单显示同一份有效绑定。
+- Ctrl+P 和 Ctrl+Shift+P 共用模态面板、输入法输入框和虚拟列表。文件候选先包含打开标签和最近文件，再由可取消的 Viva Effect 扫描项目。工作线程只使用项目路径快照，结果在窗口线程接入；不持有文档缓冲，也不落地索引。
+- 项目扫描不跟随目录符号链接，跳过版本控制目录、node_modules、.dev，限制目录项数量与遍历时间。去重按 Windows 路径大小写规则处理，结果按文件名精确、前缀、包含、路径包含、子序列五档稳定排序，最多显示 100 项。筛选只在查询或候选变化时执行。
+- 恢复关闭标签只保留每窗口 20 条轻量记录，普通文本 Content 和 Saved 合计不超过 16 MiB，超出时淘汰最旧记录。大文件、Office、图片及预览只记录路径；临时链接不进入关闭栈。关闭栈不持有 editorTab、原生窗口、WebView 或撤销历史，窗口释放时一并清空，不写入会话文件。
+- 全部保存先收集 Office 最新状态，再按当前窗口标签顺序保存修改文档。未激活的大文件草稿先恢复编辑缓冲，再沿用原异步保存流程。取消、冲突或写入失败停止后续文件；保存期间阻止重复批量保存、编辑及退出，结束后恢复交互。
+- 主菜单以高频文件命令配合三个子菜单收拢，行高 28；无图标操作保留图标位。JSON 工具栏高度 40，同步滚动并入操作栏，移除原来的空白工具行。Markdown／HTML 格式工具行高度 34。
 
 ## 设置、会话与备份
 
@@ -122,3 +133,21 @@ EditorX 的自有源码采用 [Apache-2.0](../LICENSE)。GitHub 仓库提供 Go 
 | 终端和助手服务商标识 | `internal/editor/assets/terminal` 与 `internal/editor/assets/ai-providers` 的许可文件 |
 
 Word 编辑使用 AGPL-3.0 的 SuperDoc 和独立授权的 DOCX Engine。合规的本地构建可使用 `./dev.ps1 build` 加载此组件。分发包含 Word 编辑的 EXE 时，需要同时满足两项许可。公开版用自有的 DOCX 只读预览渲染正文、表格、嵌入图片和标题。 [SuperDoc 许可](https://docs.superdoc.dev/resources/license/) · [DOCX Engine 许可](https://docs.superdoc.dev/resources/docx-engine-license/)
+
+## 第二批核心编辑实现
+
+- 目录查找复用 `searchOptions` 和 `find.Query`，通过 Viva Effect 在后台顺序遍历目录；过滤匹配文件／目录名称，遇到符号链接不继续遍历。每个文件只保留有界匹配片段，不持久化索引；搜索结果在窗口内保留，下一次搜索或关闭窗口释放。读取限 64 MiB，结果限 5,000 处，遍历限 100,000 项，超限、取消和跳过均反馈到界面。跳转复用文件打开及已有标签，在当前文本上重新定位，避免覆盖未保存内容。
+- 多光标复用 Viva `text.Editor` 多选区编辑和撤销模型。`pane_multicursor.go` 负责手势、匹配选择、上下添加光标、拆行、选区绘制及复制；列宽用字符显示宽度与 Tab 停靠点计算，不创建矩形填充字符。上限 2,000 个选区，输入法组合不抢占。大文件全文编辑拥有独立的全局选区模型，不将普通多光标偏移错误地用于视口之外。
+- 编码／换行转换只改变保存元数据，通过 `document.formatDirty` 参与脏状态、退出确认、全部保存、关闭恢复和会话草稿；仅元数据变化也必须写盘。重新打开与转换分为两个菜单。保存统一处理 LF、CRLF、CR；编码器不能表示字符时中止，沿用原子的文件替换和冲突检测。
+- `document_io.go` 对达到 1 MiB 的普通文件异步读取和保存；小文件、只读取 128 KiB 页的大文件浏览仍走短路径。多文件打开串行排队并去重；每个保存任务持有独立文档快照，结果由 UI 线程更新，写入期间新输入仍标记未保存。保存路径参与占用校验；关闭／退出等待正在保存的任务，全部保存通过完成回调继续下一个文件。
+- 大 JSON 源文到预览及折叠计算通过 Effect 后台处理，约 150 ms 合并刷新，每个目标最多一个任务。应用结果前核对源文、右侧内容、转换方式和缩进，过期结果丢弃；写回右侧编辑继续沿用同步校验，避免保存过期原文。折叠采用有效性校验加字符串感知的括号扫描，只收集折叠区间，不构造第二份 JSON 值树。退出窗口或不再声明相应 Effect 时，任务上下文由 UI 生命周期取消。
+
+## 第三批工作流实现
+
+- 通用对比复用历史对比的原生独立窗口、差异模型、四行上下文、循环导航、共享右侧编辑器和单次可撤销合并。来源选择和初次读取／差异计算通过 Effect 完成；左侧固定快照，右侧绑定具体标签而非仅路径，因此支持未命名文档。标签关闭后断开引用；不创建新的历史存储或对比副本。
+- 每个窗口按文本文件的父目录复用 Viva DirectoryWatch，能感知原子替换；最后一个相关标签或窗口关闭时释放监听。事件在 UI 线程合并，哈希检查、重读和磁盘比较由 Effect 在后台处理。普通文件流式计算摘要，大文件只检查元数据，保留原有保存前冲突校验。重新载入前后核对编辑快照与格式，避免任务期间的新修改被覆盖。无法监听的目录在激活窗口／手动检查时重试。
+- 日志跟随复用约 128 KiB 的分页解码和字符边界，不读入整个增长文件，不计算全文行号索引，不产生历史快照；Windows 读取句柄允许文件在读取期间轮转或删除；每个标签最多一个读取任务和一个待处理标记。首屏成功读取后才切换只读跟随，保留失败时的原缓冲。追加、截断和原路径重建均按路径读取末页。任务完成即释放源快照引用，暂停／查找／完整编辑停止自动跟随。
+- 宏保存有界的文本事件和编辑命令，输入法组合只记最终替换；录制遇到不可描述的缓冲修改时停止。重放使用后台临时编辑器，最多运行 2 秒，完成后验证源文与选区，并以一次 ReplaceRange 提交；失败不会写入部分结果。普通文件限制 4 MiB，单宏最多 1,000 步／256 KiB 文本，单次 1–100 遍，保留原有撤销预算限制。
+- 自定义工具显式运行本机可执行文件，参数逐项传给 exec.CommandContext，不拼接隐式 shell 命令；变量只替换一次。运行环境继承 EditorX，工作目录默认为当前文件目录／首个项目。可选区输入，后台运行限 2 分钟、输出限 1 MiB、界面预览限 16 KiB；Windows 不弹控制台窗口，取消时终止进程树。原文件不被工具输出自动替换。
+- 宏和工具使用数据目录 workflow-settings.json（每类 30 项，总文件上限 2 MiB），保存时重读现有条目，保留其他窗口的不同条目。配置是应用数据，不属于可清理缓存；不持久化运行结果或无限执行日志。
+- GB18030 与 UTF-16 LE／BE 转换沿用第二批的 text_conversion.go 和 document.fileBytes，无第二套转码器。专项固定字节样例验证中文、补充平面字符、BOM、CRLF 与转换回 UTF-8，见 TestWorkflowEncodingRoundTrips。

@@ -1,10 +1,8 @@
 package editor
 
 import (
-	"fmt"
+	"github.com/vivaui/viva/app"
 	"maps"
-	"sort"
-	"strings"
 
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
@@ -15,6 +13,10 @@ import (
 )
 
 type editorPane struct {
+	recording         *macroRecording
+	foldJob           *jsonFoldJob
+	columnAnchor      int
+	columnDragging    bool
 	text              *text.Editor
 	view              *codeeditor.Editor
 	input             window.TextInput
@@ -38,6 +40,7 @@ func newEditorPane(value string, readOnly bool) *editorPane {
 	p := &editorPane{text: text.NewEditor(value), readOnly: readOnly, collapsed: map[int]bool{}}
 	p.text.MoveTo(0, false)
 	p.input.Editor = p.text
+	p.input.CopyText = p.copySelections
 	p.view = codeeditor.New(p.text)
 	p.applyEditorPreferences(defaultEditorPreferences())
 	p.view.Snapshot.CaretWidth = 1
@@ -51,13 +54,25 @@ func newEditorPane(value string, readOnly bool) *editorPane {
 	if !readOnly {
 		p.view.Snapshot.Placeholder = "开始输入内容"
 	}
-	p.view.Text = func(window.TextInputContext) *window.TextInput { return &p.input }
+	p.view.Text = func(window.TextInputContext) *window.TextInput {
+		if p.recording != nil {
+			p.input.Editor = nil
+			p.input.State = app.TextStateOf(p.text)
+		}
+		return &p.input
+	}
 	p.view.Key = p.key
 	p.view.Pointer = p.pointer
 	return p
 }
 
 func (p *editorPane) key(event gfx.KeyEvent) gfx.EventResult {
+	if event.Release {
+		return gfx.EventResult{}
+	}
+	if event.Key == gfx.KeyEscape && event.Modifiers == 0 && p.text.ClearSecondarySelections() {
+		return gfx.EventResult{Handled: true, Repaint: true}
+	}
 	if _, composing := p.text.Composition(); composing {
 		return gfx.EventResult{}
 	}
@@ -68,6 +83,9 @@ func (p *editorPane) key(event gfx.KeyEvent) gfx.EventResult {
 	}
 	if !p.readOnly {
 		if command, ok := components.CodeEditorCommandForKey(event); ok && command.Apply(p.text) {
+			if p.recording != nil {
+				p.recording.append(macroStep{Code: command})
+			}
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 	}
@@ -75,12 +93,36 @@ func (p *editorPane) key(event gfx.KeyEvent) gfx.EventResult {
 	if movement == components.TextareaMoveNone {
 		return gfx.EventResult{}
 	}
+	if p.recording != nil {
+		p.recording.append(macroStep{Movement: movement, Extend: extend})
+	}
 	to := p.view.Code.Move(p.text.String(), p.text.ByteOffset(p.text.Caret()), movement)
-	p.text.MoveTo(p.text.RuneIndex(to), extend)
+	if p.text.SelectionCount() > 1 {
+		selections := p.text.Selections()
+		for index, selection := range selections {
+			caret := selection.End
+			if movement == components.TextareaMoveUp {
+				caret = selection.Start
+			}
+			offset := p.view.Code.Move(p.text.String(), p.text.ByteOffset(caret), movement)
+			end := p.text.RuneIndex(offset)
+			if extend {
+				selections[index].End = end
+			} else {
+				selections[index] = text.Range{Start: end, End: end}
+			}
+		}
+		p.text.SetSelections(selections, len(selections)-1)
+	} else {
+		p.text.MoveTo(p.text.RuneIndex(to), extend)
+	}
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
 func (p *editorPane) pointer(event gfx.PointerEvent) gfx.EventResult {
+	if result := p.multiPointer(event); result.Handled {
+		return result
+	}
 	if event.Kind != gfx.PointerDown || event.Button != gfx.PointerButtonPrimary {
 		return gfx.EventResult{}
 	}
@@ -118,7 +160,7 @@ func (p *editorPane) setResult(value string) {
 }
 func (p *editorPane) updateFolds() {
 	value := p.text.String()
-	if p.foldSource == value {
+	if p.foldSource == value || len(value) >= backgroundTextBytes {
 		return
 	}
 	p.foldSource = value
@@ -152,9 +194,13 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		p.configHighlight = configHighlight{}
 		p.view.Snapshot.HighlightLine = nil
 	}
+	p.paintSelections()
 	box := codeeditor.View(c, label, p.view)
 	box.DrawOver(func(d *ui.DrawContext) {
 		p.focused = d.Canvas.Focused() == d.Node.ID
+		if p.view.Snapshot.Language == "JSON" && len(p.text.String()) >= backgroundTextBytes && p.foldSource != p.text.String() && p.foldJob == nil {
+			d.Canvas.RequestFrame()
+		}
 		if p.restoreScroll != nil {
 			p.view.Code.SetScrollX(p.restoreScroll.X)
 			p.view.Code.SetScrollY(p.restoreScroll.Y)
@@ -164,6 +210,7 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 	})
 	p.view.Snapshot.ShowCaret = showCaret
 	if p.view.Snapshot.Language == "JSON" {
+		p.updateFoldJob(c.Part("fold-job"))
 		p.updateFolds()
 		scope := p.view.Parts()
 		// UI 移动、悬停和菜单重绘不重新生成整个文档的折叠标记。
@@ -184,6 +231,7 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 			p.folded = maps.Clone(p.collapsed)
 		}
 	} else {
+		p.foldJob = nil
 		p.view.Snapshot.FoldedLines = nil
 		p.view.Snapshot.FoldMarkers = nil
 		p.foldScope = gfx.Scope(0)
@@ -202,51 +250,6 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 	return box
 }
 
-func jsonFolds(source string) []components.CodeEditorFoldRange {
-	value, err := parseJSON(source)
-	if err != nil {
-		return nil
-	}
-	lineStarts := []int{0}
-	for i := 0; i < len(source); i++ {
-		if source[i] == '\n' {
-			lineStarts = append(lineStarts, i+1)
-		}
-	}
-	var folds []components.CodeEditorFoldRange
-	var visit func(*jsonValue)
-	visit = func(value *jsonValue) {
-		if value.kind != "object" && value.kind != "array" {
-			return
-		}
-		header := sort.SearchInts(lineStarts, value.start+1) - 1
-		last := sort.SearchInts(lineStarts, value.end) - 1
-		if last > header && (len(folds) == 0 || folds[len(folds)-1].Header != header) {
-			summary := "Object{...}"
-			if value.kind == "array" {
-				summary = fmt.Sprintf("Array[%d]", len(value.items))
-			}
-			end := len(source)
-			if last+1 < len(lineStarts) {
-				end = lineStarts[last+1] - 1
-			}
-			prefix := source[lineStarts[header]:value.start]
-			// 保留关闭括号后的逗号等内容，摘要只参与绘制。
-			display := prefix + summary + strings.TrimSuffix(source[value.end:end], "\r")
-			folds = append(folds, components.CodeEditorFoldRange{
-				Header: header, LastLine: last, Display: display, SummaryStart: len(prefix),
-			})
-		}
-		for _, member := range value.members {
-			visit(member.value)
-		}
-		for _, item := range value.items {
-			visit(item)
-		}
-	}
-	visit(value)
-	return folds
-}
 func (p *editorPane) highlightLine(language, line string, dst []components.CodeEditorRun) []components.CodeEditorRun {
 	highlight := syntaxLine{syntaxPalette: syntaxColors(p.light), runs: dst}
 	switch language {

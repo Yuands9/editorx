@@ -89,6 +89,7 @@ func TestReopenTextEncodingThroughStatusMenu(t *testing.T) {
 	}
 	s := openTestSession(t, m)
 	check(s.ClickLabel("button:" + tab.doc.encoding.label(tab.doc.bom)))
+	check(s.ClickLabel("menuitem:按编码重新打开"))
 	check(s.ClickLabel("menuitem:Shift-JIS"))
 	if tab.doc.encoding != shiftJISEncoding || tab.source.text.String() != "あい\n" || tab.modified() {
 		t.Fatal("choosing Shift-JIS did not reopen the document")
@@ -176,6 +177,7 @@ func TestOpenWithExplicitEncodingThroughMainMenu(t *testing.T) {
 	for _, action := range []func() error{
 		func() error { return s.Driver().QueueOpenFiles([]string{path}, nil) },
 		func() error { return s.ClickLabel("button:主菜单") },
+		func() error { return s.ClickLabel("menuitem:文件与标签") },
 		func() error { return s.ClickLabel("menuitem:按编码打开") },
 		func() error { return s.ClickLabel("menuitem:UTF-16 LE") },
 	} {

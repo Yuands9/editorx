@@ -118,6 +118,7 @@ func TestNativeMemoryStress(t *testing.T) {
 		cycle, phase := 0, 0
 		next := time.Now().Add(1500 * time.Millisecond)
 		deadline := time.Now().Add(180 * time.Second)
+		paths := []string{textPath, jsonPath, imagePath, htmlPath, sheetPath, wordPath, pdfPath}
 		var loaded []*editorTab
 		var loadStart, closeStart time.Time
 		var loadDuration time.Duration
@@ -168,20 +169,23 @@ func TestNativeMemoryStress(t *testing.T) {
 							record("loading", cycle, 0, 0)
 							loadStart = time.Now()
 							loaded = nil
-							for _, path := range []string{textPath, jsonPath, imagePath, htmlPath, sheetPath, wordPath, pdfPath} {
-								m.load(path)
-								tab := m.active
-								loaded = append(loaded, tab)
-								if tab.format() == "HTML" {
-									m.refreshHTML(tab)
-								}
-								if tab.office != nil {
-									m.openOffice(tab)
-								}
+							for _, path := range paths {
+								m.loadTextFile(path, "", func(tab *editorTab) {
+									loaded = append(loaded, tab)
+									if tab.format() == "HTML" {
+										m.refreshHTML(tab)
+									}
+									if tab.office != nil {
+										m.openOffice(tab)
+									}
+								})
 							}
 							m.invalidator.Invalidate()
 							phase = 2
 						case 2:
+							if len(loaded) != len(paths) {
+								return
+							}
 							for _, tab := range loaded {
 								if tab.office != nil {
 									if tab.office.errorText != "" {

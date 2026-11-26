@@ -49,6 +49,7 @@ func TestAIConversationFromTablessHome(t *testing.T) {
 	}
 	check(s.Resize(900, 560))
 	click("主菜单")
+	click("menuitem:工具与模板")
 	click("menuitem:AI 助手")
 	if !m.ai.open || m.active != nil {
 		t.Fatal("opening AI from home created a tab")

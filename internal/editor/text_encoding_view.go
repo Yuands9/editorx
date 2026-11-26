@@ -7,41 +7,39 @@ import (
 )
 
 func (m *editorApp) encodingPicker(c ui.C, tab *editorTab, blocked bool) {
-	label := tab.doc.encoding.label(tab.doc.bom)
-	if tab.doc.path == "" {
-		ui.Text(c, label).Muted().FontSize(12)
-		return
-	}
 	if blocked {
 		m.encodingMenu = false
 	}
-	composing := false
-	if _, composing = tab.source.text.Composition(); composing {
-		m.encodingMenu = false
-	}
-	disabled := blocked || composing || tab.modified() || tab.hasResultDraft() || tab.largeText != nil && tab.largeText.busyEditing()
-	hint := "按编码重新打开"
-	if !blocked && disabled && (tab.modified() || tab.hasResultDraft()) {
-		hint = "保存当前修改后可重新选择编码"
-	}
-	button := ui.Button(c.Part("file-encoding"), label).Icon(chevronDownIcon).Ghost().Height(24).PadX(7).FontSize(12).Tooltip(hint).Disabled(disabled)
+	_, composing := tab.source.text.Composition()
+	button := ui.Button(c.Part("file-encoding"), tab.doc.encoding.label(tab.doc.bom)).Icon(chevronDownIcon).Ghost().Height(24).PadX(7).FontSize(12).Tooltip("文件编码").Disabled(blocked || composing || tab.savingText != nil)
 	if button.Clicked() {
 		m.encodingMenu = !m.encodingMenu
 	}
 	ui.Menu(c, button, &m.encodingMenu, func(menu *ui.MenuItems) {
 		menu.Above()
-		menu.WidthRange(162, 192)
+		menu.WidthRange(200, 250)
 		menu.RowHeight(27)
-		menu.Label("按编码重新打开")
-		if menu.Item("自动识别").Clicked() {
-			c.After(func() { m.reopenTextEncoding(tab, "") })
-		}
-		menu.Separator()
-		for _, enc := range textEncodings {
-			if menu.Item(string(enc)).Checked(enc == tab.doc.encoding).Clicked() {
-				c.After(func() { m.reopenTextEncoding(tab, enc) })
+		menu.Sub("转换编码（保存后生效）", func(items *ui.MenuItems) {
+			for _, enc := range textEncodings {
+				bom := enc == utf16LEEncoding || enc == utf16BEEncoding
+				if items.Item(enc.label(bom)).Checked(tab.doc.encoding == enc && tab.doc.bom == bom).Clicked() {
+					c.After(func() { m.convertTextEncoding(tab, enc, bom) })
+				}
 			}
-		}
+			if items.Item("UTF-8 BOM").Checked(tab.doc.encoding == utf8Encoding && tab.doc.bom).Clicked() {
+				c.After(func() { m.convertTextEncoding(tab, utf8Encoding, true) })
+			}
+		}).Disabled(!canConvertText(tab))
+		menu.Sub("按编码重新打开", func(items *ui.MenuItems) {
+			if items.Item("自动识别").Clicked() {
+				c.After(func() { m.reopenTextEncoding(tab, "") })
+			}
+			for _, enc := range textEncodings {
+				if items.Item(string(enc)).Checked(enc == tab.doc.encoding).Clicked() {
+					c.After(func() { m.reopenTextEncoding(tab, enc) })
+				}
+			}
+		}).Disabled(tab.doc.path == "" || tab.modified() || tab.hasResultDraft() || tab.largeText != nil && tab.largeText.busyEditing())
 	})
 }
 

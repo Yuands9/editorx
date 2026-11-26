@@ -112,7 +112,7 @@ func (d *editorDesktop) close(window *editorApp, allow func()) {
 	if d.exiting || window.windowClosed || window.windowClosePending || window.confirm {
 		return
 	}
-	if window.largeEditOperationPending() {
+	if window.savingAll || window.largeEditOperationPending() {
 		window.invalidator.Invalidate()
 		return
 	}
@@ -204,7 +204,7 @@ func (d *editorDesktop) quit() {
 		return
 	}
 	for _, window := range d.store.windows {
-		if window.confirm || window.windowClosePending {
+		if window.savingAll || window.confirm || window.windowClosePending {
 			d.cancelExit(window, nil)
 			return
 		}

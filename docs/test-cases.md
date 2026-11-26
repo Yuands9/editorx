@@ -2,6 +2,55 @@
 
 自动化测试使用生成的样例和本地服务。手工验证时使用独立的 EXE 和 `VIVA_EDITOR_DATA_DIR`，样例、日志及 WebView2 用户数据放在项目的 `.dev` 下。
 
+## 效率入口验收
+
+| 场景 | 预期 |
+| --- | --- |
+| 设置中切换四种预设，再逐项改绑、恢复默认、重启并切换另一窗口 | 绑定持久化并同步，无重复触发；原有自定义键优先于新默认键；Sublime Ctrl+D 不复制行 |
+| Ctrl+P 输入中文、文件名缩写、路径片段；打开同名不同路径文件 | 标题和路径能区分；已打开标签优先且不重复；↑↓ 循环、Enter 打开、Esc 返回后可以继续输入正文 |
+| 项目扫描中关闭面板、移除项目、重开面板；项目含被排除目录或不可读目录 | 工作可取消，重新打开重新扫描；不会创建索引；不完整时显示提示，文件选择仍可用 |
+| Ctrl+Shift+P 搜索中文命令或英文 ID；在零标签状态执行命令 | 搜索、当前快捷键、不可用状态一致；新建等全局命令正常，依赖文件的命令置灰 |
+| Ctrl+Shift+T 恢复普通草稿、选区及磁盘文件；重复打开相同路径；连续关闭超过 20 个 | 草稿文本恢复，未修改文件读取磁盘最新内容，无重复标签；数量和 16 MiB 文本预算生效 |
+| 全部保存混合普通文件、未命名文件、Office 与未激活大文件草稿 | 依次保存；取消另存为或制造磁盘冲突后停止，剩余修改保留；不会在保存中退出 |
+| 深／浅主题、900×560 小窗口下主菜单、子菜单和 JSON 工具栏 | 高频操作可见，图标列对齐，二级入口可点；同步滚动仍有效；JSON 不再有单独空白工具行 |
+
+专项与筛选性能复测：
+
+```powershell
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -run '^Test(Efficiency|EditorShortcut|DesktopExit)' -bench '^BenchmarkEfficiencyPalette20K$' ./internal/editor
+```
+
+2026-11-27 本机 Core Ultra 9 285H 的 20,000 候选文件名筛选基准约 0.74 ms／次、160 B／次（稀疏缩写匹配）。此数据只代表内存筛选，不包含磁盘遍历、打开文件和原生绘制。
+
+本批已通过公开版和本地版全量测试，以及实际 EXE 的隔离桌面启动、关闭确认、会话恢复和重复唤起检查。日志与深浅色截图位于 `.dev/efficiency-qa`；此目录中的 EXE 为开发试用包。
+
+## 第二批核心编辑验收
+
+| 场景 | 预期 |
+| --- | --- |
+| Ctrl+Shift+F／项目与子目录右键，过滤 `*.txt;*.md`，大小写、整词和正则，非法正则 | 范围和条件生效，异常可读；结果打开对应文件并定位，不覆盖已有草稿 |
+| 中文路径、二进制、不可读文件、超过 64 MiB 文件、取消、大量匹配 | 跳过有统计；结果限 5,000 处、目录项限 100,000；取消或截断显示不完整，不创建索引文件 |
+| Alt 单击／拖选、Tab 和中文列宽、短行、Ctrl+Alt+↑↓、相同内容多选、拆行 | 主／次选区均绘制，短行不填充；多处输入／删除／复制／撤销重做正确，Esc 清除次光标 |
+| Sublime Ctrl+D／Ctrl+Shift+L，自定义原有 Ctrl+Alt+L | 不执行旧破坏性动作，不覆盖用户自定义快捷键 |
+| 编码转换、UTF-8 BOM、UTF-16、LF／CRLF／CR、混合换行、无文本修改的格式草稿 | 保存字节准确，格式变化参与未保存提示，重启和恢复关闭标签保留；不支持的字符保存失败且原文件不变 |
+| 1 MiB 以上普通文件打开、保存中继续输入、全部保存、外部同时修改 | 读写走后台，按保存时快照写盘，随后输入仍为未保存；批量保存等完成，磁盘冲突不覆盖 |
+| 大 JSON 连续输入、改变模式／缩进、切换标签、关闭窗口 | 新内容不被旧预览覆盖，工作可结束，预览更新期间不能导出／应用旧结果；折叠摘要与原行为相同 |
+| 深浅主题、900×560 搜索弹框、编码二级菜单 | 包含／排除字段明确、无裁切，原有菜单及键盘操作通过 |
+
+`TestCore*` 覆盖上述新增主路径，`TestJSONFold*`、`TestTextEncodings*`、`TestReopenTextEncoding*` 和现有全文回归覆盖兼容行为。
+
+`BenchmarkCoreJSONFolds4MiB` 使用约 4 MB、12 万个单行对象的 JSON。本机 Core Ultra 9 285H 实测约 13.6 ms／次、339 B／次、7 次分配；只衡量折叠扫描，不含文件读取、缓冲区构建和原生绘制，也不代表所有嵌套形态。
+
+```powershell
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -run '^TestCore|^TestJSONFold|^TestTextEncoding' -bench '^BenchmarkCoreJSONFolds4MiB$' ./internal/editor
+```
+
+2026-11-27 已通过公开版、本地版全量测试，新增 `TestCore*` 与真实 EXE 的 `TestNativeEditorBackground` 原生检查。目录搜索和列选区截图覆盖深浅主题及 900×560 小窗口；日志与试用 EXE 位于 `.dev/core-qa`。试用构建使用独立输出目录，不替换安装目录或用户数据。
+
 ## 自动化回归
 
 在项目根目录执行。两套测试分别覆盖公开版的 DOCX 只读预览和本地构建的 Word 编辑路径。
@@ -13,6 +62,7 @@
 
 | 改动范围 | 对应自动化入口 |
 | --- | --- |
+| 效率入口与预设 | `TestEfficiency*`、`TestEditorShortcutRebinding`，以及主菜单、模板、密码本、最近文件和指定编码 UI 回归 |
 | 打开、保存和会话恢复 | `TestFileDropOpensDocuments`、`TestOpenTextFormatPrompt`、`TestSuggestOpenedFormat`、`TestSessionExternalChangesAndRecovery`、`TestSessionIMEAndExplicitClose` |
 | 查找、替换和 JSON | `TestSearchReplaceCurrentFileWithMultilineInput`、`TestSearchReplaceAllOpenWithEscapesAndMixedEndings`、`TestJSONAutoWrapAndReversibleConversions`、`TestJSONFoldSummaryRenderingAndPreservation`、`TestJSONSourceKeepsFreeInput` |
 | 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsDraftAndBackup`、`TestLargeEditReturnsToBrowsing` |
@@ -179,7 +229,7 @@ for ($round = 1; $round -le 3; $round++) {
 
 ## 自动更新检查与首页提示
 
-使用新数据目录确认自动检查默认开启、启动约 10 秒后执行，没有自动弹窗。近期已有检查记录时不重复请求，后续间隔 6 小时。断网或 HTTP 错误时自动检查保持静默，手动检查应显示失败原因。关闭「关于 → 自动检查更新」开关后停止自动请求，手动检查仍可用。
+使用新数据目录确认自动检查默认开启、启动约 10 秒后执行，没有自动弹窗。即使近期已有检查记录，每次重启仍重新检查；持续运行期间间隔 6 小时。断网或 HTTP 错误时自动检查保持静默，手动检查应显示失败原因。关闭「关于 → 自动检查更新」开关后停止自动请求，手动检查仍可用。
 
 本地测试服务提供更高版本时，确认无文件的首页也显示绿色图标，左右侧栏均对齐。打开弹窗，滚动查看完整 Markdown 更新说明；「稍后」保留图标，「跳过此版本」重启后仍生效，下一个版本重新提示，手动检查可查看已跳过版本。界面不提供更新源选择。
 
@@ -191,3 +241,39 @@ for ($round = 1; $round -le 3; $round++) {
 2. 用 `.\dev.ps1 -Action build -PublicRelease -OutputDirectory '.dev\release-preview\public'` 构建公开版。确认资源中的 ProductVersion 和 SHA-256，在隔离桌面用 `tools/memory-smoke.ps1` 的 `-ExecutablePath` 分支检查该 EXE 启动和退出。
 3. 发布时核对 `main`、版本标签、发布说明中的 SHA-256 和 GitHub 附件摘要。发布页包含 `EditorX.exe` 及 GitHub 生成的源码 ZIP 和 tar.gz。
 4. 如需验收自动安装，用独立 EXE 副本与数据目录从上一公开版升级，验证会话保留、替换和回退副本清理。
+
+## 第三批工作流验收
+
+| 场景 | 预期 |
+| --- | --- |
+| 菜单／命令面板／正文右键打开通用对比；两份磁盘文本、两个标签、未保存草稿 | 选择明确，左侧只读快照、右侧共享当前缓冲；独立窗口可移动缩放；关闭标签释放对比引用 |
+| 逐块合并、整份采用、Ctrl+Z、右侧中文输入、Ctrl+S | 一次合并可撤销，不绕过保存冲突；大改动超过撤销预算时不执行 |
+| 外部覆盖、原子替换、删除／重建、程序自己的保存 | 外部变化提示，草稿不被覆盖；重读脏文本二次确认；自己的相同文件不误报 |
+| 重读进行期间继续编辑，保留当前内容后保存 | 新修改保留；保留操作不绕过原文件哈希检查 |
+| 日志追加、截断、删除／重建、暂停／翻页／查找、切换完整编辑 | 只保留末页且字符完整，暂停后不再覆盖视图；不生成日志副本；关闭标签关闭监听 |
+| 宏录制输入、粘贴、删除、缩进、移动、中文输入法；命名保存后重开管理 | 步骤可重放，组合候选不进入宏；背景计算后一次应用，Ctrl+Z 撤销整次操作 |
+| 宏重复、相对位置越界、输出／步数超限、取消、源文本变化 | 失败不部分修改原文；不记录跨文件／多光标／外部命令 |
+| 自定义工具参数含中文／空格、选区标准输入、非零退出、取消、输出超过上限 | 参数边界和输入保留；错误与输出可读；取消结束进程；结果限 1 MiB，预览限 16 KiB |
+| UTF-8 → GB18030／UTF-16 LE／UTF-16 BE → UTF-8，中文和 😀、CRLF | 固定目标字节与 BOM 准确，补充平面字符和换行不丢失；无法表示字符时原文件不变 |
+| 深浅主题、900×560 小窗口，有工具输出时继续操作 | 字段含义明确，弹框内部滚动，底部保存按钮始终可用 |
+
+专项命令（在仓库目录）：
+
+```powershell
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+$env:VIVA_PREVIEW_DIR = Join-Path $PWD '.dev/workflow-qa'
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -run '^TestWorkflow' ./internal/editor
+.\dev.ps1 -Action test -PublicRelease
+.\dev.ps1 -Action test
+.\tools\native-smoke.ps1 -PublicRelease -TestName TestNativeHistoryComparisonWindow
+```
+
+截图与日志输出到 .dev/workflow-qa，开发试用包使用该目录下 public/EditorX.exe，不替换安装目录或日常 data。普通全量测试不会运行需隔离桌面的原生测试，使用上面的 native-smoke 命令单独复测。
+
+2026-11-27 本批已通过公开版／本地版全量测试、最终工作流／历史比对／大文件专项、原生 TestNativeHistoryComparisonWindow 和实际试用 EXE 的 TestNativeEditorBackground。日志轮转共享读取与原路径重建连续复测 5 次通过，跟随状态确认不启动全文行号索引。GB18030／UTF-16 LE／BE 用固定字节、中文、😀、BOM 和 CRLF 验证往返。验证清单与 SHA-256 见 .dev/workflow-qa/verified.json；这些是有界回归验证，不代表无限时长的内存稳定性证明。
+## v0.39.0 发布检查
+
+2026-11-27 公开版与本地版全量测试通过；公开版 Windows 原生检查覆盖 Excel 编辑保存、DOCX 预览、PDF 大纲、文件拖放和独立历史对比窗口移动缩放。资源循环测试已适配后台打开：通过完成回调记录实际标签，所有文件打开后才进入关闭阶段，避免把原活动标签当作尚未完成的新文件。
+
+七种混合文件连续打开关闭 6 轮，每轮关闭后标签数为 0、goroutine 回到 3；第 3～6 轮 GC 后 Go 堆约 13.9 MiB，窗口关闭后约 4.1 MiB、goroutine 为 2。恢复关闭标签的有限内存保留属于预期行为。这是有界资源回归结果，不替代长时间运行观测。发布日志和公开 EXE 保存在 `.dev/release-0.39.0`，不进入源码发布。

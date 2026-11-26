@@ -23,6 +23,8 @@ const historyChangedNotice = "当前内容已更新。请查看重新比对后�
 const historyMergeUndoRunes = 4 << 20 // Viva text.Editor's single-edit undo budget.
 
 type historyCompareState struct {
+	generic             bool
+	leftLabel           string
 	owner               *editorApp
 	window              *app.Window
 	invalidator         app.Invalidator
@@ -131,6 +133,10 @@ func (m *editorApp) selectHistoryVersion(state *historyCompareState, index int) 
 }
 
 func (m *editorApp) readHistoryComparison(state *historyCompareState) {
+	if state.generic {
+		state.syncCurrent()
+		return
+	}
 	state.comparison = nil
 	version := state.versions[state.selection]
 	var working *document
@@ -218,9 +224,13 @@ func (state *historyCompareState) mergeActionsFor(result components.CodeDiffResu
 	state.actionRows, state.actionScope = &result.Rows[0], scope
 	state.mergeActions = state.mergeActions[:0]
 	for index, block := range state.comparison.diff.blocks {
+		label := fmt.Sprintf("合并第 %d 处历史改动", index+1)
+		if state.generic {
+			label = fmt.Sprintf("合并第 %d 处改动", index+1)
+		}
 		state.mergeActions = append(state.mergeActions, components.CodeDiffGutterAction{
 			Row: block.visibleRange(state.onlyChanges).Start, Left: true, ID: scope.At(historyMergePart + index),
-			Label: fmt.Sprintf("合并第 %d 处历史改动", index+1),
+			Label: label,
 		})
 	}
 	return state.mergeActions
@@ -264,7 +274,7 @@ func (m *editorApp) mergeHistoryChange(state *historyCompareState, whole bool) {
 	state.syncCurrent()
 	state.revealCaret, state.mergeNeedsReview = true, false
 	state.problem, state.notice = "", "已合并到编辑区 · Ctrl+Z 撤回"
-	m.status = "已合并历史改动 · 可撤销"
+	m.status = "已合并改动 · 可撤销"
 }
 
 func (m *editorApp) exportHistoryComparison(state *historyCompareState) {

@@ -16,6 +16,9 @@ import (
 func (state *historyCompareState) windowConfig() app.Config {
 	owner := state.owner
 	title := "比对历史"
+	if state.generic {
+		title = "文件对比"
+	}
 	if state.source != "" {
 		title += " · " + filepath.Base(state.source)
 	}
@@ -55,6 +58,14 @@ func (state *historyCompareState) blocked() bool {
 }
 
 func (state *historyCompareState) detached() bool {
+	if state.generic {
+		for _, tab := range state.owner.tabs {
+			if tab == state.tab {
+				return false
+			}
+		}
+		return true
+	}
 	return state.tab != nil && state.owner.tabAtPath(state.source) != state.tab
 }
 
@@ -71,7 +82,7 @@ func (m *editorApp) updateHistoryWindow(c ui.C) {
 		})
 		return
 	}
-	tab := m.tabAtPath(state.source)
+	tab := state.currentTab()
 	changed := historyEditableTab(tab) &&
 		(state.tab != tab || state.editor != tab.source.text || state.revision != tab.source.text.TrackEdits() ||
 			state.comparison != nil && state.comparison.current.eol != tab.doc.eol)
@@ -87,7 +98,7 @@ func (state *historyCompareState) syncCurrent() {
 	if comparison == nil || comparison.oldProblem != "" {
 		return
 	}
-	tab := state.owner.tabAtPath(state.source)
+	tab := state.currentTab()
 	if !historyEditableTab(tab) {
 		if tab != nil || comparison.diskProblem != "" {
 			state.editor = nil

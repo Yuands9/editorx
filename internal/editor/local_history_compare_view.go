@@ -29,9 +29,11 @@ func (state *historyCompareState) view(c ui.C) {
 	}
 	ui.Column(c).Fill().MinHeight(0).Pad(workspaceInset).Gap(8).Background(m.theme.Card).Children(func() {
 		ui.Row(c.Part("panes")).FillWidth().Grow(1).MinHeight(0).Gap(8).Children(func() {
-			m.workspacePanel(c.Part("timeline")).Width(174).Shrink(0).Children(func() {
-				m.historyVersionList(c.Part("versions"), state, blocked)
-			})
+			if !state.generic {
+				m.workspacePanel(c.Part("timeline")).Width(174).Shrink(0).Children(func() {
+					m.historyVersionList(c.Part("versions"), state, blocked)
+				})
+			}
 			m.workspacePanel(c.Part("comparison")).Grow(1).MinWidth(0).Children(func() {
 				m.historyComparisonToolbar(c.Part("toolbar"), state, blocked)
 				m.historyComparisonBody(c.Part("body"), state, blocked)
@@ -48,7 +50,11 @@ func (state *historyCompareState) view(c ui.C) {
 				ui.Slot(c).Grow(1)
 			}
 			canMerge := m.canMergeHistory(state)
-			if ui.Button(c.Part("restore"), "恢复整个版本").Ghost().Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
+			restoreLabel := "恢复整个版本"
+			if state.generic {
+				restoreLabel = "采用左侧全部内容"
+			}
+			if ui.Button(c.Part("restore"), restoreLabel).Ghost().Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
 				state.queueMerge(c, state.block, true)
 			}
 			if ui.Button(c.Part("combine"), "合并此区别").Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
@@ -170,9 +176,11 @@ func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState,
 				}
 			}
 		})
-		if ui.Button(c.Part("export"), "另存副本…").Icon(exportIcon).IconOnly().Ghost().Size(30, 30).
-			Tooltip("另存副本…").Disabled(blocked || state.selection < 0 || state.export != nil).Clicked() {
-			c.After(func() { m.exportHistoryComparison(state) })
+		if !state.generic {
+			if ui.Button(c.Part("export"), "另存副本…").Icon(exportIcon).IconOnly().Ghost().Size(30, 30).
+				Tooltip("另存副本…").Disabled(blocked || state.selection < 0 || state.export != nil).Clicked() {
+				c.After(func() { m.exportHistoryComparison(state) })
+			}
 		}
 	})
 }
@@ -199,8 +207,15 @@ func (m *editorApp) historyComparisonBody(c ui.C, state *historyCompareState, bl
 	}
 	editable := state.canEditCurrent()
 	ui.Row(c.Part("columns")).FillWidth().Height(30).PadX(9).Gap(8).Items(ui.Center).Children(func() {
-		ui.Text(c, "历史内容").FontSize(12).Bold().Grow(1).Basis(0).MinWidth(0)
+		leftLabel := "历史内容"
+		if state.generic {
+			leftLabel = state.leftLabel
+		}
+		ui.Text(c, leftLabel).FontSize(12).Bold().Grow(1).Basis(0).MinWidth(0)
 		current := "当前版本"
+		if state.generic && state.tab != nil {
+			current = state.tab.tabTitle()
+		}
 		if editable {
 			current += " · 可编辑"
 		}

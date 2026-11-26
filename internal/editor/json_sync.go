@@ -23,7 +23,7 @@ func (t *editorTab) hasResultDraft() bool {
 	return t.resultDraft || !t.jsonLiveResult() && t.result.text.CommittedString() != t.resultOutput
 }
 
-func (t *editorTab) updateResult() {
+func (t *editorTab) updateResultNow() {
 	if t.jsonCompare || t.jsonComposing() {
 		return
 	}
@@ -106,6 +106,17 @@ func (m *editorApp) jsonAction(t *editorTab, action string) {
 	}
 	modeChanged := action != t.jsonAction || t.resultDraft
 	source := t.source.text.CommittedString()
+	if len(source) >= backgroundTextBytes {
+		t.jsonAction, t.resultDraft, t.resultReady = action, false, false
+		t.resultOutput = t.result.text.CommittedString()
+		t.jsonCompare, t.diffReady = false, false
+		if modeChanged {
+			t.result.text.ClearHistory()
+		}
+		t.updateResult()
+		m.status = "JSON · " + action + "…"
+		return
+	}
 	if action == "格式化" {
 		t.jsonAction, t.resultDraft, t.resultReady = action, false, false
 		// 从源文恢复同步，避免把取消前的预览误当成一次右侧编辑。

@@ -151,7 +151,7 @@ scan:
 }
 
 func readLargeTextPage(path string, index, match int64, query string, requested textEncoding) (largeTextPage, error) {
-	file, err := os.Open(path)
+	file, err := openSharedTextFile(path)
 	if err != nil {
 		return largeTextPage{}, err
 	}
@@ -246,7 +246,7 @@ func findLargeText(ctx context.Context, path, query string, from int64, directio
 	if len(query) == 0 || len(query) > largeTextQueryLimit {
 		return -1, nil
 	}
-	file, err := os.Open(path)
+	file, err := openSharedTextFile(path)
 	if err != nil {
 		return -1, err
 	}

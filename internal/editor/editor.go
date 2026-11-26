@@ -19,6 +19,9 @@ import (
 const applicationName = "EditorX"
 
 type editorTab struct {
+	diskChange        *diskChangeState
+	savingText        *textSaveJob
+	jsonPreview       *jsonPreviewJob
 	id                int
 	name              string
 	displayName       string
@@ -183,51 +186,65 @@ func (t *editorTab) modified() bool {
 	if t.office != nil {
 		return t.office.state.Dirty
 	}
-	return !t.readOnlyPreview() && t.source.text.String() != t.doc.saved
+	return !t.readOnlyPreview() && (t.source.text.String() != t.doc.saved || t.doc.formatDirty)
 }
 
 type editorApp struct {
-	passwordVault  *passwordVaultView
-	linkedFile     linkedFileState
-	imageOCR       *imageOCRDialog
-	imageAI        *imageAIDialog
-	theme          gfx.Theme
-	light          bool
-	tabs           []*editorTab
-	active         *editorTab
-	nextID         int
-	status         string
-	errorText      string
-	showError      bool
-	confirm        bool
-	confirmFocus   bool
-	dontAskToSave  bool
-	confirmTab     *editorTab
-	pending        func()
-	workspace      *folderTree
-	showFiles      bool
-	showOutline    bool
-	filesSplit     ui.SplitterState
-	outlineSplit   ui.SplitterState
-	aiEditorSplit  ui.SplitterState
-	aiPromptSplit  ui.SplitterState
-	newWindow      func()
-	tabReveal      bool
-	tabDrag        ui.DragState
-	tabScrollAt    time.Duration
-	tabEndHit      gfx.ID
-	tabGhost       *editorTab
-	groupGhost     *tabGroup
-	tabGrabX       float32
-	nextGroupID    int
-	groupClick     tabGroupClick
-	rename         tabRenameState
-	fileMenu       bool
-	newFileMenu    bool
-	templateDialog *templateDialogState
-	projectFolder  *projectFolderDialog
-	projectRename  *projectRenameDialog
-	projectDelete  *projectDeleteDialog
+	comparePicker *textComparePicker
+	fileWatches   map[string]*app.DirectoryWatch
+	watchFiles    bool
+	checkFiles    bool
+	macro         *macroRecording
+	lastMacro     *editorMacro
+	workflow      *workflowDialog
+
+	directorySearch *directorySearchState
+	textOpens       []*textOpenJob
+	eolMenu         bool
+	palette         *navigationPalette
+	closedTabs      []closedEditorTab
+	savingAll       bool
+	passwordVault   *passwordVaultView
+	linkedFile      linkedFileState
+	imageOCR        *imageOCRDialog
+	imageAI         *imageAIDialog
+	theme           gfx.Theme
+	light           bool
+	tabs            []*editorTab
+	active          *editorTab
+	nextID          int
+	status          string
+	errorText       string
+	showError       bool
+	confirm         bool
+	confirmFocus    bool
+	dontAskToSave   bool
+	confirmTab      *editorTab
+	pending         func()
+	workspace       *folderTree
+	showFiles       bool
+	showOutline     bool
+	filesSplit      ui.SplitterState
+	outlineSplit    ui.SplitterState
+	aiEditorSplit   ui.SplitterState
+	aiPromptSplit   ui.SplitterState
+	newWindow       func()
+	tabReveal       bool
+	tabDrag         ui.DragState
+	tabScrollAt     time.Duration
+	tabEndHit       gfx.ID
+	tabGhost        *editorTab
+	groupGhost      *tabGroup
+	tabGrabX        float32
+	nextGroupID     int
+	groupClick      tabGroupClick
+	rename          tabRenameState
+	fileMenu        bool
+	newFileMenu     bool
+	templateDialog  *templateDialogState
+	projectFolder   *projectFolderDialog
+	projectRename   *projectRenameDialog
+	projectDelete   *projectDeleteDialog
 
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
@@ -337,7 +354,7 @@ func nextUntitledName(usedNames map[string]bool) string {
 
 func (m *editorApp) activate(t *editorTab) {
 	m.leavePasswordVault()
-	m.languageMenu, m.encodingMenu = false, false
+	m.languageMenu, m.encodingMenu, m.eolMenu = false, false, false
 	if m.active != t {
 		m.imageOCR, m.imageAI = nil, nil
 	}
@@ -414,7 +431,14 @@ func (m *editorApp) saveBeforeClosing(tab *editorTab, complete func(bool)) {
 		m.saveOfficeTab(tab, false, complete)
 		return
 	}
-	complete(m.saveTab(tab, false))
+	if tab.readOnlyPreview() || tab.jsonComposing() {
+		complete(false)
+		return
+	}
+	if tab.format() == "JSON" && !tab.jsonCompare {
+		tab.updateResultNow()
+	}
+	m.saveTextTabWithCallback(tab, false, complete)
 }
 
 func (m *editorApp) clearSaveConfirmation() {
@@ -450,7 +474,7 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 		if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
 			continue
 		}
-		if tab.largeText != nil && tab.largeText.saving != nil {
+		if tab.savingText != nil || tab.largeText != nil && tab.largeText.saving != nil {
 			m.status = "请等待大文件保存完成"
 			return
 		}
@@ -489,6 +513,7 @@ func (m *editorApp) removeTab(t *editorTab) {
 	if index < 0 {
 		return
 	}
+	m.rememberClosedTab(t)
 	t.html.close()
 	t.office.close()
 	t.preview.close()
@@ -514,7 +539,7 @@ func (m *editorApp) removeTab(t *editorTab) {
 }
 
 func (m *editorApp) requestClose(allow func()) {
-	if m.largeEditOperationPending() {
+	if m.savingAll || m.largeEditOperationPending() {
 		return
 	}
 	m.flushOfficeTabs(0, func(err error) {
@@ -600,27 +625,7 @@ func (m *editorApp) tabAtPath(path string) *editorTab {
 
 func (m *editorApp) load(path string) { m.loadWithEncoding(path, "") }
 
-func (m *editorApp) loadWithEncoding(path string, enc textEncoding) {
-	path, err := filepath.Abs(path)
-	if err != nil {
-		m.fail(err)
-		return
-	}
-	if tab := m.tabAtPath(path); tab != nil {
-		m.activate(tab)
-		if enc != "" && tab.canFind() {
-			m.reopenTextEncoding(tab, enc)
-		}
-		m.rememberPath(path, false)
-		return
-	}
-	file, err := readEditorFile(path, enc)
-	if err != nil {
-		m.fail(fmt.Errorf("打开 %s 失败\n%w", path, err))
-		return
-	}
-	m.openLoadedFile(file)
-}
+func (m *editorApp) loadWithEncoding(path string, enc textEncoding) { m.loadTextFile(path, enc, nil) }
 
 type openedEditorFile struct {
 	name            string
@@ -750,7 +755,7 @@ func (m *editorApp) textSavePath(t *editorTab, saveAs bool) (string, bool) {
 
 func (m *editorApp) savePathInUse(t *editorTab, path string) bool {
 	for _, other := range m.tabs {
-		if other != t && (strings.EqualFold(other.doc.path, path) || other.largeText != nil && strings.EqualFold(other.largeText.savePath, path)) {
+		if other != t && (other.savingText != nil && strings.EqualFold(other.savingText.path, path) || strings.EqualFold(other.doc.path, path) || other.largeText != nil && strings.EqualFold(other.largeText.savePath, path)) {
 			return true
 		}
 	}
@@ -765,20 +770,7 @@ func (m *editorApp) savePathInUse(t *editorTab, path string) bool {
 }
 
 func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
-	path, ok := m.textSavePath(t, saveAs)
-	if !ok {
-		return false
-	}
-	if err := t.doc.save(path, t.source.text.String(), m.documentHistory()); err != nil {
-		m.fail(fmt.Errorf("保存 %s 失败\n%w", path, err))
-		return false
-	}
-	m.rememberPath(path, false)
-	if t.html.view != nil {
-		m.refreshHTML(t)
-	}
-	m.status, t.source.focus = "已保存 "+filepath.Base(path), true
-	return true
+	return m.saveTextTabWithCallback(t, saveAs, nil)
 }
 
 func (m *editorApp) openFolder() {
@@ -849,6 +841,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		}
 		m.queueHTMLPreview(t)
 	}
+	m.watchFiles = true
 	width, height := 1440, 900
 	var origin *gfx.Point
 	if m.windowFrame.Width >= 900 && m.windowFrame.Height >= 560 {
@@ -864,6 +857,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		OnFileDrop:  m.dropFiles,
 		OnWake:      m.openDroppedFiles,
 		OnActivate: func() {
+			m.checkFiles = true
 			if m.desktop != nil && !m.nativeWindow.Hidden() {
 				m.desktop.lastActive = m
 			}
@@ -1040,7 +1034,7 @@ func (m *editorApp) interactionBlocked() bool {
 }
 
 func (m *editorApp) otherInteractionsBlocked() bool {
-	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
+	return m.comparePicker != nil || m.workflow != nil || m.directorySearch != nil && m.directorySearch.open || m.palette != nil || m.savingAll || m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
 		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
@@ -1098,6 +1092,14 @@ func (m *editorApp) releaseWindowState() {
 	state := m.snapshotSession()
 	m.closedSession = &state
 	m.windowClosed = true
+	m.closeFileWatches()
+	m.stopMacroRecording()
+	if m.workflow != nil && m.workflow.cancel != nil {
+		m.workflow.cancel()
+	}
+	m.workflow, m.comparePicker, m.lastMacro = nil, nil, nil
+	m.closedTabs, m.palette = nil, nil
+	m.directorySearch, m.textOpens = nil, nil
 	m.closeHistoryComparison()
 	m.droppedPaths = nil
 	for len(m.tools.terminals) > 0 {

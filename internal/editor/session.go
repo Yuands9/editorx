@@ -36,6 +36,7 @@ type paneSession struct {
 	Collapsed map[int]bool
 }
 type tabSession struct {
+	FormatDirty                bool `json:",omitempty"`
 	Name, Path, Saved, EOL     string
 	DisplayName                string `json:",omitempty"`
 	LanguageOverride           string `json:",omitempty"`
@@ -247,7 +248,7 @@ func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowS
 		if tab.format() == "JSON" && tab.resultReady {
 			tab.updateResult()
 		}
-		item := tabSession{Name: tab.name, DisplayName: tab.displayName, LanguageOverride: tab.languageOverride, Path: tab.doc.path, Saved: tab.doc.saved, EOL: tab.doc.eol, BOM: tab.doc.bom, Encoding: tab.doc.encoding, DiskHash: tab.doc.diskHash,
+		item := tabSession{FormatDirty: tab.doc.formatDirty, Name: tab.name, DisplayName: tab.displayName, LanguageOverride: tab.languageOverride, Path: tab.doc.path, Saved: tab.doc.saved, EOL: tab.doc.eol, BOM: tab.doc.bom, Encoding: tab.doc.encoding, DiskHash: tab.doc.diskHash,
 			Picture: tab.picture != nil, Pinned: tab.pinned, Source: snapshotPane(tab.source), Comparison: snapshotPane(tab.comparison), Result: snapshotPane(tab.result),
 			SplitPos: tab.split.Pos, SplitRatio: tab.split.Ratio, JSONAction: tab.jsonAction, JSONCompare: tab.jsonCompare, JSONDiffRatio: tab.diffSplit.Ratio,
 			MarkdownMode: tab.markdownMode, HTMLMode: tab.htmlMode, MarkdownOffset: tab.markdown.Offset, HTMLScroll: tab.html.scroll, OutlineCollapsed: maps.Clone(tab.outlineCollapsed), SyncScroll: tab.scroll.enabled,
@@ -348,10 +349,10 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 		if item.SavedMatchesSource {
 			item.Saved = item.Source.Content
 		}
-		doc := document{path: item.Path, saved: item.Saved, eol: item.EOL, bom: item.BOM, encoding: item.Encoding, diskHash: item.DiskHash}
+		doc := document{formatDirty: item.FormatDirty, path: item.Path, saved: item.Saved, eol: item.EOL, bom: item.BOM, encoding: item.Encoding, diskHash: item.DiskHash}
 		previewKind := previewFormat(item.Path)
 		if item.LargeTextPage != nil || previewKind == "" && !item.Picture && item.Office == nil &&
-			item.Source.Content == item.Saved && largeTextFile(item.Path) {
+			!item.FormatDirty && item.Source.Content == item.Saved && largeTextFile(item.Path) {
 			index := int64(0)
 			if item.LargeTextPage != nil {
 				index = *item.LargeTextPage
@@ -374,7 +375,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 				continue
 			}
 		}
-		if item.Path != "" && previewKind == "" && !item.Picture && item.Office == nil && item.Source.Content == item.Saved {
+		if item.Path != "" && previewKind == "" && !item.Picture && item.Office == nil && !item.FormatDirty && item.Source.Content == item.Saved {
 			if current, err := readDocumentAs(item.Path, item.Encoding); err == nil {
 				doc = current
 				item.Source.Content = current.saved

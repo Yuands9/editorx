@@ -323,6 +323,9 @@ func TestFolderNavigationAndMarkdownOutline(t *testing.T) {
 	if err := s.ClickLabel("主菜单"); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.ClickLabel("menuitem:文件与标签"); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.ClickLabel("添加项目…"); err != nil {
 		t.Fatal(err)
 	}
@@ -705,6 +708,9 @@ func TestMainMenuSaveAndTabContextMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.ClickLabel("主菜单"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClickLabel("menuitem:文件与标签"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ClickLabel("另存为…"); err != nil {

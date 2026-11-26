@@ -13,6 +13,7 @@ import (
 )
 
 type largeTextView struct {
+	following          bool
 	index, size, start int64
 	file               os.FileInfo
 	lines              largeLineIndex
@@ -84,6 +85,7 @@ func (t *editorTab) applyLargeTextPage(page largeTextPage) {
 
 func (t *editorTab) moveLargeText(index int64, bottom bool) {
 	state := t.largeText
+	state.following = false
 	state.found, state.search, state.selectedResult = -1, nil, -1
 	page, err := readLargeTextPage(t.doc.path, index, -1, "", t.doc.encoding)
 	if err != nil {
@@ -99,6 +101,7 @@ func (t *editorTab) moveLargeText(index int64, bottom bool) {
 
 func (t *editorTab) stepLargeText(direction int64, fromEdge bool) bool {
 	state := t.largeText
+	state.following = false
 	index := state.index + direction
 	if state.edit != nil || index < 0 || index >= largeTextPageCount(state.size) {
 		return false
@@ -183,6 +186,7 @@ func (t *editorTab) largeTextKey(event gfx.KeyEvent) gfx.EventResult {
 
 func (t *editorTab) findInLargeText(direction int) {
 	state := t.largeText
+	state.following = false
 	if state.busyEditing() {
 		return
 	}
@@ -254,6 +258,7 @@ func (t *editorTab) markLargeTextMatches() {
 
 func (t *editorTab) findAllLargeText() {
 	state := t.largeText
+	state.following = false
 	if state.busyEditing() {
 		return
 	}
@@ -293,7 +298,7 @@ func (m *editorApp) updateLargeFindAll(c ui.C, tab *editorTab) {
 
 func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 	state := tab.largeText
-	if state.editing == nil && state.edit == nil && state.file != nil && state.lines.file == nil && state.indexing == nil && state.indexError == "" {
+	if !state.following && state.editing == nil && state.edit == nil && state.file != nil && state.lines.file == nil && state.indexing == nil && state.indexError == "" {
 		path, enc := tab.doc.path, tab.doc.encoding
 		state.indexing = ui.NewEffect[largeLineIndex, int](func(ctx context.Context) (largeLineIndex, error) {
 			return indexLargeText(ctx, path, enc)
@@ -355,7 +360,11 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 		m.largeEditToolbar(c.Part("navigation"), tab, disabled)
 	} else {
 		ui.Row(c.Part("navigation")).FillWidth().Height(40).PadX(12).Gap(5).Items(ui.Center).Children(func() {
-			ui.Text(c, "大文件浏览").Bold().FontSize(13)
+			heading := "大文件浏览"
+			if state.following {
+				heading = "日志跟随"
+			}
+			ui.Text(c, heading).Bold().FontSize(13)
 			ui.Text(c, fmt.Sprintf("%d / %d 页", state.index+1, total)).Muted().FontSize(12).MarginX(5)
 			if ui.Button(c, "上一页").Ghost().FontSize(12).Height(28).Disabled(disabled || state.index == 0).Clicked() {
 				c.After(func() { tab.stepLargeText(-1, false) })
@@ -373,12 +382,19 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			if ui.Button(c, "查找").Icon(searchIcon).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(tab.openSearch)
 			}
+			followLabel := "跟随日志"
+			if state.following {
+				followLabel = "暂停跟随"
+			}
+			if ui.Button(c, followLabel).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+				c.After(func() { m.toggleLogFollow(tab) })
+			}
 			label := "打开完整编辑"
 			if state.edit != nil {
 				label = "正在打开…"
 			}
 			if ui.Button(c, label).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
-				c.After(func() { m.startLargeTextEdit(tab, tab.doc.encoding) })
+				c.After(func() { state.following = false; m.startLargeTextEdit(tab, tab.doc.encoding) })
 			}
 			if state.editSession.hasChanges() &&
 				ui.Button(c, "导出未保存改动…").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {

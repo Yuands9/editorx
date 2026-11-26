@@ -418,6 +418,9 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 						}
 						menu.Separator()
 					}
+					if node.directory && menu.Item("在此目录中查找…").Icon(searchIcon).Clicked() {
+						place.After(func() { m.openDirectorySearch(node.path) })
+					}
 					if (node.directory || aiTextPath(node.path)) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 						place.After(func() { m.openAIAt(nil, node.path, node.directory) })
 					}
@@ -492,6 +495,9 @@ func (m *editorApp) projectRow(c ui.C, rowID gfx.ID, root *fileNode, blocked boo
 func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 	menu.WidthRange(180, 290)
 	menu.Label(root.name)
+	if m.shortcutMenu(menu.Item("在此目录中查找…").Icon(searchIcon), shortcutDirectorySearch).Clicked() {
+		c.After(func() { m.openDirectorySearch(root.path) })
+	}
 	m.projectCreateActions(c, menu, root.path)
 	menu.Separator()
 	if menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {

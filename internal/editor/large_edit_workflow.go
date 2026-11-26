@@ -407,7 +407,7 @@ func (m *editorApp) exportLargeEditDraft(t *editorTab) {
 
 func (m *editorApp) largeEditOperationPending() bool {
 	for _, t := range m.tabs {
-		if t.largeText != nil && t.largeText.saving != nil {
+		if t.savingText != nil || t.largeText != nil && t.largeText.saving != nil {
 			m.status = "请等待大文件保存完成"
 			return true
 		}

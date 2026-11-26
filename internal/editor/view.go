@@ -31,6 +31,9 @@ func (m *editorApp) workspacePanel(c ui.C) ui.Box {
 }
 
 func (m *editorApp) page(c ui.C) {
+	m.updateTextIO(c.Part("document-io"))
+	m.updateFileWatches(c.Part("file-watch"))
+	m.checkMacroRecording()
 	m.backupProgress(c.Part("backup"))
 	m.updateProgress()
 	m.browserUpdate(c)
@@ -45,6 +48,10 @@ func (m *editorApp) page(c ui.C) {
 	m.updateImageAI(c.Part("image-ai-job"))
 	var afterLargeSaves []func()
 	for _, tab := range m.tabs {
+		if tab == m.active && tab.format() == "JSON" {
+			tab.updateResult()
+		}
+		tab.updateJSONPreview(c.Part("json-preview").KeyInt(tab.id))
 		jobs := c.Part("large-file").KeyInt(tab.id)
 		if after := m.updateLargeTextEdit(jobs, tab); after != nil {
 			afterLargeSaves = append(afterLargeSaves, after)
@@ -102,6 +109,10 @@ func (m *editorApp) page(c ui.C) {
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
 	m.fileFormatDialog(c.Part("file-format-dialog"))
 	m.exitConfirmationDialog(c.Part("exit-confirmation"))
+	m.navigationPaletteDialog(c.Part("navigation-palette"))
+	m.directorySearchDialog(c.Part("directory-search"))
+	m.textCompareDialog(c.Part("compare-picker"))
+	m.workflowDialogView(c.Part("workflow"))
 	m.dialogs(c)
 }
 
@@ -178,6 +189,8 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 							})
 							return
 						}
+						m.fileChangeBar(c.Part("disk-change"), t, blocked)
+						m.macroRecordingBar(c.Part("macro-recording"), t)
 						m.documentHeader(c, t, blocked)
 						m.searchView(c, t, blocked)
 						m.documentPanes(c.Part("document-panes"), t, blocked)
@@ -378,110 +391,6 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 	})
 }
 
-func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
-	button := ui.Button(c, "主菜单").Icon(menuIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip("主菜单").Disabled(blocked)
-	if button.Clicked() {
-		m.fileMenu = !m.fileMenu
-	}
-	ui.Menu(c, button, &m.fileMenu, func(menu *ui.MenuItems) {
-		menu.WidthRange(264, 300)
-		menu.RowHeight(32)
-		menu.Label(applicationName)
-		if m.shortcutMenu(menu.Item("新建").Icon(plusIcon), shortcutNewFile).Clicked() {
-			c.After(m.newDocument)
-		}
-		menu.Sub("新建格式与模板", func(items *ui.MenuItems) { m.newFileOptions(c, items) })
-		if m.shortcutMenu(menu.Item("新建窗口"), shortcutNewWindow).Disabled(m.newWindow == nil).Clicked() {
-			c.After(m.newWindow)
-		}
-		if m.shortcutMenu(menu.Item("打开…").Icon(fileIcon), shortcutOpenFile).Clicked() {
-			c.After(m.open)
-		}
-		menu.Sub("按编码打开", func(items *ui.MenuItems) {
-			for _, enc := range textEncodings {
-				if items.Item(string(enc)).Clicked() {
-					c.After(func() { m.openWithEncoding(enc) })
-				}
-			}
-		})
-		if m.shortcutMenu(menu.Item("打开链接文件…").Icon(linkIcon), shortcutOpenLink).Clicked() {
-			c.After(m.openLinkedFileDialog)
-		}
-		if m.shortcutMenu(menu.Item("添加项目…").Icon(folderIcon), shortcutOpenProject).Clicked() {
-			c.After(m.openFolder)
-		}
-		if menu.Item("最近打开…").Disabled(m.store == nil || len(m.store.history) == 0).Clicked() {
-			m.showHistory = true
-		}
-		menu.Separator()
-		if menu.Item("密码本").Icon(passwordVaultIcon).Clicked() {
-			c.After(m.openPasswordVault)
-		}
-		if m.vaultActive() {
-			if menu.Item("关闭密码本").Icon(closeIcon).Clicked() {
-				c.After(m.closePasswordVault)
-			}
-			if menu.Item("设置").Icon(settingsIcon).Clicked() {
-				c.After(m.openApplicationSettings)
-			}
-			return
-		}
-		if m.translationEnabled {
-			if menu.Item("翻译").Icon(translationIcon).Checked(m.translation != nil).Clicked() {
-				c.After(m.toggleTranslation)
-			}
-			if menu.Item("翻译选区…").Disabled(!editableTextSource(t)).Clicked() {
-				c.After(func() { m.openTranslation(true) })
-			}
-		}
-		if t != nil {
-			if m.shortcutMenu(menu.Item("保存").Disabled(t.readOnlyPreview()), shortcutSave).Clicked() {
-				c.After(func() { m.saveTab(t, false) })
-			}
-			if m.shortcutMenu(menu.Item("另存为…").Disabled(t.readOnlyPreview()), shortcutSaveAs).Clicked() {
-				c.After(func() { m.saveTab(t, true) })
-			}
-			if m.shortcutMenu(menu.Item("关闭当前标签"), shortcutCloseTab).Clicked() {
-				c.After(func() { m.closeTab(t) })
-			}
-			if menu.Item("插入模板…").Disabled(!editableTextSource(t)).Clicked() {
-				c.After(func() { m.openTemplatePicker("", true) })
-			}
-			m.templateSaveActions(c, menu, t)
-			menu.Separator()
-			if menu.Item("搜索结果").Disabled(m.results.query == "").Clicked() {
-				m.results.open = true
-			}
-			if m.shortcutMenu(menu.Item("搜索内容").Disabled(!t.canFind()), shortcutFind).Clicked() {
-				c.After(t.openSearch)
-			}
-			if m.shortcutMenu(menu.Item("替换内容").Disabled(!t.canReplace()), shortcutReplace).Clicked() {
-				c.After(t.openReplace)
-			}
-			menu.Sub("文本操作", func(items *ui.MenuItems) { m.textActions(c, items, t) })
-		} else if menu.Item("AI 助手").Icon(aiIcon).Checked(m.ai.open).Clicked() {
-			c.After(m.toggleAIPanel)
-		}
-		menu.Separator()
-		if m.shortcutMenu(menu.Item("Git").Icon(gitBranchIcon), shortcutGit).Checked(m.tools.active == "Git").Clicked() {
-			c.After(func() { m.useTool("Git") })
-		}
-		if m.shortcutMenu(menu.Item("本地终端").Icon(shellIcon), shortcutTerminal).Checked(m.tools.active == "终端").Clicked() {
-			c.After(func() { m.useTool("终端") })
-		}
-		if t != nil && m.shortcutMenu(menu.Item("自动折行").Disabled(t.readOnlyPreview() || t.office != nil).Checked(t.source.view.Snapshot.Wrap), shortcutWrap).Clicked() {
-			t.toggleWrap()
-		}
-		menu.Separator()
-		if m.shortcutMenu(menu.Item("设置").Icon(settingsIcon), shortcutOpenSettings).Clicked() {
-			c.After(m.openApplicationSettings)
-		}
-		if m.desktop != nil && menu.Item("退出 EditorX").Clicked() {
-			c.After(m.desktop.quit)
-		}
-	})
-}
-
 func (m *editorApp) fileAppearance(name string) (gfx.Icon, gfx.Color) {
 	if isImageFile(name) {
 		return imageIcon, m.theme.Ring
@@ -589,10 +498,10 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 	format := t.format()
 	showTranslation := t.showingDocumentTranslation()
-	if format != "JSON" && format != "Markdown" && format != "HTML" {
+	if format != "Markdown" && format != "HTML" {
 		return
 	}
-	ui.Row(c).FillWidth().Height(38).PadX(16).Gap(6).Items(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Height(34).PadX(10).Gap(4).Items(ui.Center).Children(func() {
 		if format == "Markdown" && !showTranslation {
 			label := "展开大纲"
 			if m.showOutline {
@@ -809,7 +718,7 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 		ui.Text(c, fmt.Sprintf("%d 个文件", len(m.tabs))).Muted().FontSize(12)
 		ui.Text(c, fmt.Sprintf("行 %d，列 %d", line, column)).Muted().FontSize(12)
 		m.encodingPicker(c, t, blocked)
-		ui.Text(c, t.doc.eol).Muted().FontSize(12)
+		m.eolPicker(c, t, blocked)
 		m.languagePicker(c, t, blocked)
 	})
 }

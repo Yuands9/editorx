@@ -43,6 +43,7 @@ func TestEditorShortcutRebinding(t *testing.T) {
 	}
 	click("button:设置")
 	click("button:快捷键")
+	check(s.Scroll(gfx.ScrollEvent{X: 900, Y: 550, DeltaY: 600, Precise: true}))
 	click("button:Ctrl+R")
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
 		check(s.Screenshot(filepath.Join(preview, "shortcut-capture.png")))
@@ -96,6 +97,7 @@ func TestEditorShortcutRebinding(t *testing.T) {
 
 	click("button:设置")
 	click("button:快捷键")
+	check(s.Scroll(gfx.ScrollEvent{X: 900, Y: 550, DeltaY: -3000, Precise: true}))
 	click("恢复默认快捷键")
 	saved, err = readApplicationPreferences(store.directory)
 	check(err)

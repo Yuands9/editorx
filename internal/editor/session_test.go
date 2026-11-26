@@ -295,7 +295,7 @@ func TestRecentHistoryOpenRemoveAndPersist(t *testing.T) {
 	if _, err := s.Locate("最近打开文件"); err == nil {
 		t.Fatal("recent card covers nonempty document")
 	}
-	for _, label := range []string{"主菜单", "最近打开…", "打开历史 " + b} {
+	for _, label := range []string{"主菜单", "menuitem:文件与标签", "最近打开…", "打开历史 " + b} {
 		if err := s.ClickLabel(label); err != nil {
 			t.Fatal(err)
 		}
@@ -303,7 +303,7 @@ func TestRecentHistoryOpenRemoveAndPersist(t *testing.T) {
 	if m.active.doc.path != b || m.showHistory {
 		t.Fatal("history did not open file")
 	}
-	for _, label := range []string{"主菜单", "最近打开…", "移除历史 " + a, "关闭历史"} {
+	for _, label := range []string{"主菜单", "menuitem:文件与标签", "最近打开…", "移除历史 " + a, "关闭历史"} {
 		if err := s.ClickLabel(label); err != nil {
 			t.Fatal(err)
 		}
