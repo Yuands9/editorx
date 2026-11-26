@@ -1,0 +1,238 @@
+diff --git a/vendor/github.com/vivaui/viva/app/painter.go b/vendor/github.com/vivaui/viva/app/painter.go
+index a3dd2e7..baa0bbf 100644
+--- a/vendor/github.com/vivaui/viva/app/painter.go
++++ b/vendor/github.com/vivaui/viva/app/painter.go
+@@ -419,6 +419,12 @@ func (painter *painter) placeCaret(event platform.PointerEvent) bool {
+ 		selection.Selection.Start = index
+ 		painter.placeUnit, painter.placeUnitRange = 0, text.Range{}
+ 		switch {
++		case gfx.Modifiers(event.Modifiers)&gfx.ModifierShift != 0:
++			painter.placeAnchor = input.State.Selection.Start
++			if input.State.SelectionReversed {
++				painter.placeAnchor = input.State.Selection.End
++			}
++			selection.Selection.Start = painter.placeAnchor
+ 		case event.ClickCount >= 3:
+ 			painter.placeUnit, painter.placeUnitRange = 3, text.LineRange(value, index)
+ 		case event.ClickCount == 2:
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
+index c07349a..722c5b8 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/drop_windows.go
+@@ -242,23 +242,22 @@ func (state *windowState) acceptFiles() {
+ 	if state.config.OnFileDrop == nil {
+ 		return
+ 	}
++	// Some shell sources use WM_DROPFILES even when the window has an OLE target.
++	dragAcceptFiles.Call(state.window, 1)
+ 	if !elevated() && state.registerDropTarget() {
+ 		return
+ 	}
+-	state.acceptDropMessages()
++	state.allowDropMessages()
+ }
+ 
+-// acceptDropMessages makes the window take files as WM_DROPFILES, which carries
+-// the drop alone. The message filter lets a drop through from an Explorer running
+-// at a lower integrity level than an elevated application, which Windows blocks
+-// otherwise.
+-func (state *windowState) acceptDropMessages() {
++// allowDropMessages lets the legacy drop messages reach an elevated window
++// from an Explorer running at a lower integrity level.
++func (state *windowState) allowDropMessages() {
+ 	if changeWindowMsgFilter.Find() == nil {
+ 		changeWindowMsgFilter.Call(state.window, wmDropFiles, msgfltAllow, 0)
+ 		changeWindowMsgFilter.Call(state.window, wmCopyGlobal, msgfltAllow, 0)
+ 		changeWindowMsgFilter.Call(state.window, wmCopyData, msgfltAllow, 0)
+ 	}
+-	dragAcceptFiles.Call(state.window, 1)
+ }
+ 
+ // registerDropTarget registers the window's IDropTarget, and reports whether OLE
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go
+index b5cbb96..b3cacc2 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/web_drop_windows.go
+@@ -9,11 +9,17 @@ import (
+ 
+ const webFileDropMessage = "__viva_file_drop__"
+ 
+-// WebView2 is a child window with its own drop target. Only forward files from a native
+-// drop on its main frame, leaving text selection and internal dragging to the page.
++// WebView2 is a child window with its own drop target. The main frame receives
++// native file drops, including drops over same-origin frames.
+ const webFileDropScript = `(() => {
+-	if (window !== window.top || typeof chrome.webview.postMessageWithAdditionalObjects !== 'function') return;
+-	const postFiles = chrome.webview.postMessageWithAdditionalObjects.bind(chrome.webview);
++	let webview;
++	try {
++		webview = window.top.chrome?.webview;
++	} catch {
++		return;
++	}
++	if (typeof webview?.postMessageWithAdditionalObjects !== 'function') return;
++	const postFiles = webview.postMessageWithAdditionalObjects.bind(webview);
+ 	const isFileDrag = event => event.isTrusted && event.dataTransfer?.types.includes('Files');
+ 	window.addEventListener('dragover', event => {
+ 		if (!isFileDrag(event)) return;
+@@ -24,7 +30,7 @@ const webFileDropScript = `(() => {
+ 		if (!isFileDrag(event)) return;
+ 		event.preventDefault();
+ 		event.stopImmediatePropagation();
+-		postFiles("` + webFileDropMessage + `", Array.from(event.dataTransfer.files));
++		postFiles("` + webFileDropMessage + `", event.dataTransfer.files);
+ 	}, true);
+ })();`
+ 
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
+index 953715f..4cce50d 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/window_windows.go
+@@ -44,6 +44,8 @@ const (
+ 	wmIMERequest       = 0x0288
+ 	wmTimer            = 275
+ 	mkLButton          = 1
++	mkShift            = 4
++	mkControl          = 8
+ 	mkAnyButton        = 0x73 // MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_XBUTTON1 and MK_XBUTTON2
+ 	wmMouseMove        = 512
+ 	wmLeftDown         = 513
+@@ -904,8 +906,15 @@ func windowProc(window, kind, first, second uintptr) (result uintptr) {
+ 		}
+ 		screen := point{X: int32(int16(second)), Y: int32(int16(second >> 16))}
+ 		clientToScreen.Call(window, uintptr(unsafe.Pointer(&screen)))
++		mods := modifiers() &^ (input.ModifierShift | input.ModifierControl)
++		if first&mkShift != 0 {
++			mods |= input.ModifierShift
++		}
++		if first&mkControl != 0 {
++			mods |= input.ModifierControl
++		}
+ 		pointerEvent := platform.PointerEvent{
+-			Kind: eventKind, Button: button, Modifiers: modifiers(), X: x, Y: y,
++			Kind: eventKind, Button: button, Modifiers: mods, X: x, Y: y,
+ 			ScreenX: float32(screen.X) / state.scale, ScreenY: float32(screen.Y) / state.scale, ClickCount: count,
+ 		}
+ 		if state.config.OnPointer != nil {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/file_drop_windows_test.go b/vendor/github.com/vivaui/viva/internal/platform/windows/file_drop_windows_test.go
+new file mode 100644
+index 0000000..c410325
+--- /dev/null
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/file_drop_windows_test.go
+@@ -0,0 +1,116 @@
++package windows
++
++import (
++	"encoding/json"
++	"fmt"
++	"os"
++	"path/filepath"
++	"runtime"
++	"slices"
++	"testing"
++	"time"
++	"unsafe"
++
++	"github.com/vivaui/viva/gfx"
++	"github.com/vivaui/viva/internal/platform"
++)
++
++func TestNativeFileDrop(t *testing.T) {
++	if os.Getenv("VIVA_NATIVE_SMOKE") != "1" {
++		t.Skip("native Windows file drop is opt-in")
++	}
++	directory := t.TempDir()
++	t.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
++	path := filepath.Join(directory, "拖放 测试.txt")
++	if err := os.WriteFile(path, []byte("file drop"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	runtime.LockOSThread()
++	defer runtime.UnlockOSThread()
++	var received int
++	var failure error
++	var timeout *time.Timer
++	err := RunApplication(func(application platform.Application) error {
++		finish := func(err error) {
++			if failure == nil {
++				failure = err
++			}
++			application.Quit()
++		}
++		window, err := application.OpenWindow(platform.Config{
++			Title: "EditorX drop test", Width: 900, Height: 560, Web: &platform.WebHost{},
++			NativeViews: []platform.NativeView{{ID: 1, Bounds: gfx.Rect{X: 400, Y: 80, Width: 380, Height: 350}}},
++			OnFileDrop: func(event platform.FileDropEvent) (platform.Frame, bool, error) {
++				if event.Phase == platform.FileDropDrop {
++					received++
++					if !slices.Equal(event.Paths, []string{path}) {
++						finish(fmt.Errorf("unexpected dropped paths: %v", event.Paths))
++					} else if received == 2 {
++						finish(nil)
++					}
++				}
++				return platform.Frame{}, true, nil
++			},
++		})
++		if err != nil {
++			return err
++		}
++		state := window.(*nativeWindow).state
++		style, _, _ := readCompositionWindowStyle.Call(state.window, ^uintptr(19)) // GWL_EXSTYLE
++		if style&0x10 == 0 {                                                       // WS_EX_ACCEPTFILES
++			return fmt.Errorf("window did not register for WM_DROPFILES")
++		}
++		drop := platform.DropFilesBytes([]string{path})
++		handle, _, err := globalAlloc.Call(globalMoveable, uintptr(len(drop)))
++		if handle == 0 {
++			return err
++		}
++		address, _, err := globalLock.Call(handle)
++		if address == 0 {
++			globalFree.Call(handle)
++			return err
++		}
++		copy(unsafe.Slice((*byte)(pointer(address)), len(drop)), drop)
++		globalUnlock.Call(handle)
++		windowProc(state.window, wmDropFiles, handle, 0) // the receiver frees the drop handle
++
++		loaded := false
++		_, err = state.web.open(platform.WebViewConfig{ID: 1,
++			HTML: `<!doctype html><iframe style="width:100%;height:300px" srcdoc="File drop target"></iframe>`,
++			OnLoad: func(event platform.WebLoad) {
++				if event.Phase != platform.WebLoadFinished || loaded {
++					return
++				}
++				loaded = true
++				application.Post(func() {
++					page := state.web.pages[1]
++					for _, phase := range []string{"dragEnter", "dragOver", "drop"} {
++						data, _ := json.Marshal(map[string]any{"type": phase, "x": 100, "y": 100,
++							"data": map[string]any{"items": []string{}, "files": []string{path}, "dragOperationsMask": 1}})
++						handler := newHandler(func(status, _ uintptr) uintptr {
++							if err := hresult(status); err != nil {
++								finish(err)
++							}
++							return 0
++						})
++						status := comCall(page.view, 36, uintptr(unsafe.Pointer(wide("Input.dispatchDragEvent"))),
++							uintptr(unsafe.Pointer(wide(string(data)))), handler) // CallDevToolsProtocolMethod
++						comCall(handler, 2)
++						if err := hresult(status); err != nil {
++							finish(err)
++							break
++						}
++					}
++				})
++			},
++		})
++		timeout = time.AfterFunc(12*time.Second, application.Quit)
++		return err
++	})
++	if timeout != nil {
++		timeout.Stop()
++	}
++	if err != nil || failure != nil || received != 2 {
++		t.Fatalf("expected WM_DROPFILES and an embedded WebView2 file drop, received %d: %v, %v", received, err, failure)
++	}
++}

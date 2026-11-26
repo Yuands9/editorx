@@ -12,10 +12,12 @@ import (
 type editorDesktop struct {
 	application          *app.Application
 	store                *sessionStore
+	dataLocation         editorDataLocation
 	preferences          applicationPreferences
 	tray                 *app.StatusItem
 	lastActive           *editorApp
 	exiting              bool
+	restart              bool
 	updateFile           string
 	updated              installedEditorUpdate
 	update               editorUpdateState
@@ -244,7 +246,7 @@ func (d *editorDesktop) flushForExit(index int) {
 }
 
 func (d *editorDesktop) cancelExit(window *editorApp, err error) {
-	d.exiting, d.updateFile = false, ""
+	d.exiting, d.restart, d.updateFile = false, false, ""
 	if window != nil && !window.nativeWindow.Closed() {
 		d.lastActive = window
 	}

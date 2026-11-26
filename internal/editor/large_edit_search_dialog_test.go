@@ -151,10 +151,11 @@ func TestLargeEditFloatingFindAndReplace(t *testing.T) {
 		t.Fatal("multi-document regex replacement did not preserve captures, EOL or the bounded viewport")
 	}
 	check(s.Driver().Key(gfx.KeyEscape, 0))
-	pane, err := s.Locate("大文件内容")
+	pane, err := s.Locate("textfield:大文件内容")
 	check(err)
 	if tab.search.open || s.Driver().Snapshot().Focused != pane.ID {
-		t.Fatalf("Escape did not return focus to the document: open=%t, focus=%v", tab.search.open, s.Driver().Snapshot().Focused)
+		t.Fatalf("Escape did not return focus to the document: open=%t, focus=%v, pane=%v, focused=%t",
+			tab.search.open, s.Driver().Snapshot().Focused, pane.ID, tab.source.focused)
 	}
 	if !ordinary.source.text.Undo() || ordinary.source.text.String() != "CAT\ncat\n" {
 		t.Fatal("ordinary file replacement did not undo")

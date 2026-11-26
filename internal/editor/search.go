@@ -141,7 +141,9 @@ func (t *editorTab) canSearchText() bool {
 
 func (t *editorTab) canFind() bool { return t.largeText != nil || t.canSearchText() }
 
-func (t *editorTab) openSearch() {
+func (t *editorTab) openSearch() { t.openSearchIn(nil) }
+
+func (t *editorTab) openSearchIn(pane *editorPane) {
 	if state := t.largeText; state != nil && state.editing == nil {
 		if !state.searchOpen {
 			selection := t.source.text.Selection()
@@ -156,23 +158,25 @@ func (t *editorTab) openSearch() {
 		state.searchOpen, state.focus = true, true
 		return
 	}
-	t.showSearch(false)
+	t.showSearch(false, pane)
 }
 
 func (t *editorTab) openReplace() {
 	if t.canReplace() {
-		t.showSearch(true)
+		t.showSearch(true, nil)
 	}
 }
 
-func (t *editorTab) showSearch(replacing bool) {
+func (t *editorTab) showSearch(replacing bool, pane *editorPane) {
 	large := t.hasLargeEdit()
 	if !t.canSearchText() && !large {
 		return
 	}
 	s := &t.search
 	target := t.source
-	if !replacing && !large {
+	if pane != nil && t.searchPaneVisible(pane) {
+		target = pane
+	} else if !replacing && !large {
 		if s.open && t.searchPaneVisible(s.target) {
 			target = s.target
 		}
@@ -186,7 +190,7 @@ func (t *editorTab) showSearch(replacing bool) {
 	target.text.CancelComposition()
 	s.query.CancelComposition()
 	s.replacement.CancelComposition()
-	if !s.open || target.focused {
+	if !s.open || target.focused || target == pane {
 		var selected string
 		if large {
 			selected = largeEditSearchSelection(t)

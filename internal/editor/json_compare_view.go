@@ -75,7 +75,10 @@ func (m *editorApp) jsonDiffEditor(c ui.C, t *editorTab, pane *editorPane, block
 			}
 		}
 	})
-	pane.declare(c, editorLabel, !blocked).FillWidth().Grow(1)
+	box := pane.declare(c, editorLabel, !blocked).FillWidth().Grow(1)
+	if !blocked {
+		m.editorContextMenu(c, box, t, pane)
+	}
 }
 
 func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *bool, side string, blocked bool) {

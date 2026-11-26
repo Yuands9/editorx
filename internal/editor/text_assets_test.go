@@ -163,12 +163,10 @@ func TestSelectionTranslationAIThroughUI(t *testing.T) {
 	const original = "Only for the local editor.\n" + source + "\nAnother private line."
 	m := newEditorApp()
 	m.dataDirectory = t.TempDir()
-	m.translationEnabled = true
 	tab := m.addTab(document{saved: original, eol: "LF"}, "messages.txt")
 	editor := tab.source.text
 	selection := text.Range{Start: editor.RuneIndex(strings.Index(original, source))}
 	selection.End = selection.Start + len(source)
-	editor.SetSelection(selection)
 	s := openTestSession(t, m)
 	check := func(err error) {
 		t.Helper()
@@ -177,18 +175,25 @@ func TestSelectionTranslationAIThroughUI(t *testing.T) {
 		}
 	}
 	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
+	click("textfield:代码编辑区")
+	for _, key := range []string{"ctrl+home", "down", "home", "shift+end"} {
+		check(s.Keys(key))
+	}
+	if got := editor.Selection(); got != selection {
+		t.Fatalf("Shift+End selected %+v, wanted %+v", got, selection)
+	}
 	check(s.RightClickLabel("textfield:代码编辑区"))
-	click("menuitem:翻译选区…")
+	click("menuitem:去翻译")
 	state := m.translation
-	if state == nil || state.target.selected != source || state.request != nil || state.output.Text() != "" {
-		t.Fatal("opening translation should look up the selection locally")
+	if state == nil || m.translationEnabled || state.query.Text() != source ||
+		state.target.selected != source || state.localLookup || state.request != nil || state.output.Text() != "" {
+		t.Fatal("Go to Translation should carry the selection without showing the sidebar button or starting a lookup")
 	}
 	click("button:互换语言")
-	if state.querySource != "zh-cn" || state.queryTarget != "en" || state.request != nil {
-		t.Fatal("swapping languages should refresh the local lookup without sending anything")
+	if from, to, err := state.languagePair(); err != nil || from != "zh-cn" || to != "en" || state.request != nil {
+		t.Fatal("swapping languages should update the direction without sending anything")
 	}
 	click("button:互换语言")
-	click("button:离线整句")
 	click("button:AI 翻译")
 	if !state.aiMenu || state.request != nil {
 		t.Fatal("missing AI configuration should show its setup entry")
@@ -259,7 +264,7 @@ func TestSelectionTranslationAIThroughUI(t *testing.T) {
 	if state.output.Text() != translated || !state.hasOutput || state.message != "" || editor.CommittedString() != original {
 		t.Fatalf("the result did not stay in preview: %q, %s", state.output.Text(), state.problem)
 	}
-	if s.HasText("测试翻译服务 · test") || state.mode != translationOfflineMode || state.offline.request != nil {
+	if s.HasText("测试翻译服务 · test") || state.offline != nil {
 		t.Fatal("AI exposed service details in the result or changed the active view")
 	}
 	click("button:保存到库…")
@@ -280,7 +285,6 @@ func TestSelectionTranslationAIThroughUI(t *testing.T) {
 	}
 	editor.SetSelection(selection)
 	check(s.Frame())
-	click("button:本地词库")
 	click("button:查选区")
 	if state.request != nil || state.output.Text() != translated || len(state.suggestions) != 1 {
 		t.Fatal("repeat lookup did not reuse the saved translation locally")
@@ -345,9 +349,8 @@ func TestLocalTranslationThroughUI(t *testing.T) {
 		}
 	}
 	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
-	m.openTranslation(true)
-	if _, err := s.Locate("button:翻译"); err == nil || m.translation != nil || m.translationEnabled {
-		t.Fatal("translation allocated state or displayed its entry before enabling")
+	if _, shown := s.AccessByRole(gfx.RoleButton, "翻译"); shown || m.translation != nil || m.translationEnabled {
+		t.Fatal("the translation sidebar button should be hidden by default")
 	}
 	click("button:设置")
 	click("侧栏")
@@ -429,7 +432,7 @@ func TestLocalTranslationThroughUI(t *testing.T) {
 	click("侧栏")
 	click("switch:翻译")
 	click("关闭设置页")
-	if _, err := s.Locate("button:翻译"); err == nil || m.translation != nil {
+	if _, shown := s.AccessByRole(gfx.RoleButton, "翻译"); shown || m.translation != nil {
 		t.Fatal("disabling the feature did not release the panel and its entry")
 	}
 }

@@ -9,11 +9,17 @@ import (
 
 const webFileDropMessage = "__viva_file_drop__"
 
-// WebView2 is a child window with its own drop target. Only forward files from a native
-// drop on its main frame, leaving text selection and internal dragging to the page.
+// WebView2 is a child window with its own drop target. The main frame receives
+// native file drops, including drops over same-origin frames.
 const webFileDropScript = `(() => {
-	if (window !== window.top || typeof chrome.webview.postMessageWithAdditionalObjects !== 'function') return;
-	const postFiles = chrome.webview.postMessageWithAdditionalObjects.bind(chrome.webview);
+	let webview;
+	try {
+		webview = window.top.chrome?.webview;
+	} catch {
+		return;
+	}
+	if (typeof webview?.postMessageWithAdditionalObjects !== 'function') return;
+	const postFiles = webview.postMessageWithAdditionalObjects.bind(webview);
 	const isFileDrag = event => event.isTrusted && event.dataTransfer?.types.includes('Files');
 	window.addEventListener('dragover', event => {
 		if (!isFileDrag(event)) return;
@@ -24,7 +30,7 @@ const webFileDropScript = `(() => {
 		if (!isFileDrag(event)) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		postFiles("` + webFileDropMessage + `", Array.from(event.dataTransfer.files));
+		postFiles("` + webFileDropMessage + `", event.dataTransfer.files);
 	}, true);
 })();`
 

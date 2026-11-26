@@ -91,6 +91,10 @@ func captureTextTarget(tab *editorTab, requireSelection bool, limit int) (textEd
 	if !editableTextSource(tab) {
 		return textEditTarget{}, errors.New("请先打开可编辑的文本源文件")
 	}
+	return capturePaneTextTarget(tab, requireSelection, limit)
+}
+
+func capturePaneTextTarget(tab *editorTab, requireSelection bool, limit int) (textEditTarget, error) {
 	editor := tab.source.text
 	if _, composing := editor.Composition(); composing {
 		return textEditTarget{}, errors.New("请先完成中文选词")
@@ -111,7 +115,7 @@ func captureTextTarget(tab *editorTab, requireSelection bool, limit int) (textEd
 
 func editableTextSource(tab *editorTab) bool {
 	return aiTextTab(tab) && !tab.comparingJSON() && !tab.source.readOnly &&
-		(tab.format() != "Markdown" || tab.markdownMode != "预览") &&
+		(tab.format() != "Markdown" || tab.markdownMode != "预览" || tab.showingDocumentTranslation()) &&
 		(tab.format() != "HTML" || tab.htmlMode != "预览")
 }
 

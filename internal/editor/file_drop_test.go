@@ -24,6 +24,7 @@ func TestFileDropOpensDocuments(t *testing.T) {
 
 	m := newEditorApp()
 	m.dataDirectory = filepath.Join(directory, "data")
+	m.post = func(func()) { t.Fatal("file drops must wake their window directly") }
 	session := openTestSession(t, m)
 	drop := func(phase gfx.FileDropPhase, paths ...string) bool {
 		t.Helper()
@@ -39,6 +40,12 @@ func TestFileDropOpensDocuments(t *testing.T) {
 	if !drop(gfx.FileDropDrop, text, project, pdf) {
 		t.Fatal("file drop was rejected")
 	}
+	if len(m.tabs) != 0 {
+		t.Fatal("file drop opened a document inside its native callback")
+	}
+	if err := session.Frame(); err != nil {
+		t.Fatal(err)
+	}
 	if len(m.tabs) != 2 || m.tabs[0].source.text.String() != "中文文本" ||
 		m.active == nil || m.active.doc.path != pdf || m.active.preview == nil || m.active.preview.kind != "PDF" ||
 		m.workspace == nil || m.workspace.project(project) == nil {
@@ -47,7 +54,13 @@ func TestFileDropOpensDocuments(t *testing.T) {
 	if err := session.ClickLabel("button:设置"); err != nil {
 		t.Fatal(err)
 	}
-	if !drop(gfx.FileDropDrop, text) || m.appSettings.open || len(m.tabs) != 2 || m.active != m.tabs[0] {
+	if !drop(gfx.FileDropDrop, text) {
+		t.Fatal("drop was rejected in settings")
+	}
+	if err := session.Frame(); err != nil {
+		t.Fatal(err)
+	}
+	if m.appSettings.open || len(m.tabs) != 2 || m.active != m.tabs[0] {
 		t.Fatal("dropping an already-open file did not return to its existing tab")
 	}
 }

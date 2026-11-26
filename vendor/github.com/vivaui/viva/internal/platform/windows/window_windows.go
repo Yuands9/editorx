@@ -44,6 +44,8 @@ const (
 	wmIMERequest       = 0x0288
 	wmTimer            = 275
 	mkLButton          = 1
+	mkShift            = 4
+	mkControl          = 8
 	mkAnyButton        = 0x73 // MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_XBUTTON1 and MK_XBUTTON2
 	wmMouseMove        = 512
 	wmLeftDown         = 513
@@ -904,8 +906,15 @@ func windowProc(window, kind, first, second uintptr) (result uintptr) {
 		}
 		screen := point{X: int32(int16(second)), Y: int32(int16(second >> 16))}
 		clientToScreen.Call(window, uintptr(unsafe.Pointer(&screen)))
+		mods := modifiers() &^ (input.ModifierShift | input.ModifierControl)
+		if first&mkShift != 0 {
+			mods |= input.ModifierShift
+		}
+		if first&mkControl != 0 {
+			mods |= input.ModifierControl
+		}
 		pointerEvent := platform.PointerEvent{
-			Kind: eventKind, Button: button, Modifiers: modifiers(), X: x, Y: y,
+			Kind: eventKind, Button: button, Modifiers: mods, X: x, Y: y,
 			ScreenX: float32(screen.X) / state.scale, ScreenY: float32(screen.Y) / state.scale, ClickCount: count,
 		}
 		if state.config.OnPointer != nil {

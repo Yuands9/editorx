@@ -11,7 +11,7 @@ import (
 
 func (m *editorApp) refreshTranslationDictionary() {
 	state := m.translation
-	state.dictionaryChecked, state.dictionaryBroken = true, false
+	state.dictionaryBroken = false
 	path, err := m.textAssetPath("", dictionaryDirectory)
 	if err != nil {
 		state.dictionary, state.dictionaryProblem = nil, err.Error()
@@ -27,7 +27,7 @@ func (m *editorApp) refreshTranslationDictionary() {
 
 func (m *editorApp) startDictionaryDownload() {
 	state := m.translation
-	if state == nil || !m.translationEnabled || state.download != nil {
+	if state == nil || state.download != nil {
 		return
 	}
 	m.refreshTranslationDictionary()
@@ -59,7 +59,7 @@ func (m *editorApp) updateTranslationDictionary(c ui.C) {
 		return
 	}
 	state.dictionary, state.dictionaryProblem = &info, ""
-	if state.mode == translationLocalMode && state.localLookup && !state.hasOutput && !state.managing && state.draft == nil && state.matchesQuery() {
+	if state.localLookup && !state.hasOutput && !state.managing && state.draft == nil && state.matchesQuery() {
 		m.lookupTypedTranslation()
 	}
 }
@@ -85,12 +85,10 @@ func (m *editorApp) dictionaryDownloadControls(c ui.C, state *translationPanelSt
 				Disabled(blocked || state.translating()).Clicked() {
 				c.After(m.startDictionaryDownload)
 			}
-			if state.managing || !state.hasOutput || !state.matchesQuery() {
-				ui.Text(c, "约 21.7 MiB").Muted().FontSize(12)
-			}
+			ui.Text(c, "约 21.7 MiB").Muted().FontSize(12)
 		})
 	}
-	if state.dictionaryProblem != "" && (state.managing || !state.hasOutput || !state.matchesQuery()) {
+	if state.dictionaryProblem != "" {
 		ui.Wrap(c, state.dictionaryProblem).FillWidth().FontSize(12).Color(m.theme.Danger)
 	}
 }

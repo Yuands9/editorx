@@ -150,36 +150,34 @@ func TestDownloadedDictionaryThroughUI(t *testing.T) {
 		}
 	}
 	if m.translationEnabled || m.translation != nil {
-		t.Fatal("translation should start disabled")
+		t.Fatal("the translation sidebar button should start hidden")
 	}
-	m.openTranslation(false)
-	if m.translation != nil || requests.Load() != 0 {
-		t.Fatal("disabled translation initialized/downloaded resources")
-	}
-	m.translationEnabled = true
 	m.openTranslation(false)
 	check(session.Frame())
 	if requests.Load() != 0 {
 		t.Fatal("opening translation must not download a dictionary")
 	}
-	local, err := session.Locate("button:查找")
+	local, err := session.Locate("button:本地翻译")
 	check(err)
 	ai, err := session.Locate("button:AI 翻译")
 	check(err)
-	download, err := session.Locate("button:下载英汉词库")
-	check(err)
-	if ai.Bounds.Y != local.Bounds.Y || ai.Bounds.X <= local.Bounds.X || download.Bounds.Y <= local.Bounds.Y {
-		t.Fatal("local search, AI, and the inline download are out of order")
+	if ai.Bounds.Y != local.Bounds.Y || ai.Bounds.X >= local.Bounds.X {
+		t.Fatal("AI should be the leading action")
 	}
+	if _, err := session.Locate("button:下载英汉词库"); err == nil {
+		t.Fatal("dictionary downloads should stay in the library manager")
+	}
+	check(session.ClickLabel("button:词库管理"))
 	check(session.ClickLabel("button:下载英汉词库"))
 	check(session.WaitFor(func(app.Snapshot) bool { return m.translation.download == nil }, 2*time.Second))
 	if m.translation.dictionary == nil || requests.Load() != 1 {
 		t.Fatal("dictionary download did not complete", m.translation.dictionaryProblem)
 	}
+	check(session.ClickLabel("button:返回翻译"))
 	state := m.translation
 	state.query.SetText("hello")
 	check(session.Frame())
-	check(session.ClickLabel("button:查找"))
+	check(session.ClickLabel("button:本地翻译"))
 	if state.output.Text() != "你好；喂" || state.target.tab != nil || len(state.suggestions) != 1 {
 		t.Fatalf("typed dictionary lookup = %q, %s", state.output.Text(), state.problem)
 	}
@@ -188,7 +186,7 @@ func TestDownloadedDictionaryThroughUI(t *testing.T) {
 	for _, query := range []string{"HELLO", "hello world", "shellow"} {
 		state.query.SetText(query)
 		check(session.Frame())
-		check(session.ClickLabel("button:查找"))
+		check(session.ClickLabel("button:本地翻译"))
 		switch query {
 		case "HELLO":
 			if state.output.Text() != "你好；喂" || state.suggestions[0].scope != "个人" {
@@ -218,7 +216,7 @@ func TestDownloadedDictionaryThroughUI(t *testing.T) {
 	}
 	state.query.SetText("hello")
 	check(session.Frame())
-	check(session.ClickLabel("button:查找"))
+	check(session.ClickLabel("button:本地翻译"))
 	if state.output.Text() != "你好；喂" || len(state.suggestions) != 1 || state.suggestions[0].scope != "个人" {
 		t.Fatal("removing the downloaded dictionary lost a saved translation")
 	}

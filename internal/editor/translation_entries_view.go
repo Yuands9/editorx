@@ -46,8 +46,8 @@ func (m *editorApp) translationEntriesPreview(c ui.C, state *translationPanelSta
 				m.assetBadge(c, kind+" · "+entry.sourceLang+" → "+entry.targetLang)
 				if ui.Button(c, "使用").Outline().FontSize(12).Disabled(blocked).Clicked() {
 					c.After(func() {
-						m.selectTranslationMode(translationLocalMode)
-						state.target = textEditTarget{}
+						state.managing = false
+						state.target = translationSelection{}
 						state.query.SetText(entry.source)
 						state.sourceLang.set(entry.sourceLang)
 						state.targetLang.set(entry.targetLang)

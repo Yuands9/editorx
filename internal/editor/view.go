@@ -46,6 +46,7 @@ func (m *editorApp) page(c ui.C) {
 		jobs := c.Part("large-file").KeyInt(tab.id)
 		m.updateLargeTextEdit(jobs, tab)
 		m.updateLargeFindAll(jobs.Part("find-all"), tab)
+		m.updateDocumentTranslation(c.Part("document-translation-job").KeyInt(tab.id), tab)
 	}
 	m.updateSearchBatch(c.Part("search-batch"))
 	blocked := m.interactionBlocked()
@@ -196,10 +197,14 @@ func (m *editorApp) sideToolPanel(c ui.C, blocked bool) {
 
 func (m *editorApp) toolPanelDivider(c ui.C, split *ui.SplitterState, left bool) {
 	divider := ui.Splitter(c, split).SplitterThickness(workspaceInset).Label("调整侧栏宽度")
+	panelMin := float32(300)
+	if m.ai.open && c.Bounds().Width >= 1040 {
+		panelMin = 350
+	}
 	if left {
-		divider.Mins(300, 230)
+		divider.Mins(panelMin, 230)
 	} else {
-		divider.Mins(230, 300)
+		divider.Mins(230, panelMin)
 	}
 	if m.ai.open {
 		divider.SplitterThickness(12).Label("调整编辑区与 AI 助手宽度").DrawOver(func(d *ui.DrawContext) { m.drawAIResizeGrip(d, split, true) })
@@ -208,7 +213,7 @@ func (m *editorApp) toolPanelDivider(c ui.C, split *ui.SplitterState, left bool)
 
 func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 	ui.Row(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
-		if t.format() == "Markdown" && m.showOutline && !m.ai.open && m.translation == nil && m.templatePanel == nil {
+		if t.format() == "Markdown" && m.showOutline && !t.showingDocumentTranslation() && !m.ai.open && m.translation == nil && m.templatePanel == nil {
 			ui.Column(c.Part("outline")).Width(m.outlineSplit.Pos).Shrink(0).FillHeight().Clip().
 				Children(func() { m.outlinePanel(c, t) })
 			ui.Splitter(c, &m.outlineSplit).Mins(160, 420).SplitterThickness(workspaceInset).Label("调整大纲宽度")
@@ -560,11 +565,12 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 
 func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 	format := t.format()
+	showTranslation := t.showingDocumentTranslation()
 	if format != "JSON" && format != "Markdown" && format != "HTML" {
 		return
 	}
 	ui.Row(c).FillWidth().Height(38).PadX(16).Gap(6).Items(ui.Center).Children(func() {
-		if format == "Markdown" {
+		if format == "Markdown" && !showTranslation {
 			label := "展开大纲"
 			if m.showOutline {
 				label = "收起大纲"
@@ -616,16 +622,21 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 			ui.Row(c).Pad(3).Gap(2).Radius(14).Background(m.theme.Card).Children(func() {
 				for _, mode := range []string{"编辑", "分屏", "预览"} {
 					button := ui.Button(c, mode).Ghost().Height(26).FontSize(12)
-					if t.markdownMode == mode {
+					if t.markdownMode == mode && !showTranslation {
 						button.Secondary()
 					}
 					if button.Clicked() {
-						c.After(func() { t.markdownMode = mode; t.source.focus = mode != "预览" })
+						c.After(func() {
+							if showTranslation {
+								m.closeDocumentTranslation(t)
+							}
+							t.markdownMode, t.source.focus = mode, mode != "预览"
+						})
 					}
 				}
 			})
 		}
-		if t.format() == "JSON" || t.format() == "Markdown" {
+		if !showTranslation && (format == "JSON" || format == "Markdown") {
 			button := ui.Button(c, "同步滚动").Ghost().Height(28).FontSize(12).Tooltip("左右面板同步滚动；点击切换")
 			if t.scroll.enabled {
 				button.Secondary()
@@ -656,6 +667,10 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 		t.source.view.Snapshot.MarkLayers = nil
 	}
 	ui.Column(c.KeyInt(t.id)).FillWidth().Grow(1).MinHeight(0).Children(func() {
+		if t.showingDocumentTranslation() {
+			m.documentTranslationView(c.Part("translation"), t, blocked)
+			return
+		}
 		switch format {
 		case "XLSX", "DOCX":
 			m.officeView(c, t, blocked)

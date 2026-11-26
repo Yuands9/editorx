@@ -419,6 +419,12 @@ func (painter *painter) placeCaret(event platform.PointerEvent) bool {
 		selection.Selection.Start = index
 		painter.placeUnit, painter.placeUnitRange = 0, text.Range{}
 		switch {
+		case gfx.Modifiers(event.Modifiers)&gfx.ModifierShift != 0:
+			painter.placeAnchor = input.State.Selection.Start
+			if input.State.SelectionReversed {
+				painter.placeAnchor = input.State.Selection.End
+			}
+			selection.Selection.Start = painter.placeAnchor
 		case event.ClickCount >= 3:
 			painter.placeUnit, painter.placeUnitRange = 3, text.LineRange(value, index)
 		case event.ClickCount == 2:

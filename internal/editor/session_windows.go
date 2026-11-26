@@ -17,8 +17,12 @@ var editorUser = syscall.NewLazyDLL("user32.dll")
 var errSessionDirectoryInUse = errors.New("此数据目录已由另一个 EditorX 进程使用")
 
 func sessionMutexName(directory string) string {
+	return "Local\\VivaEditorSession-" + sessionDirectoryKey(directory)
+}
+
+func sessionDirectoryKey(directory string) string {
 	hash := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(directory))))
-	return fmt.Sprintf("Local\\VivaEditorSession-%x", hash[:16])
+	return fmt.Sprintf("%x", hash[:16])
 }
 
 // 每个便携数据目录只有一个写入进程；进程异常结束时 Windows 自动释放锁。

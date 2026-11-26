@@ -72,26 +72,6 @@ func (m *editorApp) templateSaveActions(c ui.C, menu *ui.MenuItems, tab *editorT
 	}
 }
 
-func (m *editorApp) sourceEditor(c ui.C, tab *editorTab, blocked bool) ui.Box {
-	box := tab.source.declare(c, "代码编辑区", !blocked)
-	if blocked {
-		return box
-	}
-	span := tab.source.text.Selection()
-	if span.Start == span.End {
-		return box
-	}
-	ui.ContextMenu(c, box, func(menu *ui.MenuItems) {
-		if m.translationEnabled && menu.Item("翻译选区…").Icon(translationIcon).Clicked() {
-			c.After(func() { m.openTranslation(true) })
-		}
-		if menu.Item("识别到密码本…").Icon(passwordVaultIcon).Clicked() {
-			c.After(func() { m.openPasswordSelection(tab) })
-		}
-	})
-	return box
-}
-
 func (m *editorApp) openTemplateSave(tab *editorTab, selection bool) {
 	if !aiTextTab(tab) || tab.comparingJSON() {
 		return

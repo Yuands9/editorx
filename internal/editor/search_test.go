@@ -78,6 +78,10 @@ func TestSearchOptionsEditsTabsAndIME(t *testing.T) {
 	tab := m.active
 	tab.source.replace("Cat cat cats 中文 中文 😀")
 	s := openTestSession(t, m)
+	editorHit, err := s.Locate("textfield:代码编辑区")
+	if err != nil {
+		t.Fatal(err)
+	}
 	openSearchForTest(t, s, "cat")
 	if len(tab.search.matches) != 3 {
 		t.Fatal("case insensitive search")
@@ -137,7 +141,7 @@ func TestSearchOptionsEditsTabsAndIME(t *testing.T) {
 		t.Fatal("search not refreshed after edit")
 	}
 	// 居中的查找框会盖住编辑器中心，点击仍露出的正文顶部。
-	if err := s.Driver().Click(180, 110); err != nil {
+	if err := s.Driver().Click(editorHit.Bounds.X+100, editorHit.Bounds.Y+30); err != nil {
 		t.Fatal(err)
 	}
 	if !tab.source.focused {

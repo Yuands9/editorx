@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -162,8 +163,17 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 	}
 	click("设置")
 	click("关于")
-	if !s.HasText("版本 " + version.Number) {
-		t.Fatal("About does not display the executable version")
+	for _, value := range []string{"版本信息", "v" + version.Number, "运行平台", "Windows · ", "构建", "运行时", runtime.Version()} {
+		if !s.HasText(value) {
+			t.Fatalf("About does not display %q", value)
+		}
+	}
+	click("复制版本信息")
+	report := s.Driver().Clipboard()
+	if !strings.HasPrefix(report, "EditorX\n版本 v"+version.Number) ||
+		!strings.Contains(report, "\n运行平台 Windows · ") || !strings.Contains(report, "\n构建 "+version.Build()) ||
+		!strings.HasSuffix(report, "\n运行时 "+runtime.Version()) || !s.HasText("已复制") {
+		t.Fatalf("About did not copy the displayed version information: %q", report)
 	}
 	if !s.HasText("启动约 10 秒后检查，之后每 6 小时一次。重启沿用上次检查时间。") {
 		t.Fatal("About does not state the automatic check schedule")

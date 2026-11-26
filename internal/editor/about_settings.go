@@ -2,6 +2,8 @@ package editor
 
 import (
 	"fmt"
+	"runtime"
+	"strings"
 
 	"github.com/Yuands9/editorx/internal/version"
 	"github.com/vivaui/viva/app"
@@ -13,19 +15,73 @@ import (
 
 func (m *editorApp) aboutSettings(c ui.C) {
 	state := m.editorUpdates()
+	buildType := "便携版"
+	if hasWordEditor {
+		buildType = "本机构建"
+	}
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x86-64"
+	case "arm64":
+		arch = "ARM64"
+	}
+	fields := []struct {
+		label, value string
+		icon         gfx.Icon
+	}{
+		{"版本", "v" + version.Number + " · " + buildType, infoIcon},
+		{"运行平台", "Windows · " + arch, browserIcon},
+		{"构建", version.Build(), settingsIcon},
+		{"运行时", runtime.Version(), codeIcon},
+	}
 	ui.Row(c.Part("editorx")).FillWidth().Pad(16).Gap(16).Items(ui.Center).
-		Background(m.theme.Card).Radius(14).Children(func() {
+		Background(m.theme.Card).Radius(14).Border(1, m.theme.Border).Children(func() {
 		ui.Image(c, editorLogo(m.light)).Size(56, 56).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 			ui.Text(c, applicationName).FontSize(23).Bold()
 			ui.Wrap(c, "一个 Windows 文本编辑器，用来打开、查看和编辑日常文件。").FillWidth().FontSize(13).Muted()
 		})
+		label := "复制版本信息"
+		if m.appSettings.aboutCopied {
+			label = "已复制"
+		}
+		if ui.Button(c.Part("copy-version"), label).Icon(copyIcon).Outline().Height(32).Shrink(0).Clicked() {
+			c.After(func() {
+				var report strings.Builder
+				report.WriteString(applicationName)
+				for _, field := range fields {
+					fmt.Fprintf(&report, "\n%s %s", field.label, field.value)
+				}
+				if err := app.SetClipboardText(report.String()); err != nil {
+					m.appSettings.problem = "无法复制版本信息：" + err.Error()
+					m.appSettings.aboutCopied = false
+					return
+				}
+				m.appSettings.problem = ""
+				m.appSettings.aboutCopied = true
+			})
+		}
 	})
-	build := "Windows x64 · 便携版"
-	if hasWordEditor {
-		build = "Windows x64 · 本机构建"
-	}
-	m.applicationSetting(c.Part("version"), "版本 "+version.Number, build, func() {
+	ui.Text(c, "版本信息").Bold().FontSize(14)
+	ui.Column(c.Part("version-info")).FillWidth().Pad(12).Gap(8).
+		Background(m.theme.Card).Radius(12).Border(1, m.theme.Border).Children(func() {
+		for row := 0; row < len(fields); row += 2 {
+			ui.Row(c.KeyInt(row)).FillWidth().Gap(8).Children(func() {
+				for _, field := range fields[row : row+2] {
+					ui.Column(c.Key(field.label)).Grow(1).Basis(0).MinWidth(0).Pad(10).Gap(3).
+						Background(m.theme.Background).Radius(8).Children(func() {
+						ui.Row(c).Gap(5).Items(ui.Center).Children(func() {
+							ui.Icon(c, field.icon).Size(14, 14).Color(m.theme.MutedForeground)
+							ui.Text(c, field.label).FontSize(12).Muted()
+						})
+						ui.Wrap(c, field.value).FillWidth().FontSize(13)
+					})
+				}
+			})
+		}
+	})
+	m.applicationSetting(c.Part("update"), "软件更新", "检查 GitHub 上的最新公开版本。", func() {
 		label := "检查更新"
 		if state.staged != "" && state.download == nil {
 			label = "查看已下载的更新"

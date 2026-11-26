@@ -71,8 +71,8 @@ func TestTextAssetsPreviews(t *testing.T) {
 					m.chooseTranslationAI()
 				}
 				if sample.mode == "offline" {
-					m.selectTranslationMode(translationOfflineMode)
 					m.translation.query.SetText("Please save your changes before closing this window.")
+					m.lookupTypedTranslation()
 				}
 				if sample.mode == "result" {
 					_, _, err := mergeTranslationLibrary(filepath.Join(m.dataDirectory, translationLibraryFile), []translationEntry{{"en", "zh-cn", translationSentence, "Hello world.", "你好，世界。", "产品欢迎语"}})

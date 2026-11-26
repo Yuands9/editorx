@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Yuands9/editorx/internal/version"
 )
 
 const codexHTTPSProvider = `model_providers.viva-http={name="OpenAI", requires_openai_auth=true, wire_api="responses", supports_websockets=false}`
@@ -76,7 +78,7 @@ func (settings aiSettings) openCodex(ctx context.Context) (*codexRPC, error) {
 	attempt.scanner = bufio.NewScanner(stdout)
 	attempt.scanner.Buffer(make([]byte, 8192), aiResponseLimit*4)
 	if err := attempt.call("initialize", map[string]any{
-		"clientInfo":   map[string]string{"name": "viva_editor", "title": applicationName, "version": "0.31.0"},
+		"clientInfo":   map[string]string{"name": "viva_editor", "title": applicationName, "version": version.Number},
 		"capabilities": map[string]bool{"experimentalApi": true},
 	}, nil); err != nil {
 		attempt.close()
@@ -227,7 +229,8 @@ func (settings aiSettings) runCodex(ctx context.Context, system string, messages
 	}
 	start := map[string]any{
 		"cwd": client.job, "ephemeral": true, "approvalPolicy": "never", "sandbox": "read-only",
-		"config": map[string]any{"mcp_servers": disabledServers},
+		"developerInstructions": system,
+		"config":                map[string]any{"mcp_servers": disabledServers},
 	}
 	if settings.Model != "" {
 		start["model"] = settings.Model
@@ -244,14 +247,14 @@ func (settings aiSettings) runCodex(ctx context.Context, system string, messages
 	if thread.Thread.ID == "" {
 		return aiCompletion{}, false, errors.New("Codex CLI 未创建对话")
 	}
-	payload, err := json.Marshal(messages)
+	prompt, err := cliUserPrompt(messages, true)
 	if err != nil {
 		return aiCompletion{}, false, err
 	}
 	params := map[string]any{
 		"threadId": thread.Thread.ID,
 		"input": []map[string]any{{
-			"type": "text", "text": system + "\n\n请直接回答以下 JSON 对话的最后一项。\n" + string(payload),
+			"type": "text", "text": prompt,
 			"text_elements": []string{},
 		}},
 	}

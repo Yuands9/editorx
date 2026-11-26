@@ -144,7 +144,10 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 					}
 				})
 			}
-			t.result.declare(c, "JSON 处理结果", !blocked).FillWidth().Grow(1).MinHeight(0)
+			box := t.result.declare(c, "JSON 处理结果", !blocked).FillWidth().Grow(1).MinHeight(0)
+			if !blocked {
+				m.editorContextMenu(c, box, t, t.result)
+			}
 			ui.Row(c).FillWidth().Height(28).PadX(12).Gap(6).Items(ui.Center).Children(func() {
 				status := fmt.Sprintf("同步编辑 · %d 字符", t.result.text.RuneCount())
 				if t.resultError != "" {

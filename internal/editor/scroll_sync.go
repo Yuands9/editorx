@@ -17,7 +17,7 @@ type scrollSync struct {
 func (t *editorTab) syncViews(canvas *gfx.Canvas) {
 	state := &t.scroll
 	kind := t.format()
-	if !state.enabled || kind != "JSON" && (kind != "Markdown" || t.markdownMode != "分屏") {
+	if !state.enabled || t.showingDocumentTranslation() || kind != "JSON" && (kind != "Markdown" || t.markdownMode != "分屏") {
 		state.ready = false
 		return
 	}

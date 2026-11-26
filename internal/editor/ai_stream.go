@@ -36,6 +36,13 @@ func (stream *aiReplyStream) text() string {
 	return stream.value.String()
 }
 
+func (stream *aiReplyStream) replace(value string) {
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	stream.value.Reset()
+	stream.value.WriteString(value)
+}
+
 type aiSSEEvent struct {
 	Type         string          `json:"type"`
 	Model        string          `json:"model"`

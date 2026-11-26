@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/vivaui/viva/ui"
@@ -63,53 +62,6 @@ func (offline *offlineTranslationState) downloadSize(model offlineComponent) (in
 		missing += model.downloadBytes()
 	}
 	return missing, nil
-}
-
-func (m *editorApp) offlineTranslationControls(c ui.C, state *translationPanelState, blocked bool) {
-	offline := m.translationOfflineState(state)
-	source, target, _ := state.languagePair()
-	model := offlineLanguageModel(source, target)
-	var bytes int64
-	var issue error
-	if model != nil {
-		bytes, issue = offline.downloadSize(*model)
-	}
-	hasResult := state.hasOutput && state.matchesQuery()
-	ui.Row(c.Part("actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
-		switch {
-		case offline.request != nil:
-			if ui.Button(c.Part("cancel"), "取消离线翻译").Outline().Grow(1).Basis(0).Height(32).FontSize(12).
-				Tooltip("正在离线翻译，点击取消").Disabled(blocked).Clicked() {
-				c.After(func() { offline.request = nil })
-			}
-		case model == nil && !hasResult:
-			ui.Text(c.Part("unsupported"), "仅支持中英互译").Grow(1).Basis(0).Muted().FontSize(12)
-		case model == nil || issue != nil:
-			ui.Slot(c.Part("unavailable")).Grow(1).Basis(0)
-		case bytes > 0:
-			if ui.Button(c.Part("download"), "下载离线组件").Icon(downloadIcon).Grow(1).Basis(0).Height(32).FontSize(12).
-				Tooltip(fmt.Sprintf("下载 %.1f MiB", float64(bytes)/(1<<20))).Disabled(blocked || offline.download != nil || state.translating()).Clicked() {
-				c.After(func() { m.startOfflineDownload(*model) })
-			}
-		default:
-			if ui.Button(c.Part("translate"), "开始离线翻译").Grow(1).Basis(0).Height(32).FontSize(12).
-				Disabled(blocked || state.translating() || strings.TrimSpace(state.query.Text()) == "").Clicked() {
-				c.After(m.startOfflineTranslation)
-			}
-		}
-		m.translationAIAction(c.Part("ai"), state, blocked)
-	})
-	if offline.download != nil {
-		m.offlineDownloadProgress(c.Part("progress"), offline, blocked)
-	} else if bytes > 0 && !hasResult {
-		ui.Text(c.Part("size"), fmt.Sprintf("下载 %.1f MiB", float64(bytes)/(1<<20))).Muted().FontSize(12)
-	}
-	if issue != nil && !hasResult {
-		ui.Wrap(c.Part("issue"), issue.Error()).FillWidth().Color(m.theme.Danger).FontSize(12)
-	}
-	if offline.problem != "" && !hasResult {
-		ui.Wrap(c.Part("problem"), offline.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
-	}
 }
 
 func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, blocked bool) {
@@ -219,16 +171,8 @@ func (m *editorApp) startOfflineDownload(model offlineComponent) {
 	offline.problem = ""
 }
 
-func (m *editorApp) startOfflineTranslation() {
-	state := m.translation
-	if state == nil || state.mode != translationOfflineMode || state.translating() {
-		return
-	}
-	source, target, err := state.languagePair()
-	if err != nil {
-		state.problem = err.Error()
-		return
-	}
+func (m *editorApp) startOfflineTranslation(state *translationPanelState) {
+	source, target := state.querySource, state.queryTarget
 	model := offlineLanguageModel(source, target)
 	if model == nil {
 		return
@@ -236,10 +180,6 @@ func (m *editorApp) startOfflineTranslation() {
 	offline := m.translationOfflineState(state)
 	m.refreshOfflineComponents(offline)
 	if bytes, err := offline.downloadSize(*model); err != nil || bytes != 0 {
-		return
-	}
-	if err := m.prepareTranslationQuery(state); err != nil {
-		state.problem = err.Error()
 		return
 	}
 	directory, query := m.dataDirectory, state.target.selected

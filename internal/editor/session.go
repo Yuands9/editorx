@@ -116,17 +116,6 @@ type sessionStore struct {
 	generation, written uint64
 }
 
-func editorDataDirectory() (string, error) {
-	if configured := os.Getenv("VIVA_EDITOR_DATA_DIR"); configured != "" {
-		return filepath.Abs(configured)
-	}
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(filepath.Dir(executable), "data"), nil
-}
-
 func openSessionStore(directory string) (*sessionStore, error) {
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err

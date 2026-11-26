@@ -87,29 +87,28 @@ func TestOfflineTranslationOptIn(t *testing.T) {
 	m.translationEnabled = true
 	m.openTranslation(false)
 	s := openTestSession(t, m)
-	if m.translation.mode != translationLocalMode || m.translation.offline != nil {
+	if m.translation.offline != nil {
 		t.Fatal("offline engine initialized by default")
 	}
-	if err := s.ClickLabel("button:离线整句"); err != nil {
-		t.Fatal(err)
-	}
 	state := m.translation
-	if state.offline == nil || state.offline.download != nil || state.offline.request != nil {
-		t.Fatal("selecting offline mode must not download or run")
+	for _, label := range []string{"本地词库", "离线整句"} {
+		if _, err := s.Locate("button:" + label); err == nil {
+			t.Fatalf("obsolete translation tab still shown: %s", label)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(m.dataDirectory, offlineTranslationDirectory)); !os.IsNotExist(err) {
-		t.Fatal("choosing a mode created storage", err)
+		t.Fatal("opening translation created offline storage", err)
 	}
-	download, err := s.Locate("button:下载离线组件")
+	offline, err := s.Locate("button:本地翻译")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ai, err := s.Locate("button:AI 翻译")
-	if err != nil || download.Bounds.Y != ai.Bounds.Y || download.Bounds.X >= ai.Bounds.X {
-		t.Fatal("AI should be beside the offline action", download.Bounds, ai.Bounds, err)
+	if err != nil || offline.Bounds.Y != ai.Bounds.Y || ai.Bounds.X >= offline.Bounds.X {
+		t.Fatal("AI should be the leading action", offline.Bounds, ai.Bounds, err)
 	}
-	if _, err := s.Locate("button:开始离线翻译"); err == nil {
-		t.Fatal("translation action exposed before installing components")
+	if _, err := s.Locate("button:下载离线组件"); err == nil || s.HasText("102.0 MiB") {
+		t.Fatal("download controls should stay in the library manager")
 	}
 	if _, err := translateOffline(context.Background(), m.dataDirectory, "en", "zh-cn", "Hello."); err == nil {
 		t.Fatal("translation started without installed components")
@@ -118,11 +117,18 @@ func TestOfflineTranslationOptIn(t *testing.T) {
 	if err := s.Frame(); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.ClickLabel("button:本地翻译"); err != nil {
+		t.Fatal(err)
+	}
+	if state.offline == nil || state.offline.request != nil || state.offline.download != nil ||
+		!s.HasText("未找到本地译文，可用 AI 翻译") {
+		t.Fatal("local lookup started an uninstalled engine or did not offer AI")
+	}
 	if err := s.ClickLabel("button:AI 翻译"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Locate("menuitem:打开 AI 设置…"); err != nil || state.mode != translationOfflineMode {
-		t.Fatal("AI setup should be available without changing the offline view", err)
+	if _, err := s.Locate("menuitem:打开 AI 设置…"); err != nil {
+		t.Fatal("AI setup should be available in the translation panel", err)
 	}
 	if _, err := os.Stat(filepath.Join(m.dataDirectory, offlineTranslationDirectory)); !os.IsNotExist(err) {
 		t.Fatal("using uninstalled offline mode created storage", err)
@@ -150,7 +156,7 @@ func TestOfflineDownloadStopsWithPanel(t *testing.T) {
 			m.translationEnabled = true
 			m.openTranslation(false)
 			s := openTestSession(t, m)
-			for _, label := range []string{"离线整句", "下载离线组件"} {
+			for _, label := range []string{"词库管理", fmt.Sprintf("下载 %.1f MiB", float64(offlineRuntime.downloadBytes()+offlineModels[0].downloadBytes())/(1<<20))} {
 				if err := s.ClickLabel("button:" + label); err != nil {
 					t.Fatal(err)
 				}
@@ -160,12 +166,12 @@ func TestOfflineDownloadStopsWithPanel(t *testing.T) {
 			}
 			if action == "取消组件下载" {
 				task := m.translation.offline.download
-				for _, label := range []string{"本地词库", "词库管理"} {
+				for _, label := range []string{"返回翻译", "词库管理"} {
 					if err := s.ClickLabel("button:" + label); err != nil {
 						t.Fatal(err)
 					}
 				}
-				if m.translation.offline.download != task || stopped.Load() {
+				if !m.translation.managing || m.translation.offline.download != task || stopped.Load() {
 					t.Fatal("moving to the library manager stopped the pending download")
 				}
 			}
@@ -219,16 +225,14 @@ func TestOfflineTranslationNetworkInstall(t *testing.T) {
 		t.Fatal("network byte count differs from package sizes", progress.received.Load())
 	}
 	t.Logf("UI download=%d bytes; installed=%d bytes; download/install=%s", progress.received.Load(), runtime.Bytes+model.Bytes, time.Since(started))
-	for _, label := range []string{"返回翻译", "离线整句"} {
-		if err := s.ClickLabel("button:" + label); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.ClickLabel("button:返回翻译"); err != nil {
+		t.Fatal(err)
 	}
 	state.query.SetText("Please save your changes before closing this window.")
 	if err := s.Frame(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ClickLabel("button:开始离线翻译"); err != nil {
+	if err := s.ClickLabel("button:本地翻译"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.WaitFor(func(app.Snapshot) bool { return state.offline.request == nil }, 15*time.Second); err != nil {
@@ -250,8 +254,11 @@ func TestOfflineTranslationNetworkInstall(t *testing.T) {
 	if err := s.ClickLabel("button:返回翻译"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Locate("button:下载离线组件"); err != nil {
-		t.Fatal("removal did not restore the inline download action", err)
+	if err := s.ClickLabel("button:本地翻译"); err != nil {
+		t.Fatal(err)
+	}
+	if state.offline.request != nil || state.hasOutput {
+		t.Fatal("the removed engine still produced an offline translation")
 	}
 }
 
@@ -346,18 +353,15 @@ func TestOfflineTranslationRealModels(t *testing.T) {
 	if err := s.Resize(900, 560); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ClickLabel("button:离线整句"); err != nil {
-		t.Fatal(err)
-	}
-	offline, err := s.Locate("button:开始离线翻译")
+	offline, err := s.Locate("button:本地翻译")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ai, err := s.Locate("button:AI 翻译")
-	if err != nil || ai.Bounds.Y != offline.Bounds.Y || offline.Bounds.X >= ai.Bounds.X {
+	if err != nil || ai.Bounds.Y != offline.Bounds.Y || ai.Bounds.X >= offline.Bounds.X {
 		t.Fatal("AI and offline translation should share one action row", offline.Bounds, ai.Bounds, err)
 	}
-	if err := s.ClickLabel("button:开始离线翻译"); err != nil {
+	if err := s.ClickLabel("button:本地翻译"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.WaitFor(func(app.Snapshot) bool { return m.translation.offline.request == nil }, 15*time.Second); err != nil {

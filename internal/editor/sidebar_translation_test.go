@@ -29,8 +29,8 @@ func TestSidebarPreferencesAndTemplatePanel(t *testing.T) {
 	}
 	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
 	check(s.Resize(900, 560))
-	for _, label := range []string{"button:模板库", "button:翻译"} {
-		if _, err := s.Locate(label); err == nil {
+	for _, label := range []string{"模板库", "翻译"} {
+		if _, shown := s.AccessByRole(gfx.RoleButton, label); shown {
 			t.Fatal("optional sidebar button visible by default", label)
 		}
 	}

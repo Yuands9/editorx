@@ -254,11 +254,18 @@ func replaceEditorExecutable(path, staged string) (installedEditorUpdate, error)
 }
 
 func (update installedEditorUpdate) restart() error {
-	process := exec.Command(update.path)
-	process.Dir = filepath.Dir(update.path)
-	if err := process.Start(); err != nil {
+	if err := startEditorExecutable(update.path); err != nil {
 		restoreErr := os.Rename(update.backup, update.path)
 		return fmt.Errorf("无法启动更新后的 EditorX：%w", errors.Join(err, restoreErr))
+	}
+	return nil
+}
+
+func startEditorExecutable(path string) error {
+	process := exec.Command(path)
+	process.Dir = filepath.Dir(path)
+	if err := process.Start(); err != nil {
+		return err
 	}
 	process.Process.Release()
 	return nil

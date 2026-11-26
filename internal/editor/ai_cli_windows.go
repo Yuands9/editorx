@@ -125,17 +125,23 @@ func (settings aiSettings) runCLI(ctx context.Context, system string, messages [
 	}
 	defer os.RemoveAll(job)
 
-	payload, err := json.Marshal(messages)
+	prompt, err := cliUserPrompt(messages, settings.Provider == aiCodexCLI)
 	if err != nil {
 		return aiCompletion{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	output := filepath.Join(job, "reply.txt")
-	cmd := exec.CommandContext(ctx, executable, settings.cliArguments(output, effort)...)
+	args := settings.cliArguments(output, effort)
+	if settings.Provider == aiCodexCLI {
+		args = append([]string{"-c", "developer_instructions=" + strconv.Quote(system)}, args...)
+	} else {
+		prompt = system + "\n\n" + prompt
+	}
+	cmd := exec.CommandContext(ctx, executable, args...)
 	cmd.Dir = job
 	cmd.Env = append(cmd.Environ(), "TEMP="+job, "TMP="+job)
-	cmd.Stdin = io.MultiReader(strings.NewReader(system+"\n\n以下 JSON 数组是对话记录，最后一项是当前请求。请直接给出回复。\n"), bytes.NewReader(payload))
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	cmd.WaitDelay = 2 * time.Second
 	stderr := aiCLICapture{limit: 8192}
@@ -189,6 +195,17 @@ func (settings aiSettings) runCLI(ctx context.Context, system string, messages [
 	}
 	reply.Text = result.Result
 	return reply, nil
+}
+
+func cliUserPrompt(messages []aiMessage, rawSingleMessage bool) (string, error) {
+	if rawSingleMessage && len(messages) == 1 && messages[0].Role == "user" {
+		return messages[0].Content, nil
+	}
+	history, err := json.Marshal(messages)
+	if err != nil {
+		return "", err
+	}
+	return "以下 JSON 数组是对话记录，最后一项是当前请求。请直接给出回复。\n" + string(history), nil
 }
 
 type aiCLICapture struct {

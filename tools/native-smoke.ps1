@@ -1,4 +1,4 @@
-param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeDocumentOutline','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeThemeIconSwitch','TestNativeStartupFrame','TestNativeOpenTiming','TestNativeEditorBackground','TestNativeTerminalInput')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log', [switch]$PublicRelease)
+param([int]$TimeoutSeconds = 50, [ValidateSet('TestNativeHTMLPreview','TestNativeOfficeEditing','TestNativeDocumentOutline','TestNativeLongHTMLText','TestNativeHTMLStartupTiming','TestNativeSearchDrag','TestNativeAIEnter','TestNativeTabRenameEnter','TestNativeThemeIconSwitch','TestNativeStartupFrame','TestNativeOpenTiming','TestNativeEditorBackground','TestNativeTerminalInput','TestNativeFileDrop')][string]$TestName = 'TestNativeHTMLPreview', [ValidateSet('1','2')][string]$Scale = '1', [ValidateSet('native-smoke.log', 'html-timing.log')][string]$LogName = 'native-smoke.log', [switch]$PublicRelease)
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
 $devDirectory = Join-Path $projectDirectory '.dev'
@@ -30,7 +30,7 @@ $testExecutable = Join-Path $devDirectory 'viva-native.test.exe'
 $logPath = Join-Path $devDirectory $LogName
 Push-Location $projectDirectory
 try {
-    $testPackage = if ($TestName -eq 'TestNativeStartupFrame') { './vendor/github.com/vivaui/viva/internal/platform/windows' } else { './internal/editor' }
+    $testPackage = if ($TestName -in @('TestNativeStartupFrame', 'TestNativeFileDrop')) { './vendor/github.com/vivaui/viva/internal/platform/windows' } else { './internal/editor' }
     & $go test @goOptions -c -o $testExecutable $testPackage
     if ($LASTEXITCODE -ne 0) { throw 'Native test build failed' }
     if (!('VivaIsolatedDesktop' -as [type])) {

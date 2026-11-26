@@ -32,7 +32,8 @@ try {
         default {
             New-Item -ItemType Directory -Path $output -Force | Out-Null
             $exe = Join-Path $output 'EditorX.exe'
-            & $go build @goOptions -trimpath -ldflags '-s -w -H windowsgui' -o $exe ./cmd/editorx
+            $buildDate = Get-Date -Format 'yyyy-MM-dd'
+            & $go build @goOptions -trimpath -ldflags "-s -w -H windowsgui -X github.com/Yuands9/editorx/internal/version.BuildDate=$buildDate" -o $exe ./cmd/editorx
             if ($LASTEXITCODE -ne 0) { throw 'Go build failed.' }
             & $go run -mod=vendor ./tools/package $exe
             if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }

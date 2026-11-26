@@ -12,6 +12,7 @@ const (
 	settingsEditor     = "编辑器"
 	settingsSidebar    = "侧栏"
 	settingsBackup     = "备份"
+	settingsData       = "数据目录"
 	settingsShortcuts  = "快捷键"
 	settingsAI         = "AI"
 	settingsAbout      = "关于"
@@ -25,13 +26,15 @@ var settingSections = []struct {
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
 	{settingsSidebar, "左侧、右侧、显示按钮、模板库、本地词库、AI 翻译、密码本", leftPanelIcon},
 	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
+	{settingsData, "存储位置、文件夹、迁移、缓存", folderIcon},
 	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
-	{settingsAbout, "EditorX、版本、自动检查更新、GitHub", infoIcon},
+	{settingsAbout, "EditorX、版本、构建、运行平台、运行时、自动检查更新、GitHub", infoIcon},
 }
 
 type settingsPageState struct {
 	open, returnToAI bool
+	aboutCopied      bool
 	section, problem string
 	original, draft  applicationPreferences
 	query            ui.Field
@@ -75,6 +78,7 @@ func (m *editorApp) showSettings(section string) {
 		m.pauseAISettings()
 	}
 	settings.shortcutEdit = shortcutEditState{}
+	settings.aboutCopied = false
 	settings.section = section
 	if section == settingsAI && !m.ai.settingsEditing {
 		m.reloadAISettingsPage()
@@ -202,6 +206,8 @@ func (m *editorApp) settingsPage(c ui.C) {
 							m.sidebarSettings(c)
 						case settingsBackup:
 							m.backupSettings(c)
+						case settingsData:
+							m.dataLocationSettings(c)
 						case settingsShortcuts:
 							m.shortcutSettings(c)
 						case settingsAI:

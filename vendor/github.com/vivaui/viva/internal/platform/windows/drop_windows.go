@@ -242,23 +242,22 @@ func (state *windowState) acceptFiles() {
 	if state.config.OnFileDrop == nil {
 		return
 	}
+	// Some shell sources use WM_DROPFILES even when the window has an OLE target.
+	dragAcceptFiles.Call(state.window, 1)
 	if !elevated() && state.registerDropTarget() {
 		return
 	}
-	state.acceptDropMessages()
+	state.allowDropMessages()
 }
 
-// acceptDropMessages makes the window take files as WM_DROPFILES, which carries
-// the drop alone. The message filter lets a drop through from an Explorer running
-// at a lower integrity level than an elevated application, which Windows blocks
-// otherwise.
-func (state *windowState) acceptDropMessages() {
+// allowDropMessages lets the legacy drop messages reach an elevated window
+// from an Explorer running at a lower integrity level.
+func (state *windowState) allowDropMessages() {
 	if changeWindowMsgFilter.Find() == nil {
 		changeWindowMsgFilter.Call(state.window, wmDropFiles, msgfltAllow, 0)
 		changeWindowMsgFilter.Call(state.window, wmCopyGlobal, msgfltAllow, 0)
 		changeWindowMsgFilter.Call(state.window, wmCopyData, msgfltAllow, 0)
 	}
-	dragAcceptFiles.Call(state.window, 1)
 }
 
 // registerDropTarget registers the window's IDropTarget, and reports whether OLE

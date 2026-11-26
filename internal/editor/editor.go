@@ -73,6 +73,8 @@ type editorTab struct {
 	scroll            scrollSync
 	detectedSource    string
 	detectedFormat    string
+
+	documentTranslation *documentTranslationState
 }
 
 func (t *editorTab) title() string {
@@ -228,7 +230,6 @@ type editorApp struct {
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
 	translationEnabled bool
-	translationMode    translationMode
 	translation        *translationPanelState
 	languageMenu       bool
 	encodingMenu       bool
@@ -251,6 +252,7 @@ type editorApp struct {
 	webHost            app.WebHost
 	webReady           bool
 	invalidator        app.Invalidator
+	droppedPaths       []string
 	post               func(func())
 	windowFrame        gfx.Rect
 	maximized          bool
@@ -261,7 +263,7 @@ type editorApp struct {
 
 func newEditorApp() *editorApp {
 	return &editorApp{
-		theme: editorTheme(), status: "就绪", showOutline: true, editorPrefs: defaultEditorPreferences(),
+		theme: editorTheme(), status: "就绪", showFiles: true, showOutline: true, editorPrefs: defaultEditorPreferences(),
 		filesSplit:    ui.SplitterState{Pos: 252},
 		outlineSplit:  ui.SplitterState{Ratio: 0.20},
 		aiEditorSplit: ui.SplitterState{Ratio: 0.66},
@@ -370,7 +372,7 @@ func (m *editorApp) focusActiveSource() {
 	if t := m.active; t != nil {
 		format := t.format()
 		t.source.focus = t.largeText != nil || !t.readOnlyPreview() && t.office == nil &&
-			(format != "Markdown" || t.markdownMode != "预览") &&
+			(format != "Markdown" || t.markdownMode != "预览" || t.showingDocumentTranslation()) &&
 			(format != "HTML" || t.htmlMode != "预览")
 	}
 }
@@ -826,6 +828,7 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		OnShortcut:  m.windowShortcut,
 		OnKey:       m.functionShortcut,
 		OnFileDrop:  m.dropFiles,
+		OnWake:      m.openDroppedFiles,
 		OnActivate: func() {
 			if m.desktop != nil && !m.nativeWindow.Hidden() {
 				m.desktop.lastActive = m
@@ -852,35 +855,49 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 
 // Run starts EditorX or forwards the requested paths to the running instance.
 func Run(paths []string) {
-	update, err := runEditor(paths)
-	if err == nil && update.path != "" {
-		err = update.restart()
+	update, restart, err := runEditor(paths)
+	if err == nil {
+		switch {
+		case update.path != "":
+			err = update.restart()
+		case restart:
+			var executable string
+			executable, err = os.Executable()
+			if err == nil {
+				err = startEditorExecutable(executable)
+			}
+			if err != nil {
+				err = fmt.Errorf("无法重新启动 EditorX：%w", err)
+			}
+		}
 	}
 	if err != nil {
 		app.ShowFatalError(applicationName, err.Error())
 	}
 }
 
-func runEditor(paths []string) (installedEditorUpdate, error) {
-	directory, err := editorDataDirectory()
+func runEditor(paths []string) (installedEditorUpdate, bool, error) {
+	location, err := currentEditorDataLocation()
 	if err != nil {
-		return installedEditorUpdate{}, err
+		return installedEditorUpdate{}, false, err
 	}
-	release, err := claimEditorInstance(directory, paths)
+	location, release, locationStatus, err := claimEditorDataLocation(location, paths)
 	if err != nil || release == nil {
-		return installedEditorUpdate{}, err
+		return installedEditorUpdate{}, false, err
 	}
 	defer release()
 
+	directory := location.Directory
 	store, err := openSessionStore(directory)
 	if err != nil {
-		return installedEditorUpdate{}, err
+		return installedEditorUpdate{}, false, err
 	}
-	os.Setenv("WEBVIEW2_USER_DATA_FOLDER", filepath.Join(directory, "WebView2"))
+	cleanWebCache := prepareEditorWebCache(directory)
+	defer cleanWebCache()
 	if len(store.windows) == 0 {
 		store.attach(newEditorApp())
 	}
-	desktop := &editorDesktop{store: store}
+	desktop := &editorDesktop{store: store, dataLocation: location}
 	desktop.update.initialize(directory, time.Now())
 	defer desktop.update.close()
 	desktop.preferences, err = readApplicationPreferences(directory)
@@ -895,6 +912,9 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 		window.translationEnabled = desktop.preferences.TranslationEnabled
 	}
 	store.windows[0].openLaunchPaths(paths)
+	if locationStatus != "" {
+		store.windows[0].status = locationStatus
+	}
 
 	// 激活窗口与 Viva 的窗口使用同一 Windows 消息线程。
 	runtime.LockOSThread()
@@ -971,7 +991,7 @@ func runEditor(paths []string) (installedEditorUpdate, error) {
 		}()
 		return nil
 	})
-	return desktop.updated, err
+	return desktop.updated, desktop.restart, err
 }
 
 func (m *editorApp) interactionBlocked() bool {
@@ -993,23 +1013,23 @@ func (m *editorApp) dropFiles(event gfx.FileDropEvent) gfx.EventResult {
 		return gfx.EventResult{}
 	}
 
-	paths := slices.Clone(event.Paths)
-	open := func() {
-		if m.interactionBlocked() {
-			return
-		}
-		if m.appSettings.open {
-			m.closeSettings()
-		}
-		m.openLaunchPaths(paths)
-		m.invalidator.Invalidate()
+	// Wake the window itself. A Windows modal loop can discard thread-only
+	// messages, and opening a document must wait until the drop callback returns.
+	m.droppedPaths = append(m.droppedPaths, event.Paths...)
+	m.invalidator.Invalidate()
+	return gfx.EventResult{Handled: true}
+}
+
+func (m *editorApp) openDroppedFiles() {
+	paths := m.droppedPaths
+	m.droppedPaths = nil
+	if len(paths) == 0 || m.interactionBlocked() {
+		return
 	}
-	if m.post != nil {
-		m.post(open)
-		return gfx.EventResult{Handled: true}
+	if m.appSettings.open {
+		m.closeSettings()
 	}
-	open()
-	return gfx.EventResult{Handled: true, Repaint: true}
+	m.openLaunchPaths(paths)
 }
 
 func (m *editorApp) openLaunchPaths(paths []string) {
@@ -1033,6 +1053,7 @@ func (m *editorApp) releaseWindowState() {
 	state := m.snapshotSession()
 	m.closedSession = &state
 	m.windowClosed = true
+	m.droppedPaths = nil
 	for len(m.tools.terminals) > 0 {
 		m.closeLocalShell(m.tools.terminals[len(m.tools.terminals)-1])
 	}

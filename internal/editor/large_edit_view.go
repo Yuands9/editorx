@@ -81,6 +81,8 @@ type largeEditView struct {
 	bar               ui.Handlers
 	barDrag           float32
 	selecting         bool
+	selectionClicks   int
+	selectionUnit     largeEditPosition
 	searchQuery       largeEditQuery
 	searchJob         *ui.EffectState[largeEditSearchOutcome, int]
 	searchMatch       text.Span
@@ -652,11 +654,11 @@ func (t *editorTab) pointLargeEdit(event gfx.PointerEvent) gfx.EventResult {
 		if event.Button != gfx.PointerButtonPrimary {
 			return gfx.EventResult{}
 		}
-	case gfx.PointerMove:
+	case gfx.PointerMove, gfx.PointerUp:
 		if !event.Captured || !edit.selecting {
 			return gfx.EventResult{}
 		}
-	case gfx.PointerUp, gfx.PointerExit:
+	case gfx.PointerExit:
 		edit.selecting = false
 		return gfx.EventResult{}
 	default:
@@ -670,15 +672,29 @@ func (t *editorTab) pointLargeEdit(event gfx.PointerEvent) gfx.EventResult {
 	position.caret = edit.viewport.absolute(offset)
 	if event.Kind == gfx.PointerDown {
 		edit.selecting = true
+		edit.selectionClicks = 0
 		t.largeText.selectedResult = -1
 		if event.Modifiers&ui.Shift == 0 {
 			position.anchor = position.caret
+			if event.ClickCount >= 2 {
+				edit.selectionClicks = event.ClickCount
+				edit.selectionUnit = t.largeEditPointerUnit(offset, event.ClickCount)
+				position = edit.selectionUnit
+			}
 		}
-		if event.ClickCount == 2 {
-			word := text.WordRange(edit.viewport.value, pane.text.RuneIndex(offset))
-			position.anchor = edit.viewport.absolute(pane.text.ByteOffset(word.Start))
-			position.caret = edit.viewport.absolute(pane.text.ByteOffset(word.End))
+	} else if edit.selectionClicks >= 2 {
+		unit := edit.selectionUnit
+		switch {
+		case position.caret < unit.anchor:
+			position = largeEditPosition{unit.caret, t.largeEditPointerUnit(offset, edit.selectionClicks).anchor}
+		case position.caret > unit.caret:
+			position = largeEditPosition{unit.anchor, t.largeEditPointerUnit(offset, edit.selectionClicks).caret}
+		default:
+			position = unit
 		}
+	}
+	if event.Kind == gfx.PointerUp {
+		edit.selecting = false
 	}
 	t.moveLargeEdit(position, false)
 	if event.Kind == gfx.PointerMove && (event.Y < edit.bounds.Y || event.Y > edit.bounds.Bottom()) {
@@ -689,6 +705,30 @@ func (t *editorTab) pointLargeEdit(event gfx.PointerEvent) gfx.EventResult {
 		t.panLargeEdit(direction * 3)
 	}
 	return gfx.EventResult{Focus: event.Target, Handled: true, Repaint: true}
+}
+
+func (t *editorTab) largeEditPointerUnit(offset, clicks int) largeEditPosition {
+	edit := t.largeText.editing
+	viewport, revision := edit.viewport, edit.revision
+	caret := viewport.absolute(offset)
+	if clicks >= 3 {
+		line, err := revision.lineAt(caret)
+		if err == nil {
+			start, startErr := revision.lineStart(line)
+			end, endErr := revision.lineStart(line + 1)
+			if startErr == nil && endErr == nil {
+				return largeEditPosition{start, end}
+			}
+		}
+		return largeEditPosition{caret, caret}
+	}
+	pane := t.source
+	word := text.WordRange(viewport.value, pane.text.RuneIndex(offset))
+	start, end := pane.text.ByteOffset(word.Start), pane.text.ByteOffset(word.End)
+	if strings.TrimSpace(viewport.value[start:end]) == "" {
+		return largeEditPosition{caret, caret}
+	}
+	return largeEditPosition{viewport.absolute(start), viewport.absolute(end)}
 }
 
 func (t *editorTab) scrollLargeEdit(event gfx.ScrollEvent) gfx.EventResult {
@@ -815,28 +855,7 @@ func (m *editorApp) largeEditPane(c ui.C, t *editorTab, blocked bool) {
 			}
 		})
 		if !blocked && !state.busyEditing() {
-			ui.ContextMenu(c.Part("large-edit-menu"), box, func(menu *ui.MenuItems) {
-				start, end := edit.position.rangeOffsets()
-				if menu.Item("复制").Icon(copyIcon).Disabled(start == end).Clicked() {
-					c.After(func() {
-						copy := pane.input.CopyText()
-						if copy != "" {
-							if err := app.SetClipboardText(copy); err != nil {
-								state.problem = err.Error()
-							}
-						}
-					})
-				}
-				if menu.Item("全选").Clicked() {
-					c.After(func() { t.moveLargeEdit(largeEditPosition{0, edit.revision.size}, false) })
-				}
-				if menu.Item("撤销").Disabled(len(edit.undo) == 0).Clicked() {
-					c.After(func() { t.undoLargeEdit(false) })
-				}
-				if menu.Item("重做").Disabled(len(edit.redo) == 0).Clicked() {
-					c.After(func() { t.undoLargeEdit(true) })
-				}
-			})
+			m.editorContextMenu(c.Part("large-edit-menu"), box, t, pane)
 		}
 	})
 }

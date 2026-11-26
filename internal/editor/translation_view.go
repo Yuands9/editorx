@@ -24,21 +24,20 @@ type translationSuggestion struct {
 	scope string
 }
 
-type translationMode int
-
-const (
-	translationLocalMode translationMode = iota
-	translationOfflineMode
-)
+type translationSelection struct {
+	textEditTarget
+	revision   *largeEditRevision
+	start, end int64
+}
 
 type translationPanelState struct {
+	translationDirection
+	translationAIChoice
 	split                    ui.SplitterState
 	managing, projectScope   bool
-	mode                     translationMode
 	showTerms, localLookup   bool
 	hasOutput                bool
-	sourceLang, targetLang   translationLanguageChoice
-	target                   textEditTarget
+	target                   translationSelection
 	querySource, queryTarget string
 	suggestions, terms       []translationSuggestion
 	options                  []int
@@ -48,13 +47,10 @@ type translationPanelState struct {
 	outputIssue              error
 	message, problem         string
 	draft                    *translationEntryDraft
-	aiMenu                   bool
-	aiServices               []aiSettings
 	request                  *ui.EffectState[string, int]
 	offline                  *offlineTranslationState
 	query                    ui.Field
 	dictionary               *dictionaryInfo
-	dictionaryChecked        bool
 	dictionaryBroken         bool
 	download                 *ui.EffectState[dictionaryInfo, int]
 	downloadProgress         *dictionaryProgress
@@ -69,6 +65,17 @@ type translationPanelState struct {
 type translationLanguageChoice struct {
 	code   string
 	custom ui.Field
+}
+
+type translationDirection struct {
+	sourceLang, targetLang translationLanguageChoice
+}
+
+func defaultTranslationDirection() translationDirection {
+	return translationDirection{
+		sourceLang: translationLanguageChoice{code: "en"},
+		targetLang: translationLanguageChoice{code: "zh-CN"},
+	}
 }
 
 var translationLanguages = [...]string{"en", "zh-CN", "zh-TW", "ja", "ko", "fr", "de", "es", "ru", "pt", "custom"}
@@ -115,20 +122,42 @@ type translationEntryDraft struct {
 }
 
 func (m *editorApp) openTranslation(lookup bool) {
-	if !m.translationEnabled {
-		return
-	}
 	if m.translation == nil {
 		if m.ai.open {
 			m.toggleAIPanel()
 		}
 		m.templatePanel = nil
-		m.translation = &translationPanelState{split: m.newAssetSplit(), mode: m.translationMode}
-		m.translation.sourceLang.code, m.translation.targetLang.code = "en", "zh-CN"
+		m.translation = &translationPanelState{split: m.newAssetSplit(), translationDirection: defaultTranslationDirection()}
 	}
 	if lookup {
 		m.lookupTranslation()
 	}
+}
+
+func (m *editorApp) goToTranslation() {
+	m.openTranslation(false)
+	m.fillTranslationSelection()
+}
+
+func (m *editorApp) translationSelectionItem(c ui.C, menu *ui.MenuItems) {
+	if menu.Item("去翻译").Icon(translationIcon).Clicked() {
+		c.After(m.goToTranslation)
+	}
+}
+
+func (tab *editorTab) hasTranslationSelection() bool {
+	if tab == nil {
+		return false
+	}
+	if tab.hasLargeEdit() {
+		position := tab.largeText.editing.position
+		return position.anchor != position.caret
+	}
+	if tab.largeText == nil && !editableTextSource(tab) {
+		return false
+	}
+	selection := tab.source.text.Selection()
+	return selection.Start != selection.End
 }
 
 func (m *editorApp) toggleTranslation() {
@@ -140,16 +169,11 @@ func (m *editorApp) toggleTranslation() {
 		m.focusActiveSource()
 		return
 	}
-	hasSelection := false
-	if editableTextSource(m.active) {
-		span := m.active.source.text.Selection()
-		hasSelection = span.Start != span.End
-	}
-	m.openTranslation(hasSelection)
+	m.openTranslation(m.active.hasTranslationSelection())
 }
 
 func (state *translationPanelState) clearLookup() {
-	state.target = textEditTarget{}
+	state.target = translationSelection{}
 	state.request, state.aiMenu, state.aiServices = nil, false, nil
 	if state.offline != nil {
 		state.offline.request = nil
@@ -169,8 +193,8 @@ func (state *translationPanelState) translating() bool {
 	return state.request != nil || state.offline != nil && state.offline.request != nil
 }
 
-func (state *translationPanelState) languagePair() (string, string, error) {
-	source, target := languageCode(state.sourceLang.value()), languageCode(state.targetLang.value())
+func (direction *translationDirection) languagePair() (string, string, error) {
+	source, target := languageCode(direction.sourceLang.value()), languageCode(direction.targetLang.value())
 	if !validLanguageCode(source) || !validLanguageCode(target) || source == target {
 		return "", "", errors.New("请输入不同的语言代码，如 en 和 zh-CN")
 	}
@@ -187,45 +211,84 @@ func (state *translationPanelState) matchesQuery() bool {
 }
 
 func (m *editorApp) lookupTranslation() {
-	state := m.translation
-	if state == nil || !m.translationEnabled {
-		return
-	}
-	state.clearLookup()
-	state.managing, state.message, state.problem, state.draft = false, "", "", nil
-	source, target, err := state.languagePair()
-	if err != nil {
-		state.problem = err.Error()
-		return
-	}
-	selection, err := captureTextTarget(m.active, true, translationTextLimit)
-	if err != nil {
-		state.problem = err.Error()
-		return
-	}
-	if strings.TrimSpace(selection.selected) == "" {
-		state.problem = "请选择需要翻译的文字"
-		return
-	}
-	state.target = selection
-	state.query.SetText(selection.selected)
-	state.querySource, state.queryTarget = source, target
-	if state.mode == translationLocalMode {
-		m.findLocalTranslations(state)
+	if m.fillTranslationSelection() {
+		m.findLocalTranslations(m.translation)
 	}
 }
 
-func (m *editorApp) lookupTypedTranslation() {
+func (m *editorApp) fillTranslationSelection() bool {
 	state := m.translation
-	if state == nil || !m.translationEnabled || state.translating() {
-		return
+	if state == nil {
+		return false
+	}
+	state.clearLookup()
+	state.managing, state.message, state.problem, state.draft = false, "", "", nil
+	selection, err := captureTranslationSelection(m.active)
+	if err != nil {
+		state.problem = err.Error()
+		return false
+	}
+	if strings.TrimSpace(selection.selected) == "" {
+		state.problem = "请选择需要翻译的文字"
+		return false
+	}
+	state.target = selection
+	state.query.SetText(selection.selected)
+	source, target, err := state.languagePair()
+	if err != nil {
+		state.problem = err.Error()
+		return false
+	}
+	state.querySource, state.queryTarget = source, target
+	return true
+}
+
+func captureTranslationSelection(tab *editorTab) (translationSelection, error) {
+	if tab == nil || tab.largeText == nil {
+		target, err := captureTextTarget(tab, true, translationTextLimit)
+		return translationSelection{textEditTarget: target}, err
+	}
+	if !tab.hasLargeEdit() {
+		target, err := capturePaneTextTarget(tab, true, translationTextLimit)
+		target.tab = nil
+		return translationSelection{textEditTarget: target}, err
+	}
+	if tab.largeText.busyEditing() {
+		return translationSelection{}, errors.New("请等待当前大文件操作完成")
+	}
+	if _, composing := tab.source.text.Composition(); composing {
+		return translationSelection{}, errors.New("请先完成中文选词")
+	}
+	edit := tab.largeText.editing
+	start, end := edit.position.rangeOffsets()
+	if start == end {
+		return translationSelection{}, errors.New("请先选中一段文本")
+	}
+	if end-start > translationTextLimit {
+		return translationSelection{}, fmt.Errorf("选区超过 %d KiB，请缩小选区", translationTextLimit>>10)
+	}
+	value, err := edit.revision.read(start, end)
+	if err != nil {
+		return translationSelection{}, err
+	}
+	return translationSelection{
+		textEditTarget: textEditTarget{tab: tab, selected: strings.ReplaceAll(value, "\r\n", "\n")},
+		revision:       edit.revision, start: start, end: end,
+	}, nil
+}
+
+func (m *editorApp) lookupTypedTranslation() bool {
+	state := m.translation
+	if state == nil || state.translating() {
+		return false
 	}
 	if err := m.prepareTranslationQuery(state); err != nil {
 		state.problem = err.Error()
-		return
+		return false
 	}
 	state.managing, state.draft = false, nil
 	m.findLocalTranslations(state)
+	return true
 }
 
 func (m *editorApp) prepareTranslationQuery(state *translationPanelState) error {
@@ -241,7 +304,7 @@ func (m *editorApp) prepareTranslationQuery(state *translationPanelState) error 
 		return err
 	}
 	if state.target.selected != query {
-		state.target = textEditTarget{selected: query}
+		state.target = translationSelection{textEditTarget: textEditTarget{selected: query}}
 	}
 	if err := state.validateTarget(m.active); err != nil {
 		return err
@@ -287,6 +350,23 @@ func (state *translationPanelState) validateTarget(active *editorTab) error {
 	if state.target.tab == nil {
 		if state.target.selected == "" {
 			return errors.New("请先查找文本或选区")
+		}
+		return nil
+	}
+	if state.target.revision != nil {
+		if active != state.target.tab || !active.hasLargeEdit() {
+			return errors.New("请回到原来的文本标签并重新选择")
+		}
+		if active.largeText.busyEditing() {
+			return errors.New("请等待当前大文件操作完成")
+		}
+		if _, composing := active.source.text.Composition(); composing {
+			return errors.New("请先完成中文选词")
+		}
+		edit := active.largeText.editing
+		start, end := edit.position.rangeOffsets()
+		if edit.revision != state.target.revision || start != state.target.start || end != state.target.end {
+			return errors.New("原文或选区已变化，请重新选择")
 		}
 		return nil
 	}
@@ -348,16 +428,11 @@ func (state *translationPanelState) validateOutput() error {
 
 func (m *editorApp) applyTranslation() {
 	state := m.translation
-	if state == nil || !m.translationEnabled {
+	if state == nil || state.target.tab == nil {
 		return
 	}
 	state.message, state.problem = "", ""
 	if err := state.validateTarget(m.active); err != nil {
-		state.problem = err.Error()
-		return
-	}
-	value, start, end, err := state.target.current(m.active)
-	if err != nil {
 		state.problem = err.Error()
 		return
 	}
@@ -378,14 +453,26 @@ func (m *editorApp) applyTranslation() {
 		state.problem = err.Error()
 		return
 	}
-	if m.active.format() == "JSON" {
-		translated, err = jsonTranslationReplacement(value, start, end, translated)
-		if err != nil {
-			state.problem = err.Error()
+	if state.target.revision != nil {
+		m.active.largeText.problem = ""
+		m.active.replaceLargeEdit(state.target.start, state.target.end, translated, false)
+		if m.active.largeText.problem != "" {
+			state.problem = m.active.largeText.problem
 			return
 		}
+	} else {
+		if m.active.format() == "JSON" {
+			value, start, end, err := state.target.current(m.active)
+			if err == nil {
+				translated, err = jsonTranslationReplacement(value, start, end, translated)
+			}
+			if err != nil {
+				state.problem = err.Error()
+				return
+			}
+		}
+		m.active.source.text.ReplaceRange(state.target.span, translated)
 	}
-	m.active.source.text.ReplaceRange(state.target.span, translated)
 	state.clearLookup()
 	m.status = "已替换选区"
 	m.focusActiveSource()
@@ -407,7 +494,7 @@ func (m *editorApp) translationPanel(c ui.C, blocked bool) {
 	m.workspacePanel(c).Grow(1).MarginRight(workspaceInset).Pad(12).Gap(10).Children(func() {
 		ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
 			if state.managing || state.draft != nil {
-				if ui.Button(c, "返回翻译").Icon(chevronLeftIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
+				if ui.Button(c.Part("back"), "返回翻译").Icon(chevronLeftIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
 					state.managing, state.draft, state.problem, state.message = false, nil, "", ""
 				}
 			} else {
@@ -418,7 +505,13 @@ func (m *editorApp) translationPanel(c ui.C, blocked bool) {
 				title = "词库管理"
 			}
 			ui.Text(c, title).Bold().FontSize(15).Grow(1)
-			if !state.managing && state.draft == nil && ui.Button(c, "词库管理").Icon(dictionaryIcon).IconOnly().Ghost().Size(28, 28).Tooltip("词库管理").Disabled(blocked || state.translating()).Clicked() {
+			if !state.managing && state.draft == nil && m.active.canTranslateDocument() &&
+				ui.Button(c.Part("document"), "翻译当前文章").Ghost().Height(28).FontSize(12).
+					Disabled(blocked || state.translating()).Clicked() {
+				tab := m.active
+				c.After(func() { m.openDocumentTranslation(tab) })
+			}
+			if !state.managing && state.draft == nil && ui.Button(c.Part("manage"), "词库管理").Icon(dictionaryIcon).IconOnly().Ghost().Size(28, 28).Tooltip("词库管理").Disabled(blocked || state.translating()).Clicked() {
 				state.aiMenu, state.aiServices = false, nil
 				state.managing, state.problem, state.message = true, "", ""
 				c.After(func() {
@@ -429,26 +522,10 @@ func (m *editorApp) translationPanel(c ui.C, blocked bool) {
 					}
 				})
 			}
-			if ui.Button(c, "关闭翻译").Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
+			if ui.Button(c.Part("close"), "关闭翻译").Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
 				c.After(m.toggleTranslation)
 			}
 		})
-		if !state.managing && state.draft == nil {
-			ui.Row(c).FillWidth().Pad(3).Gap(4).Radius(9).Background(m.theme.Muted).Children(func() {
-				for _, option := range []struct {
-					label string
-					mode  translationMode
-				}{{"本地词库", translationLocalMode}, {"离线整句", translationOfflineMode}} {
-					button := ui.Button(c.Key(option.label), option.label).Ghost().Grow(1).Basis(0).FontSize(12).Disabled(blocked || state.translating())
-					if state.mode == option.mode {
-						button.Secondary()
-					}
-					if button.Clicked() && state.mode != option.mode {
-						c.After(func() { m.selectTranslationMode(option.mode) })
-					}
-				}
-			})
-		}
 		scroll := c.Part("lookup-scroll")
 		if state.managing || state.draft != nil {
 			scroll = c.Part("manage-scroll")
@@ -476,31 +553,27 @@ func (m *editorApp) translationPanel(c ui.C, blocked bool) {
 	})
 }
 
-func (m *editorApp) selectTranslationMode(mode translationMode) {
-	state := m.translation
-	state.mode, m.translationMode = mode, mode
-	state.managing, state.problem, state.message = false, "", ""
-	state.aiMenu, state.aiServices = false, nil
-	if mode == translationLocalMode {
-		m.refreshTranslationDictionary()
-	} else if state.offline != nil {
-		m.refreshOfflineComponents(state.offline)
-	}
+func (m *editorApp) translationLanguageFields(c ui.C, state *translationPanelState, lookup, blocked bool) {
+	translationDirectionFields(c, &state.translationDirection, blocked, func() {
+		state.problem, state.message, state.aiMenu = "", "", false
+		if lookup && state.localLookup && state.query.Text() == state.target.selected {
+			m.lookupTypedTranslation()
+		}
+	})
 }
 
-func (m *editorApp) translationLanguageFields(c ui.C, state *translationPanelState, lookup, blocked bool) {
+func translationDirectionFields(c ui.C, direction *translationDirection, blocked bool, afterSwap func()) {
 	ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
-		translationLanguageField(c.Part("source"), "原文语言", &state.sourceLang, blocked)
+		translationLanguageField(c.Part("source"), "原文语言", &direction.sourceLang, blocked)
 		if ui.Button(c, "互换语言").Icon(swapLanguagesIcon).IconOnly().Size(28, 28).Tooltip("互换原文和译文语言").Ghost().Disabled(blocked).Clicked() {
 			c.After(func() {
-				state.sourceLang, state.targetLang = state.targetLang, state.sourceLang
-				state.problem, state.message, state.aiMenu = "", "", false
-				if lookup && state.localLookup && state.query.Text() == state.target.selected {
-					m.lookupTypedTranslation()
+				direction.sourceLang, direction.targetLang = direction.targetLang, direction.sourceLang
+				if afterSwap != nil {
+					afterSwap()
 				}
 			})
 		}
-		translationLanguageField(c.Part("target"), "译文语言", &state.targetLang, blocked)
+		translationLanguageField(c.Part("target"), "译文语言", &direction.targetLang, blocked)
 	})
 }
 
@@ -516,37 +589,31 @@ func translationLanguageField(c ui.C, label string, choice *translationLanguageC
 
 func (m *editorApp) translationLookupView(c ui.C, state *translationPanelState, blocked bool) {
 	busy := state.translating()
-	m.translationLanguageFields(c.Part("languages"), state, state.mode == translationLocalMode, blocked || busy)
+	m.translationLanguageFields(c.Part("languages"), state, true, blocked || busy)
 	ui.TextArea(c.Part("query"), &state.query, "查询文本", "输入或粘贴需要翻译的文字").FillWidth().Height(96).Disabled(blocked || busy)
-	if editableTextSource(m.active) {
-		selection := m.active.source.text.Selection()
-		if selection.Start != selection.End && ui.Button(c.Part("selection"), "查选区").Icon(fileIcon).Ghost().Height(26).FontSize(12).
-			Tooltip("将编辑器选区带入翻译").Disabled(blocked || busy).Clicked() {
-			c.After(m.lookupTranslation)
-		}
+	if m.active.hasTranslationSelection() && ui.Button(c.Part("selection"), "查选区").Icon(fileIcon).Ghost().Height(26).FontSize(12).
+		Tooltip("将编辑器选区带入翻译").Disabled(blocked || busy).Clicked() {
+		c.After(m.lookupTranslation)
 	}
-	if state.mode == translationOfflineMode {
-		m.offlineTranslationControls(c.Part("offline"), state, blocked)
-	} else {
-		ui.Row(c.Part("actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
-			if ui.Button(c.Part("local"), "查找").Grow(1).Basis(0).Height(32).FontSize(12).
-				Tooltip("查找本地词库和已保存译文").
-				Disabled(blocked || busy || strings.TrimSpace(state.query.Text()) == "").Clicked() {
-				c.After(m.lookupTypedTranslation)
+	ui.Row(c.Part("actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
+		m.translationAIAction(c.Part("ai"), state, blocked)
+		if state.offline != nil && state.offline.request != nil {
+			if ui.Button(c.Part("local"), "取消本地翻译").Outline().Grow(1).Basis(0).Height(32).FontSize(12).Disabled(blocked).Clicked() {
+				c.After(func() { state.offline.request = nil })
 			}
-			m.translationAIAction(c.Part("ai"), state, blocked)
-		})
-	}
+			return
+		}
+		if ui.Button(c.Part("local"), "本地翻译").Secondary().Grow(1).Basis(0).Height(32).FontSize(12).
+			Tooltip("先查本地词库，再用已安装的离线组件翻译整句").
+			Disabled(blocked || busy || strings.TrimSpace(state.query.Text()) == "").Clicked() {
+			c.After(func() {
+				if m.lookupTypedTranslation() && !state.hasOutput {
+					m.startOfflineTranslation(state)
+				}
+			})
+		}
+	})
 	m.translationResult(c.Part("result"), state, blocked || busy)
-	if state.mode == translationLocalMode {
-		source, target, _ := state.languagePair()
-		if source == "en" && target == "zh-cn" {
-			if !state.dictionaryChecked {
-				m.refreshTranslationDictionary()
-			}
-			m.dictionaryDownloadControls(c.Part("download"), state, blocked)
-		}
-	}
 }
 
 func (m *editorApp) translationResult(c ui.C, state *translationPanelState, blocked bool) {
@@ -564,8 +631,8 @@ func (m *editorApp) translationResult(c ui.C, state *translationPanelState, bloc
 			state.problem, state.message = "", ""
 		}
 	}
-	if state.localLookup && !state.hasOutput && len(state.terms) == 0 {
-		ui.Text(c.Part("no-match"), "未找到匹配译文").Muted().FontSize(12)
+	if state.localLookup && !state.hasOutput && !state.translating() && state.problem == "" {
+		ui.Text(c.Part("no-match"), "未找到本地译文，可用 AI 翻译").Muted().FontSize(12)
 	}
 	if state.hasOutput {
 		ui.TextArea(c.Part("output"), &state.output, "译文", "译文").FillWidth().Height(120).Disabled(blocked)

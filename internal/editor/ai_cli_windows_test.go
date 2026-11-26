@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vivaui/viva/app"
 )
 
 func TestAICommandLineProvidersThroughEditor(t *testing.T) {
@@ -23,6 +25,7 @@ import (
  "io"
  "os"
  "slices"
+ "strconv"
  "strings"
  "time"
 )
@@ -36,6 +39,7 @@ func appServer() {
  }
  response := func(id int, result any) { _ = encoder.Encode(map[string]any{"id":id,"result":result}) }
  notify := func(method string, params any) { _ = encoder.Encode(map[string]any{"method":method,"params":params}) }
+ translate := false
  for {
   var req request
   if decoder.Decode(&req) != nil { return }
@@ -48,9 +52,24 @@ func appServer() {
    response(req.ID, map[string]any{"data":[]map[string]string{{"id":"viva-fast","model":"viva-fast"}}})
   case "thread/start":
    params := string(req.Params)
-   if !strings.Contains(params, "viva-fast") || !strings.Contains(params, "\"fixture\":{\"enabled\":false}") || !strings.Contains(params, "\"sandbox\":\"read-only\"") { os.Exit(9) }
+   if !strings.Contains(params, "\"fixture\":{\"enabled\":false}") || !strings.Contains(params, "\"sandbox\":\"read-only\"") { os.Exit(9) }
+   var start struct { DeveloperInstructions string }
+   if json.Unmarshal(req.Params, &start) != nil || start.DeveloperInstructions == "" { os.Exit(17) }
+   translate = strings.HasPrefix(start.DeveloperInstructions, "Translate the user message")
+   if !translate && !strings.Contains(params, "viva-fast") { os.Exit(19) }
    response(req.ID, map[string]any{"thread":map[string]string{"id":"test-thread"},"model":"viva-fast"})
   case "turn/start":
+   if translate {
+    var turn struct { Input []struct { Text string } }
+    if json.Unmarshal(req.Params, &turn) != nil || len(turn.Input) != 1 || turn.Input[0].Text != "editorx git test\nSave {count} files." { os.Exit(18) }
+    response(req.ID, map[string]any{})
+    notify("item/agentMessage/delta", map[string]string{"delta":"editorx git 测试"})
+    time.Sleep(220*time.Millisecond)
+    notify("item/agentMessage/delta", map[string]string{"delta":"\n保存 {count} 个文件。"})
+    notify("item/completed", map[string]any{"item":map[string]string{"type":"agentMessage","text":"editorx git 测试\n保存 {count} 个文件。"}})
+    notify("turn/completed", map[string]any{"turn":map[string]string{"status":"completed"}})
+    continue
+   }
    if !strings.Contains(string(req.Params), "请解释配置") { os.Exit(8) }
    response(req.ID, map[string]any{})
    notify("item/agentMessage/delta", map[string]string{"delta":"Codex 的"})
@@ -115,7 +134,7 @@ func main() {
   return
  }
  text, err := io.ReadAll(os.Stdin)
- if err != nil || !strings.Contains(string(text), "请解释配置") {
+ if err != nil {
   os.Exit(2)
  }
  directory, err := os.Getwd()
@@ -127,13 +146,15 @@ func main() {
   if sandbox < 0 || args[sandbox+1] != "read-only" || output < 0 || args[len(args)-1] != "-" || !slices.Contains(args, "--ephemeral") {
    os.Exit(4)
   }
-  if os.WriteFile(args[output+1], []byte("Codex 的回复"), 0600) != nil {
+  instructions, err := strconv.Unquote(strings.TrimPrefix(args[1], "developer_instructions="))
+  if args[0] != "-c" || err != nil || !strings.HasPrefix(instructions, "Translate the user message") || string(text) != "editorx git test\nSave {count} files." { os.Exit(19) }
+  if os.WriteFile(args[output+1], []byte("editorx git 测试\n保存 {count} 个文件。"), 0600) != nil {
    os.Exit(5)
   }
   return
  }
  tools := slices.Index(args, "--tools")
- if tools < 0 || args[tools+1] != "" || !slices.Contains(args, "--strict-mcp-config") || !slices.Contains(args, "--model=haiku") {
+ if tools < 0 || args[tools+1] != "" || !slices.Contains(args, "--strict-mcp-config") || !slices.Contains(args, "--model=haiku") || !strings.Contains(string(text), "请解释配置") {
   os.Exit(6)
  }
  if json.NewEncoder(os.Stdout).Encode(map[string]string{"result":"Claude 的回复"}) != nil {
@@ -210,6 +231,35 @@ func main() {
 	profile := saved.active(0)
 	if profile.Provider != aiCodexCLI || profile.CLIPath != executable || profile.BaseURL != "" {
 		t.Fatal("the CLI config did not round-trip")
+	}
+	const sourceText = "editorx git test\nSave {count} files."
+	const translation = "editorx git 测试\n保存 {count} 个文件。"
+	m.translationEnabled = true
+	m.openTranslation(false)
+	m.translation.query.SetText(sourceText)
+	check(s.Frame())
+	click("AI 翻译")
+	check(s.WaitFor(func(app.Snapshot) bool { return m.translation.request == nil }, 8*time.Second))
+	if m.translation.problem != "" || m.translation.output.Text() != translation {
+		t.Fatal("Codex CLI did not translate the raw selection", m.translation.problem, m.translation.output.Text())
+	}
+	article := m.addTab(document{saved: sourceText, eol: "LF"}, "article.txt")
+	check(s.Frame())
+	check(s.RightClickLabel("textfield:代码编辑区"))
+	click("menuitem:整篇翻译")
+	click("button:AI 翻译整篇")
+	state := article.documentTranslation
+	waitForPartialDocumentTranslation(t, s, state, "editorx git 测试")
+	check(s.WaitFor(func(app.Snapshot) bool { return state.request == nil }, 5*time.Second))
+	if state.problem != "" || state.result.text.CommittedString() != translation || article.source.text.CommittedString() != sourceText {
+		t.Fatal("Codex CLI did not stream the article in its own split pane", state.problem, state.result.text.CommittedString())
+	}
+	profile.cliDirectory = working
+	fallback, err := profile.runCLI(context.Background(), "Translate the user message from English to Simplified Chinese.",
+		[]aiMessage{{Role: "user", Content: sourceText}}, "")
+	check(err)
+	if fallback.Text != translation {
+		t.Fatalf("Codex exec returned %q", fallback.Text)
 	}
 	profile.Provider, profile.Model, profile.cliDirectory = aiClaudeCLI, "haiku", working
 	reply, err := profile.complete(context.Background(), "编辑助手", []aiMessage{{Role: "user", Content: "请解释配置"}}, aiReasoningHigh, nil)

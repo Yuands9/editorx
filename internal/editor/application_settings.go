@@ -196,10 +196,10 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 				window.applyEditorPreferences(preferences.Editor)
 				window.keyBindings = preferences.Shortcuts
 				window.applySidebarPreferences(preferences.Sidebar)
-				window.translationEnabled = preferences.TranslationEnabled
-				if !window.translationEnabled {
+				if window.translationEnabled && !preferences.TranslationEnabled {
 					window.translation = nil
 				}
+				window.translationEnabled = preferences.TranslationEnabled
 				if window.appSettings.open {
 					window.appSettings.original, window.appSettings.draft = preferences, preferences
 				}
@@ -215,10 +215,10 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 	m.applyEditorPreferences(preferences.Editor)
 	m.keyBindings = preferences.Shortcuts
 	m.applySidebarPreferences(preferences.Sidebar)
-	m.translationEnabled = preferences.TranslationEnabled
-	if !m.translationEnabled {
+	if m.translationEnabled && !preferences.TranslationEnabled {
 		m.translation = nil
 	}
+	m.translationEnabled = preferences.TranslationEnabled
 	m.invalidator.Invalidate()
 	return nil
 }

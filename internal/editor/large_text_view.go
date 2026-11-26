@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/text/find"
@@ -27,7 +26,6 @@ type largeTextView struct {
 	lastQuery, problem string
 	searchOpen, focus  bool
 	selecting          bool
-	anchor             int
 	search             *ui.EffectState[int64, int]
 	edit               *ui.EffectState[largeEditOpening, int]
 	loadStore          *largeEditStorage
@@ -133,20 +131,19 @@ func (t *editorTab) selectLargeText(event gfx.PointerEvent) gfx.EventResult {
 	if event.Kind == gfx.PointerDown {
 		state.selecting = true
 		state.selectedResult = -1
-		state.anchor = caret
-		if event.Modifiers&ui.Shift != 0 {
-			selection := pane.text.Selection()
-			state.anchor = selection.Start
-			if pane.text.Caret() == selection.Start {
-				state.anchor = selection.End
-			}
+		switch {
+		case event.Modifiers&ui.Shift != 0:
+			pane.text.MoveTo(caret, true)
+		case event.ClickCount >= 3:
+			pane.text.SetSelection(text.LineRange(pane.text.String(), caret))
+		case event.ClickCount == 2:
+			pane.text.SetSelection(text.WordRange(pane.text.String(), caret))
+		default:
+			pane.text.MoveTo(caret, false)
 		}
-		if event.ClickCount == 2 {
-			word := text.WordRange(pane.text.String(), caret)
-			state.anchor, caret = word.Start, word.End
-		}
+	} else {
+		pane.text.MoveTo(caret, true)
 	}
-	pane.text.SetSelection(text.Range{Start: state.anchor, End: caret})
 	return gfx.EventResult{Focus: event.Target, Handled: true, Repaint: true}
 }
 
@@ -167,6 +164,16 @@ func (t *editorTab) largeTextKey(event gfx.KeyEvent) gfx.EventResult {
 		handled = t.stepLargeText(-1, true)
 	case event.Modifiers == 0 && event.Key == gfx.KeyPageDown && t.source.view.Code.ScrollY() >= t.source.view.Code.MaxScrollY():
 		handled = t.stepLargeText(1, true)
+	case (event.Key == gfx.KeyLeft || event.Key == gfx.KeyRight) && event.Modifiers&^(ui.Ctrl|ui.Shift) == 0:
+		editor := t.source.text
+		extend := event.Modifiers&ui.Shift != 0
+		if event.Modifiers&ui.Ctrl != 0 {
+			editor.MoveWord(event.Key == gfx.KeyRight, extend)
+		} else if event.Key == gfx.KeyRight {
+			editor.MoveRight(extend)
+		} else {
+			editor.MoveLeft(extend)
+		}
 	default:
 		handled = false
 	}
@@ -420,28 +427,17 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 		return
 	}
 	box := tab.source.declare(c.Part("page"), "大文件内容", !blocked).FillWidth().Grow(1).MinHeight(0).Clip()
-	if !blocked && box.Shortcut(ui.Ctrl, "c") {
-		c.After(func() { m.copyLargeTextSelection(tab) })
-	}
-	selection := tab.source.text.Selection()
-	if !blocked && selection.Start != selection.End {
-		ui.ContextMenu(c.Part("page-menu"), box, func(menu *ui.MenuItems) {
-			if menu.Item("复制选区").Icon(copyIcon).Clicked() {
-				c.After(func() { m.copyLargeTextSelection(tab) })
-			}
-		})
-	}
-}
-
-func (m *editorApp) copyLargeTextSelection(tab *editorTab) {
-	editor := tab.source.text
-	selection := editor.Selection()
-	if selection.Start == selection.End {
+	if blocked {
 		return
 	}
-	value := editor.String()[editor.ByteOffset(selection.Start):editor.ByteOffset(selection.End)]
-	if err := app.SetClipboardText(value); err != nil {
-		tab.largeText.problem = err.Error()
+	if box.Shortcut(ui.Ctrl, "c") {
+		c.After(func() { m.copyEditorSelection(tab, tab.source) })
+	}
+	if box.Shortcut(ui.Ctrl, "a") {
+		c.After(func() { tab.source.text.SetSelection(text.Range{End: tab.source.text.RuneCount()}) })
+	}
+	if !state.busyEditing() {
+		m.editorContextMenu(c.Part("page-menu"), box, tab, tab.source)
 	}
 }
 

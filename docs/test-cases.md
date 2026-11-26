@@ -15,11 +15,16 @@
 | --- | --- |
 | 打开、保存和会话恢复 | `TestFileDropOpensDocuments`、`TestSessionExternalChangesAndRecovery`、`TestSessionIMEAndExplicitClose` |
 | 查找、替换和 JSON | `TestSearchReplaceCurrentFileWithMultilineInput`、`TestSearchReplaceAllOpenWithEscapesAndMixedEndings`、`TestJSONAutoWrapAndReversibleConversions`、`TestJSONFoldSummaryRenderingAndPreservation`、`TestJSONSourceKeepsFreeInput` |
+| 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsDraftAndBackup` |
+| 大文件查找替换和结果 | `TestLargeEditFloatingFindAndReplace`、`TestLargeEditSearchMatchesNormalizedText`、`TestLargeEditSearchAcrossPiecesAndDenseReplace`、`TestLargeEditGroupedSearchResultsReveal`、`TestSearchResultsRenderWideLineAtHighDPI`、`TestClosedSearchResultsReleaseAndRefill` |
 | 链接打开和落盘 | `TestLinkedFileWithHTTPSRedirectAndDifferentFormats`、`TestLinkedFileSaveChoiceKeepsOriginalBytes`、`TestLinkedFileDraftsAndAttachmentsAfterRestart` |
 | 标签、项目和 ZIP | `TestPinnedGroupRestoresPinsAndAllowsExplicitClose`、`TestMultipleProjectsThroughUIAndSession`、`TestMergeBackupKeepsSeparateDraftsAndGroupIDs`、`TestLegacySessionRestoresImportedWindowsIntoTheMainWindow` |
+| 项目文件操作 | `TestProjectCreateOnCompactFolder`、`TestProjectRenameThroughContextMenu`、`TestProjectDeleteConfirmation` |
+| 密码本 | `TestPasswordVaultAuthenticatedStorage`、`TestPasswordVaultImportFormats`、`TestPasswordVaultOptionalMasterPassword`、`TestPasswordVaultTimingOptions`、`TestPasswordVaultDeleteFromContextMenu`、`TestPasswordVaultSidebarNavigation`、`TestPasswordVaultArchiveRestore` |
+| 图片 OCR 和 AI 识图 | `TestImageOCRIsOptIn`、`TestImageOCRPixels`、`TestImageAIOnlySendsCurrentImageOnStart`、`TestImageAICancelsAnInFlightRequest` |
 | 设置和 AI | `TestEditorSettingsApplyAcrossWindowsAndRestore`、`TestEditorShortcutRebinding`、`TestAIHistoryRestoresReviewAgainstOriginalDocument` |
 | 侧栏设置 | `TestSidebarPreferencesAndTemplatePanel`、`TestSidebarAcrossWindowsAndSession`、`TestSidebarButtonsWithoutDocumentAndAlignment` |
-| 模板与翻译 | `TestDocumentTemplatesThroughUI`、`TestLocalTranslationThroughUI`、`TestSelectionTranslationAIThroughUI`、`TestDownloadedDictionaryThroughUI`、`TestDictionaryDownloadIntegrityAndCleanup`、`TestAITranslationWithoutDictionary` |
+| 模板与翻译 | `TestDocumentTemplatesThroughUI`、`TestLocalTranslationThroughUI`、`TestSelectionTranslationAIThroughUI`、`TestDownloadedDictionaryThroughUI`、`TestDictionaryDownloadIntegrityAndCleanup`、`TestAITranslationWithoutDictionary`、`TestDocumentTranslationStreamsInSplit`、`TestDocumentTranslationChunksPreserveBoundaries` |
 | 离线组件与压缩下载 | `TestOfflineComponentIntegrityAndCleanup`、`TestOfflineTranslationOptIn`、`TestOfflineDownloadStopsWithPanel`、`TestDictionaryCompressedTransfer`、`TestDictionaryDownloadStopsWithPanel` |
 | Git | `TestProjectGitStageCommitPushFetchAndPull` |
 | 应用内更新 | `TestUpdateConditionalRequestAndPersistentCache`、`TestUpdateAutomaticChecksShareWorkAndRespectOptOut`、`TestUpdateHomeIndicatorSkipAndManualCheck`、`TestUpdateDownloadContinuesAcrossWindowsAndCleansCancellation`、`TestUpdateDownloadsVerifiedExecutableAndPreservesPrevious` |
@@ -43,11 +48,27 @@
 
 模板与翻译的界面截图可设置 `VIVA_PREVIEW_DIR` 后运行 `TestTextAssetsPreviews`，覆盖深浅色、900×560 小窗口、保存模板、译文预览、词库下载卡片、离线组件下载、无文档侧栏和设置双列对齐。真实词库验证将 `EDITORX_DICTIONARY_SOURCE` 指向已下载的固定版本 `ecdict.csv`，或将 `EDITORX_DICTIONARY_GZIP` 指向原始 gzip 响应体，运行 `TestInstalledDictionaryFromRealSource`，检查实际传输字节、下载校验、安装大小和常用单词／词形命中；该用例不会自动访问外网。
 
-首次运行用独立数据目录，确认模板库和翻译图标默认不显示。在没有打开文件时打开侧栏开关，确认设置页和空白页立即显示相应按钮，保存／查找／折行置灰，AI／Git／终端和模板入口可用。核对两列开关对齐和深浅主题的开关状态。切换左右位置，确认面板随之移动，重启验证。模板侧栏中选择、填写、预览并新建或插入，确认编辑区可继续操作。存为模板时，变量名输入仅在设为变量时出现，并可从「保存到」选择个人库或项目库。
+首次运行用独立数据目录，确认左侧主菜单和项目栏展开，模板库和翻译图标默认隐藏。用 Ctrl+B 收起后重启，确认恢复栏位状态。在没有打开文件时打开侧栏开关，确认设置页和空白页立即显示相应按钮，保存／查找／折行置灰，AI／Git／终端和模板入口可用。核对两列开关对齐和深浅主题的开关状态。切换左右位置，确认面板随之移动，重启验证。模板侧栏中选择、填写、预览并新建或插入，确认编辑区可继续操作。
 
-翻译面板顶部选择「本地词库」或「离线整句」。两个页面的原文下方都应显示 AI 操作。无任何下载时用已配置的 AI 服务翻译，验证只发送当前原文及语言方向。单服务直接开始，多服务先选择。分别从翻译页和右上角「词库管理」验证下载入口、下载进度、取消、失败重试和移除。用 `hello`、`files` 和一段英文分别查词与查看词义参考，段落不应被词义拼接替换。保存到个人或项目库后再次查找优先命中自建库，移除下载词库后仍可查找自建词条。
+翻译面板直接显示「AI 翻译」和「本地翻译」。无任何下载时用已配置的服务翻译，核对请求中的原文、方向和匹配术语。单服务直接开始，多服务先选择。通过「词库管理」验证下载进度、取消、失败重试和移除。用 `hello`、`files` 和一段英文复测词义参考和整句译文，保存的项目译文优先命中。
 
-离线整句未安装时，「下载离线组件」与「AI 翻译」并排显示。点击下载才创建组件目录，安装后同一位置可开始离线翻译。打开词库管理或切换页面时下载能继续，取消或关闭面板后清理临时目录。用安装后的两种语言方向翻译短句、段落和带占位符的多行原文。结果区只显示译文和操作，检查替换、撤销及占位符验证。完成或取消后检查没有组件目录下的 `python.exe` 驻留，通过词库管理移除已装组件。
+通过词库管理主动安装组件后，用「本地翻译」验证中英两个方向的短句、段落和带占位符的多行原文。检查替换、撤销及占位符验证。返回翻译面板时下载继续，取消或关闭面板后清理临时目录。完成或取消后检查离线子进程退出，并从词库管理移除已装组件。
+
+分别在 Markdown 和纯文本正文右键点「整篇翻译」，检查有无选区都能打开分屏，顶部工具栏没有此入口。手动开始后用测试服务分多次推送译文，检查首段在请求完成前显示、长文分段、代码块保留、停止后保留已输出内容，以及切换标签后译文留在原标签。用译文栏的关闭按钮退出分屏。
+
+在正文右键或按 Shift+F10，检查选区和历史记录对应的菜单项是否可用。复测剪切后撤销、重新粘贴、查找、替换及转到行。对照按页浏览和完整编辑中的全选范围。
+
+### 项目文件、密码本和图片
+
+| 检查项 | 操作与预期 |
+| --- | --- |
+| 项目内新建 | 在合并目录末级右键新建文件，分别选自定义、常见格式和模板。自定义名称可带任意合法后缀，也可省略后缀。检查实际落盘目录，再新建子目录。 |
+| 项目重命名与删除 | 用临时项目验证同名冲突及取消删除。重命名含有已打开文件的目录后，从原标签保存到新路径并检查未保存内容。删除确认后到 Windows 回收站核对目标。 |
+| 密码本导入和分组 | 用虚构网站、账号和密码验证文本及 Markdown 表格识别。检查一个站点的多个账号都保留、候选可编辑、右键可创建子分组、重命名和确认删除。 |
+| 主密码与恢复 | 在独立数据目录验证不设主密码、开启和关闭主密码、8 字符边界及眼睛显隐。用测试密码验证忘记密码后归档和新建，再分别验证恢复旧库及合并当前库。 |
+| 密码本锁定与剪贴板 | 初次创建检查 5 分钟闲置锁定、20 秒剪贴板清理。验证自定义和关闭开关，剪贴板写入新内容后保留该内容。 |
+| 中英 OCR | 新数据目录打开中英文夹杂的图片，经「识别文字」主动下载组件。安装后识别，验证选区复制、复制全文，以及任务结束后识别子进程退出。 |
+| AI 识图 | 使用本地测试服务记录请求。打开图片和弹窗时无图片请求，点击开始后接收当前图片。分别检查提取文字、解读内容、取消，并在未安装 OCR 时验证。 |
 
 ## 实际模型与网络验证
 
@@ -81,6 +102,7 @@ $env:VIVA_EDITOR_DATA_DIR = Join-Path $PWD '.dev\qa\public\data'
 | T-01 标签、分组和项目 | 拖入两个不同目录和三份文件。双击标签和组名重命名并回车，分别拖动标签与整组，固定其中一组。执行批量关闭，然后显式关闭该组，再移除一个项目。 | 拖动与展开、收起有效。批量关闭跳过固定项，显式关闭可移除固定组。移除项目不删除磁盘文件。关完所有标签后主界面仍可打开文件。 |
 | S-01 ZIP 备份与会话 | 打开文件和有内容的未命名草稿，导出选中的文件与草稿。改动当前草稿后导入 ZIP，观察进度，另做一轮在任务完成前取消。正常退出并重新打开。 | 完成后备份内容加入当前窗口，当前草稿仍可找回。取消时未合并内容。重启后会话仍在原窗口。旧多窗口备份分别覆盖在 `TestLegacySessionRestoresImportedWindowsIntoTheMainWindow`。 |
 | S-02 托盘和重复启动 | 使用一个测试数据目录，设置关闭时隐藏，再关闭最后一个窗口。再次运行同一个 EXE，并从命令行传入一个文件。切换到关闭即退出，再关窗。 | 隐藏时重复启动只唤起已有窗口，命令行文件在已有实例打开。关闭即退出后进程结束，下次启动能恢复会话。 |
+| S-03 数据目录迁移 | 将试用 EXE 放在独立测试目录，使用默认 `data`，创建未保存草稿并改一项设置。在「数据目录」选择空文件夹，先取消一次，再重新选择并迁移。另试非空目标。 | 重启后草稿和设置从新目录恢复，原数据可作为备份。非空目标保持原有文件。打开 HTML 预览后，WebView2 缓存位于系统临时目录，关闭后清理。 |
 | L-01 临时打开和另存 | 用测试 HTTP 或 HTTPS 地址依次打开小型 JSON 和 PDF。重新打开链接，选择「保存并打开…」并取消选址，再另存到指定路径。另对一个临时文本做修改并重启。 | 仅查看时只有临时标签，无自动下载副本，重启时不恢复。取消不会生成文件，指定路径保存时原始字节一致。编辑过的文本能作为草稿恢复。PDF 首屏渲染，可另存原件。 |
 | D-01 文档和预览 | 打开带两级标题的 Markdown、HTML（带本地图片）、图片、带公式的 XLSX、带书签的 PDF、带两级标题的 DOCX。点击大纲、切换深浅主题、缩放，在 Excel 修改单元格并保存重开。 | Markdown 左侧大纲可全部展开或收起，分屏可同步滚动。HTML 相对资源正常加载，源码可编辑。图片可缩放。PDF 和 DOCX 显示文件名，标题可跳转。两种主题下阅读正常，Excel 改动保存。公开版 DOCX 只读，本地版可在测试副本上修改并保存。 |
 | P-01 设置和 AI | 新数据目录中验证跟随系统主题、右下角深浅切换。修改字体、折行类型、JSON 缩进和快捷键后重启。打开 AI 模型选择，点击搜索与配置输入框。使用测试服务或已配置的本机 CLI 发送普通问题，拖选文字复制，重启后查看对话。 | 设置自动保存，重启生效。输入框聚焦时无白色外圈，模型菜单有选中反馈。问答文字可选取与复制，对话仍可接续。 |
@@ -95,13 +117,63 @@ JSON 样例使用合成数据，可直接粘贴到任一栏。
 
 ## 大文件复测
 
+### 大文件和全文查找回归
+
+在项目根目录执行以下命令。首次复测时先生成公开版内嵌资源，默认夹具由测试生成。
+
 ```powershell
-.\tools\large-open.ps1 -Runs 3
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+.\tools\web-assets.ps1 -PublicRelease
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -run '^Test(LargeEdit|LargeText|LargeFindAll|TextEncoding|Search|ClosedSearchResults)' ./internal/editor
 ```
 
-记录 EXE 版本、Windows 和硬件、样例大小及每次耗时。以项目树点击为起点，文本和 Office 到首次修改生效为止，PDF 到首屏渲染完成为止。使用 `.dev/large-open-*/results.csv` 比较相同样例的结果，历史基线和生成方式见 [大文件首次打开实测](large-files.md)。
+| 检查项 | 操作 | 预期 |
+| --- | --- | --- |
+| 打开与跨视口编辑 | 打开 64 MiB 以上的本地 .out，先翻页再进入完整编辑。跳到末尾，用中文输入法输入，选择跨视口复制，撤销和重做。 | 浏览页与完整编辑位置连贯，光标、行号和选区按全文计算，组词取消或撤销后正文恢复。 |
+| 编码与行尾 | 分别用 UTF-8 BOM、UTF-16、GBK／GB18030 和混合行尾样例打开、查找和保存副本。手动改编码重读一次。 | 边界处字符和换行完整，保存回原编码、BOM 和行尾。 |
+| 共享浮窗 | 从工具栏及 Ctrl+F、Ctrl+R 进入查找和替换。测试 Ctrl+Enter 输入多行、Enter／Shift+Enter 导航、F3 跳转及 Esc 返回。 | 完整编辑和普通文档共用浮窗。跨视口命中可定位，Esc 后可继续输入正文。 |
+| Unicode 和正则 | 测普通字面量的全词和大小写，放置跨读取边界的中文及 `ſDK`。在 CRLF 样例测试行首、行尾、EOF 空匹配和捕获组替换。 | 匹配范围、实际顺序和计数与同样内容的普通文档一致，字符边界完整。 |
+| 批量替换 | 同时打开普通文本和完整编辑日志，查找并替换全部打开文档。使用密集命中夹具测超过结果显示上限的替换。 | 两类标签的内容和计数正确，每个标签可单步撤销批量替换。发生关闭或版本变化时提示重新操作。 |
+| 分组与高 DPI | 同一行放两处命中，做一个带 CJK、制表符和 emoji 的长行，在 Windows 200% 缩放下横向滚动到末尾。 | 结果按文件与行分组，匹配次数保留两次。末尾文字和高亮可见，点击结果和 F3 均跳到准确位置，无渲染错误。 |
+| 草稿与磁盘冲突 | 修改两处，退出并恢复。用大补丁导出 ZIP，再用独立数据目录导入。另用副本在编辑期间从外部改动原文件。 | 草稿和位置恢复。原文件变动时覆盖保存受阻，可另存或导出草稿，原内容可核对。 |
+| 关闭后的引用释放 | 搜索后保持结果面板开着，关闭大文件并再开另一份文件。 | 已关文档的结果与暂存清理，剩余文件的结果继续可用。 |
 
-完整编辑复测使用 `TestNativeLargeEdit`。将 `VIVA_LARGE_EDIT_FIXTURE` 指向含 `Cache-Control: no-cache` 的日志，测试自行复制样例，然后用原生窗口验证中文输入、撤销重做、全文查找和流式保存。输出记录进程私有内存、首屏、查找、保存及会话大小。`TestLargeEdit` 前缀测试覆盖跨视口滚动、输入法提交与取消、多种编码、混合换行和草稿恢复。
+桌面 `catalina.out` 的固定样例为 178,691,302 字节。可以选跑真实文件的结果测试。该用例只读样例，查找 `fee_type` 预期为 9,410 处命中及 4,705 行结果。
+
+```powershell
+$env:VIVA_SEARCH_RESULTS_LOG = Join-Path ([Environment]::GetFolderPath('Desktop')) 'catalina.out'
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -v -run '^TestLargeEditGroupedSearchResultsReveal$' ./internal/editor
+Remove-Item Env:VIVA_SEARCH_RESULTS_LOG
+```
+
+### Windows 原生响应和关页内存
+
+使用独立 PowerShell 7 窗口在项目根目录运行。首次运行前先用 `.\tools\web-assets.ps1 -PublicRelease` 生成公开版内嵌资源。样例需含 `Cache-Control: no-cache`。测试先复制文件，每轮在隔离桌面启动独立进程，在副本中验证跳转、输入、撤销重做、查找及流式保存。
+
+```powershell
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+$env:VIVA_LARGE_EDIT_FIXTURE = Join-Path ([Environment]::GetFolderPath('Desktop')) 'catalina.out'
+$runDirectory = Join-Path $PWD '.dev\large-edit-check'
+New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
+$testExe = Join-Path $runDirectory 'editorx-large-edit.test.exe'
+& $editorxGo test -mod=vendor -tags editorx_public -c -o $testExe ./internal/editor
+if ($LASTEXITCODE -ne 0) { throw '完整编辑原生测试编译失败' }
+if (!('VivaIsolatedDesktop' -as [type])) {
+    Add-Type -Path (Join-Path $PWD 'tools\IsolatedDesktop.cs')
+}
+for ($round = 1; $round -le 3; $round++) {
+    $log = Join-Path $runDirectory "round-$round.log"
+    $exit = [VivaIsolatedDesktop]::Run($testExe, $PWD.Path, $log, 48, 'TestNativeLargeEdit')
+    Get-Content -LiteralPath $log -Tail 8
+    if ($exit -ne 0) { throw "完整编辑原生测试失败（第 $round 轮）" }
+}
+```
+
+记录 `LARGE_EDIT` 行中的首屏、输入、查找和保存用时，比较进入完整编辑前、编辑期间峰值与关闭标签 3 秒后的进程私有内存。v0.36.0 在同一份日志上的范围为首屏 164–166 ms、全文查找 283–299 ms、峰值约 212 MiB、关闭后 166–172 MiB。跨机器比较时注明源码提交或 EXE 版本，以及 Windows、样例大小和缩放。 [实测口径及基线](large-files.md)
+
+项目树打开 Office、PDF 等大文件时，使用 `.\tools\large-open.ps1 -Runs 3`，比较 `.dev/large-open-*/results.csv` 中同一份样例的记录。计时从项目树点击开始，文本和 Office 到首次修改生效，PDF 到首屏渲染完成。
 
 ## 自动更新检查与首页提示
 
@@ -110,3 +182,10 @@ JSON 样例使用合成数据，可直接粘贴到任一栏。
 本地测试服务提供更高版本时，确认无文件的首页也显示绿色图标，左右侧栏均对齐。打开弹窗，滚动查看完整 Markdown 更新说明；「稍后」保留图标，「跳过此版本」重启后仍生效，下一个版本重新提示，手动检查可查看已跳过版本。界面不提供更新源选择。
 
 多个窗口共用请求，下载时可后台继续编辑，关闭发起下载的窗口后其他窗口仍可查看进度。取消下载和退出应用均清理暂存 EXE。下载长度、SHA-256 或 PE 不符时不能安装；正常完成才显示「安装并重启」。用独立 EXE 和数据目录验收升级前保存所有草稿，保存失败时不退出不替换。设置 `VIVA_PREVIEW_DIR` 后运行 `TestUpdate` 可生成首页、更新说明、滚动到底与下载完成的实际 UI 截图，示例版本为测试夹具，并非已发布版本。
+
+## 发布验证
+
+1. 运行公开版和本地版全量测试，按改动范围运行 Windows 原生用例。定位大文件回归时保留同机、同样例的三轮日志。
+2. 用 `.\dev.ps1 -Action build -PublicRelease -OutputDirectory '.dev\release-preview\public'` 构建公开版。确认资源中的 ProductVersion 和 SHA-256，在隔离桌面用 `tools/memory-smoke.ps1` 的 `-ExecutablePath` 分支检查该 EXE 启动和退出。
+3. 发布时核对 `main`、版本标签、发布说明中的 SHA-256 和 GitHub 附件摘要。发布页包含 `EditorX.exe` 及 GitHub 生成的源码 ZIP 和 tar.gz。
+4. 如需验收自动安装，用独立 EXE 副本与数据目录从上一公开版升级，验证会话保留、替换和回退副本清理。

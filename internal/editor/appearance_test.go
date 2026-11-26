@@ -12,8 +12,8 @@ import (
 func TestThemeSwitchAndDefaultSidebar(t *testing.T) {
 	m := newEditorApp()
 	m.dataDirectory = t.TempDir()
-	if m.showFiles {
-		t.Fatal("sidebar must start closed")
+	if !m.showFiles {
+		t.Fatal("sidebar must start open")
 	}
 	tab := m.addTab(document{saved: "{\n  \"名称\":\"中文😀\",\n  \"items\":[1,2]\n}", eol: "LF"}, "theme.json")
 	session := openTestSession(t, m)
@@ -23,6 +23,7 @@ func TestThemeSwitchAndDefaultSidebar(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	check(session.ClickLabel("收起文件栏"))
 	check(session.ClickLabel("展开文件栏"))
 	if !m.showFiles {
 		t.Fatal("sidebar cannot be reopened")
