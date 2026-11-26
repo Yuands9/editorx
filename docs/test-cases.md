@@ -13,9 +13,9 @@
 
 | 改动范围 | 对应自动化入口 |
 | --- | --- |
-| 打开、保存和会话恢复 | `TestFileDropOpensDocuments`、`TestSessionExternalChangesAndRecovery`、`TestSessionIMEAndExplicitClose` |
+| 打开、保存和会话恢复 | `TestFileDropOpensDocuments`、`TestOpenTextFormatPrompt`、`TestSuggestOpenedFormat`、`TestSessionExternalChangesAndRecovery`、`TestSessionIMEAndExplicitClose` |
 | 查找、替换和 JSON | `TestSearchReplaceCurrentFileWithMultilineInput`、`TestSearchReplaceAllOpenWithEscapesAndMixedEndings`、`TestJSONAutoWrapAndReversibleConversions`、`TestJSONFoldSummaryRenderingAndPreservation`、`TestJSONSourceKeepsFreeInput` |
-| 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsDraftAndBackup` |
+| 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsDraftAndBackup`、`TestLargeEditReturnsToBrowsing` |
 | 大文件查找替换和结果 | `TestLargeEditFloatingFindAndReplace`、`TestLargeEditSearchMatchesNormalizedText`、`TestLargeEditSearchAcrossPiecesAndDenseReplace`、`TestLargeEditGroupedSearchResultsReveal`、`TestSearchResultsRenderWideLineAtHighDPI`、`TestClosedSearchResultsReleaseAndRefill` |
 | 链接打开和落盘 | `TestLinkedFileWithHTTPSRedirectAndDifferentFormats`、`TestLinkedFileSaveChoiceKeepsOriginalBytes`、`TestLinkedFileDraftsAndAttachmentsAfterRestart` |
 | 标签、项目和 ZIP | `TestPinnedGroupRestoresPinsAndAllowsExplicitClose`、`TestMultipleProjectsThroughUIAndSession`、`TestMergeBackupKeepsSeparateDraftsAndGroupIDs`、`TestLegacySessionRestoresImportedWindowsIntoTheMainWindow` |
@@ -23,12 +23,13 @@
 | 密码本 | `TestPasswordVaultAuthenticatedStorage`、`TestPasswordVaultImportFormats`、`TestPasswordVaultOptionalMasterPassword`、`TestPasswordVaultTimingOptions`、`TestPasswordVaultDeleteFromContextMenu`、`TestPasswordVaultSidebarNavigation`、`TestPasswordVaultArchiveRestore` |
 | 图片 OCR 和 AI 识图 | `TestImageOCRIsOptIn`、`TestImageOCRPixels`、`TestImageAIOnlySendsCurrentImageOnStart`、`TestImageAICancelsAnInFlightRequest` |
 | 设置和 AI | `TestEditorSettingsApplyAcrossWindowsAndRestore`、`TestEditorShortcutRebinding`、`TestAIHistoryRestoresReviewAgainstOriginalDocument` |
+| 退出与保存确认 | `TestDesktopExitSaveConfirmation`、`TestDesktopExitSaveConfirmationSetting`、`TestSaveConfirmationCanBeDisabledAndRestored` |
 | 侧栏设置 | `TestSidebarPreferencesAndTemplatePanel`、`TestSidebarAcrossWindowsAndSession`、`TestSidebarButtonsWithoutDocumentAndAlignment`、`TestSidebarCollapsesWithoutVisibleButtons` |
 | 模板与翻译 | `TestDocumentTemplatesThroughUI`、`TestLocalTranslationThroughUI`、`TestSelectionTranslationAIThroughUI`、`TestDownloadedDictionaryThroughUI`、`TestDictionaryDownloadIntegrityAndCleanup`、`TestAITranslationWithoutDictionary`、`TestDocumentTranslationStreamsInSplit`、`TestDocumentTranslationChunksPreserveBoundaries` |
 | 离线组件与压缩下载 | `TestOfflineComponentIntegrityAndCleanup`、`TestOfflineTranslationOptIn`、`TestOfflineDownloadStopsWithPanel`、`TestDictionaryCompressedTransfer`、`TestDictionaryDownloadStopsWithPanel` |
 | Git | `TestProjectGitStageCommitPushFetchAndPull` |
 | 应用内更新 | `TestUpdateConditionalRequestAndPersistentCache`、`TestUpdateAutomaticChecksShareWorkAndRespectOptOut`、`TestUpdateHomeIndicatorSkipAndManualCheck`、`TestUpdateDownloadContinuesAcrossWindowsAndCleansCancellation`、`TestUpdateDownloadsVerifiedExecutableAndPreservesPrevious` |
-| 本地历史和存储感知 | `TestLocalHistoryCapturesOverwrittenBytes`、`TestLocalHistorySnapshotSizeLimit`、`TestLocalHistoryRetentionAndClear`、`TestLocalHistoryThroughStorageSettings`、`TestEditorStorageCountsAndClearsCache`、`TestHistoryCompareFromEditorAndProject`、`TestHistoryComparisonEditsCurrentBuffer`、`TestHistoryComparisonLargerText`、`TestHistoryComparisonBoundsAndUndo`、`TestHistoryDiffRetainsFourContextLines`、`TestHistoryDiffPreservesLineBoundaries` |
+| 本地历史和存储管理 | `TestLocalHistoryCapturesOverwrittenBytes`、`TestLocalHistorySnapshotSizeLimit`、`TestLocalHistoryRetentionAndClear`、`TestLocalHistoryThroughStorageSettings`、`TestEditorStorageCountsAndClearsCache`、`TestHistoryCompareFromEditorAndProject`、`TestHistoryComparisonEditsCurrentBuffer`、`TestHistoryComparisonLargerText`、`TestHistoryComparisonBoundsAndUndo`、`TestHistoryDiffRetainsFourContextLines`、`TestHistoryDiffPreservesLineBoundaries` |
 
 ## Windows 原生检查
 
@@ -103,7 +104,7 @@ $env:VIVA_EDITOR_DATA_DIR = Join-Path $PWD '.dev\qa\public\data'
 | T-01 标签、分组和项目 | 拖入两个不同目录和三份文件。双击标签和组名重命名并回车，分别拖动标签与整组，固定其中一组。执行批量关闭，然后显式关闭该组，再移除一个项目。 | 拖动与展开、收起有效。批量关闭跳过固定项，显式关闭可移除固定组。移除项目不删除磁盘文件。关完所有标签后主界面仍可打开文件。 |
 | S-01 ZIP 备份与会话 | 打开文件和有内容的未命名草稿，导出选中的文件与草稿。改动当前草稿后导入 ZIP，观察进度，另做一轮在任务完成前取消。正常退出并重新打开。 | 完成后备份内容加入当前窗口，当前草稿仍可找回。取消时未合并内容。重启后会话仍在原窗口。旧多窗口备份分别覆盖在 `TestLegacySessionRestoresImportedWindowsIntoTheMainWindow`。 |
 | S-02 托盘和重复启动 | 使用一个测试数据目录，设置关闭时隐藏，再关闭最后一个窗口。再次运行同一个 EXE，并从命令行传入一个文件。切换到关闭即退出，再关窗。 | 隐藏时重复启动只唤起已有窗口，命令行文件在已有实例打开。关闭即退出后进程结束，下次启动能恢复会话。 |
-| S-03 数据目录迁移 | 将试用 EXE 放在独立测试目录，使用默认 `data`，创建未保存草稿并改一项设置。在「存储感知 → 应用数据」点「更换位置」并选择空文件夹，先取消一次，再重新选择并迁移。另试非空目标。 | 重启后草稿和设置从新目录恢复，原数据可作为备份。非空目标保持原有文件。打开 HTML 预览后，WebView2 缓存位于系统临时目录，关闭后清理。 |
+| S-03 数据目录迁移 | 将试用 EXE 放在独立测试目录，使用默认 `data`，创建未保存草稿并改一项设置。在「存储管理 → 应用数据」点「更换位置」并选择空文件夹，先取消一次，再重新选择并迁移。另试非空目标。 | 重启后草稿和设置从新目录恢复，原数据可作为备份。非空目标保持原有文件。打开 HTML 预览后，WebView2 缓存位于系统临时目录，关闭后清理。 |
 | L-01 临时打开和另存 | 用测试 HTTP 或 HTTPS 地址依次打开小型 JSON 和 PDF。重新打开链接，选择「保存并打开…」并取消选址，再另存到指定路径。另对一个临时文本做修改并重启。 | 仅查看时只有临时标签，无自动下载副本，重启时不恢复。取消不会生成文件，指定路径保存时原始字节一致。编辑过的文本能作为草稿恢复。PDF 首屏渲染，可另存原件。 |
 | D-01 文档和预览 | 打开带两级标题的 Markdown、HTML（带本地图片）、图片、带公式的 XLSX、带书签的 PDF、带两级标题的 DOCX。点击大纲、切换深浅主题、缩放，在 Excel 修改单元格并保存重开。 | Markdown 左侧大纲可全部展开或收起，分屏可同步滚动。HTML 相对资源正常加载，源码可编辑。图片可缩放。PDF 和 DOCX 显示文件名，标题可跳转。两种主题下阅读正常，Excel 改动保存。公开版 DOCX 只读，本地版可在测试副本上修改并保存。 |
 | P-01 设置和 AI | 新数据目录中验证跟随系统主题、右下角深浅切换。修改字体、折行类型、JSON 缩进和快捷键后重启。打开 AI 模型选择，点击搜索与配置输入框。使用测试服务或已配置的本机 CLI 发送普通问题，拖选文字复制，重启后查看对话。 | 设置自动保存，重启生效。输入框聚焦时无白色外圈，模型菜单有选中反馈。问答文字可选取与复制，对话仍可接续。 |

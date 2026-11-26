@@ -47,7 +47,7 @@ func TestDataLocationSettingsAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := openTestSession(t, m)
-	for _, label := range []string{"设置", "存储感知"} {
+	for _, label := range []string{"设置", "存储管理"} {
 		if err := s.ClickLabel(label); err != nil {
 			t.Fatal(err)
 		}

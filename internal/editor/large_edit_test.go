@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -399,6 +400,112 @@ func TestLargeEditStreamsDraftAndBackup(t *testing.T) {
 	if _, err := restoreLargeEditOpening(ctx, loaded, restored); err == nil {
 		t.Fatal("accepted a corrupted streamed draft")
 	}
+}
+
+func TestLargeEditReturnsToBrowsing(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "browse.out")
+	original := strings.Repeat(strings.Repeat("日志内容 ", 20)+"\r\n", 1600) + "末行\r\n"
+	check(os.WriteFile(path, []byte(original), 0600))
+	page, err := readLargeTextPage(path, 0, -1, "", "")
+	check(err)
+	m := newEditorApp()
+	tab := m.addTab(document{path: path}, "browse.out")
+	tab.startLargeText(page)
+	t.Cleanup(func() { tab.largeText.close() })
+	s := openTestSession(t, m)
+	hover := func(label string) gfx.Hit {
+		t.Helper()
+		hit, err := s.Locate("button:" + label)
+		check(err)
+		check(s.Move(hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2))
+		return hit
+	}
+
+	open := hover("打开完整编辑")
+	hoverFill := m.theme.Muted
+	hoverFill.Alpha *= .5
+	filled := false
+	for _, primitive := range s.Snapshot().Primitives {
+		if primitive.Kind == app.RectanglePrimitive && primitive.Bounds == open.Bounds && primitive.Color == hoverFill {
+			filled = true
+			break
+		}
+	}
+	if !filled {
+		t.Fatal("open full editor had no hover background in the dark theme")
+	}
+	hover("到末尾")
+	check(s.Wait(time.Second))
+	if s.HasText("重新读取文件大小并跳到末尾") {
+		t.Fatal("jump to end still showed its tooltip")
+	}
+	check(s.ClickLabel("button:到末尾"))
+	if tab.largeText.index != largeTextPageCount(int64(len(original)))-1 {
+		t.Fatal("jump to end did not navigate to the last page")
+	}
+	check(s.ClickLabel("button:上一页"))
+	browsePage := tab.largeText.index
+
+	startEdit := func() *os.File {
+		t.Helper()
+		check(s.ClickLabel("button:打开完整编辑"))
+		check(s.WaitFor(func(app.Snapshot) bool { return tab.hasLargeEdit() }, 3*time.Second))
+		return tab.largeText.editing.revision.store.file
+	}
+	assertBrowsing := func(scratch *os.File) {
+		t.Helper()
+		if m.active != tab || len(m.tabs) != 1 || !tab.readOnlyPreview() || !tab.source.readOnly ||
+			tab.largeText.index != browsePage || tab.modified() || tab.source.input.CopyOverride {
+			t.Fatal("exit did not restore the same tab as a read-only browsing page")
+		}
+		if _, err := scratch.ReadAt(make([]byte, 1), 0); !errors.Is(err, os.ErrClosed) {
+			t.Fatalf("scratch file was not closed: %v", err)
+		}
+		if m.snapshotSession().Tabs[0].LargeEdit != nil {
+			t.Fatal("browsing session would reopen in full edit mode")
+		}
+	}
+	diskContents := func() string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		check(err)
+		return string(data)
+	}
+
+	scratch := startEdit()
+	check(s.Driver().Key(gfx.KeyHome, gfx.ModifierControl))
+	check(s.ClickLabel("button:退出完整编辑"))
+	assertBrowsing(scratch)
+
+	scratch = startEdit()
+	check(s.Type("放弃这段"))
+	check(s.ClickLabel("button:退出完整编辑"))
+	check(s.ClickLabel("button:取消"))
+	if !tab.hasLargeEdit() || !tab.modified() || diskContents() != original {
+		t.Fatal("cancelling exit did not preserve unsaved changes in the editor")
+	}
+	check(s.ClickLabel("button:退出完整编辑"))
+	check(s.ClickLabel("button:放弃修改"))
+	assertBrowsing(scratch)
+	if diskContents() != original {
+		t.Fatal("discarding changes wrote to the original file")
+	}
+
+	scratch = startEdit()
+	check(s.Type("保存这段"))
+	check(s.ClickLabel("button:退出完整编辑"))
+	check(s.ClickLabel("button:保存并继续"))
+	check(s.WaitFor(func(app.Snapshot) bool { return !tab.hasLargeEdit() || m.showError }, 3*time.Second))
+	if m.showError || !strings.Contains(diskContents(), "保存这段") {
+		t.Fatalf("save and exit did not persist the edit: %s", m.errorText)
+	}
+	assertBrowsing(scratch)
 }
 
 func TestLargeEditTabAndLineCommands(t *testing.T) {

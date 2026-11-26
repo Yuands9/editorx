@@ -19,6 +19,7 @@ type editorDesktop struct {
 	tray                 *app.StatusItem
 	lastActive           *editorApp
 	exiting              bool
+	exitConfirmation     *exitSaveConfirmation
 	restart              bool
 	updateFile           string
 	updated              installedEditorUpdate
@@ -202,6 +203,12 @@ func (d *editorDesktop) quit() {
 	if d.exiting {
 		return
 	}
+	for _, window := range d.store.windows {
+		if window.confirm || window.windowClosePending {
+			d.cancelExit(window, nil)
+			return
+		}
+	}
 	d.exiting = true
 	d.lockPasswordVaults()
 	d.flushForExit(0)
@@ -211,7 +218,7 @@ func (d *editorDesktop) flushForExit(index int) {
 	for index < len(d.store.windows) {
 		window := d.store.windows[index]
 		index++
-		if window.nativeWindow.Closed() {
+		if window.windowClosed {
 			continue
 		}
 		if window.largeEditOperationPending() {
@@ -230,9 +237,22 @@ func (d *editorDesktop) flushForExit(index int) {
 		})
 		return
 	}
+	d.confirmExitSave()
+}
+
+func (d *editorDesktop) finishExit() {
 	if err := d.store.save(); err != nil {
 		d.cancelExit(d.lastActive, fmt.Errorf("无法保存本次会话：%w", err))
 		return
+	}
+	if d.exitConfirmation != nil && d.exitConfirmation.dontAsk {
+		preferences := d.preferences
+		preferences.SkipExitSaveConfirmation = true
+		if err := preferences.save(d.store.directory); err != nil {
+			d.cancelExit(d.lastActive, fmt.Errorf("无法保存退出询问设置：%w", err))
+			return
+		}
+		d.preferences = preferences
 	}
 	if d.updateFile != "" {
 		executable, err := os.Executable()
@@ -248,16 +268,23 @@ func (d *editorDesktop) flushForExit(index int) {
 		d.tray.Remove()
 		d.tray = nil
 	}
+	d.exitConfirmation = nil
 	d.application.Quit()
 }
 
 func (d *editorDesktop) cancelExit(window *editorApp, err error) {
-	d.exiting, d.restart, d.updateFile = false, false, ""
-	if window != nil && !window.nativeWindow.Closed() {
-		d.lastActive = window
+	d.exiting, d.restart, d.updateFile, d.exitConfirmation = false, false, "", nil
+	if window == nil || window.windowClosed {
+		window = d.present(nil)
 	}
-	if target := d.present(nil); target != nil {
-		target.fail(err)
-		target.invalidator.Invalidate()
+	if window != nil {
+		d.lastActive = window
+		window.nativeWindow.Show()
+		if err != nil {
+			window.fail(err)
+		}
+	}
+	for _, openWindow := range d.store.windows {
+		openWindow.invalidator.Invalidate()
 	}
 }

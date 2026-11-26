@@ -23,6 +23,8 @@ type editorTab struct {
 	name              string
 	displayName       string
 	languageOverride  string
+	suggestedFormat   string
+	formatPromptOpen  bool
 	doc               document
 	linked            bool
 	picture           *imageDocument
@@ -387,34 +389,42 @@ func (m *editorApp) requestTab(t *editorTab, action func()) {
 		action()
 		return
 	}
-	m.activate(t)
 	if m.desktop != nil || m.dataDirectory != "" {
 		preferences, err := m.applicationPreferences()
 		if err == nil && preferences.SkipSaveConfirmation {
-			m.saveBeforeClosing(t, action)
+			m.activate(t)
+			m.saveBeforeClosing(t, func(saved bool) {
+				if saved {
+					action()
+				}
+			})
 			return
 		}
 	}
+	m.activate(t)
 	m.confirmTab, m.pending, m.confirm, m.confirmFocus, m.dontAskToSave = t, action, true, true, false
 }
 
-func (m *editorApp) saveBeforeClosing(tab *editorTab, proceed func()) {
+func (m *editorApp) saveBeforeClosing(tab *editorTab, complete func(bool)) {
 	if tab.largeText != nil && tab.largeText.editing != nil {
-		m.startLargeEditSave(tab, false, proceed)
+		m.startLargeEditSave(tab, false, complete)
 		return
 	}
 	if tab.office != nil {
-		m.saveOfficeTab(tab, false, proceed)
+		m.saveOfficeTab(tab, false, complete)
 		return
 	}
-	if m.saveTab(tab, false) {
-		proceed()
-	}
+	complete(m.saveTab(tab, false))
 }
 
 func (m *editorApp) clearSaveConfirmation() {
 	m.confirm, m.confirmFocus, m.dontAskToSave = false, false, false
 	m.pending, m.confirmTab = nil, nil
+}
+
+func (m *editorApp) cancelSaveConfirmation() {
+	m.clearSaveConfirmation()
+	m.focusActiveSource()
 }
 
 func (m *editorApp) finishSaveConfirmation() {
@@ -613,12 +623,13 @@ func (m *editorApp) loadWithEncoding(path string, enc textEncoding) {
 }
 
 type openedEditorFile struct {
-	name      string
-	doc       document
-	picture   *imageDocument
-	office    *officeDocument
-	preview   *documentPreview
-	largeText *largeTextPage
+	name            string
+	doc             document
+	picture         *imageDocument
+	office          *officeDocument
+	preview         *documentPreview
+	largeText       *largeTextPage
+	suggestedFormat string
 }
 
 func readEditorFile(path string, enc textEncoding) (openedEditorFile, error) {
@@ -641,6 +652,9 @@ func readEditorFile(path string, enc textEncoding) (openedEditorFile, error) {
 		file.doc.path, file.largeText = path, &page
 	default:
 		file.doc, err = readDocumentAs(path, enc)
+		if err == nil {
+			file.suggestedFormat = suggestOpenedFormat(path, file.doc.saved)
+		}
 	}
 	return file, err
 }
@@ -651,6 +665,8 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 		name = filepath.Base(path)
 	}
 	tab := m.addTab(file.doc, name)
+	tab.suggestedFormat = file.suggestedFormat
+	tab.formatPromptOpen = file.suggestedFormat != ""
 	tab.linked = path == "" && file.name != ""
 	tab.picture, tab.office, tab.preview = file.picture, file.office, file.preview
 	if tab.office != nil && m.webReady {
@@ -725,13 +741,27 @@ func (m *editorApp) textSavePath(t *editorTab, saveAs bool) (string, bool) {
 		m.fail(err)
 		return "", false
 	}
-	for _, other := range m.tabs {
-		if other != t && (strings.EqualFold(other.doc.path, path) || other.largeText != nil && strings.EqualFold(other.largeText.savePath, path)) {
-			m.fail(errors.New("该文件已在另一个标签中打开，请切换到该标签或使用其他文件名"))
-			return "", false
-		}
+	if m.savePathInUse(t, path) {
+		m.fail(errors.New("该文件已在另一个标签中打开，请切换到该标签或使用其他文件名"))
+		return "", false
 	}
 	return path, true
+}
+
+func (m *editorApp) savePathInUse(t *editorTab, path string) bool {
+	for _, other := range m.tabs {
+		if other != t && (strings.EqualFold(other.doc.path, path) || other.largeText != nil && strings.EqualFold(other.largeText.savePath, path)) {
+			return true
+		}
+	}
+	if t.doc.path == "" && m.desktop != nil && m.desktop.exitConfirmation != nil {
+		for _, window := range m.desktop.store.windows {
+			if window != m && window.tabAtPath(path) != nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
@@ -1006,6 +1036,10 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 }
 
 func (m *editorApp) interactionBlocked() bool {
+	return m.fileFormatPromptPending() || m.otherInteractionsBlocked()
+}
+
+func (m *editorApp) otherInteractionsBlocked() bool {
 	return m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
 		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
 		m.tools.git.branches.creating || m.tools.git.branches.switching ||

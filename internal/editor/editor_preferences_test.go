@@ -30,7 +30,10 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	overridden := other.addTab(document{saved: `{"field":[3,4]}`, eol: "LF"}, "local.json")
 
 	otherSession := openTestSession(t, other)
-	for _, label := range []string{"4 空格", "结果折行"} {
+	if _, err := otherSession.Locate("button:结果折行"); err == nil {
+		t.Fatal("JSON footer still has a word wrap button")
+	}
+	for _, label := range []string{"4 空格", "自动折行"} {
 		if err := otherSession.ClickLabel(label); err != nil {
 			t.Fatal(err)
 		}
@@ -80,6 +83,25 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 		t.Fatal("the fresh profile should wrap only JSON")
 	}
 	click("文件类型 · 1 项")
+	for _, size := range [][2]int{{1440, 900}, {900, 560}} {
+		check(session.Resize(size[0], size[1]))
+		control, err := session.Locate("switch:JSON")
+		check(err)
+		paired := false
+		for _, hit := range session.Snapshot().Hits {
+			if hit.IsLabel && hit.ID == control.ID && hit.Label == "JSON" {
+				distance := hit.Bounds.X - control.Bounds.X
+				paired = distance > 0 && distance <= 48
+				break
+			}
+		}
+		if !paired {
+			t.Fatalf("JSON label and switch were separated at %d px", size[0])
+		}
+		if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" && size[0] == 1440 {
+			check(session.Screenshot(filepath.Join(preview, "editor-wrap-types-wide.png")))
+		}
+	}
 	click("switch:纯文本")
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
 		check(session.Screenshot(filepath.Join(preview, "editor-wrap-types.png")))

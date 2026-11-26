@@ -164,12 +164,11 @@ func TestSidebarButtonsWithoutDocumentAndAlignment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	railLabels := map[string]string{"密码本": "打开密码本", "颜色主题": "切换颜色主题"}
 	var previousY float32 = -1
 	for _, row := range rows {
 		for _, label := range row {
-			if railLabel := railLabels[label]; railLabel != "" {
-				label = railLabel
+			if label == "颜色主题" {
+				label = "切换颜色主题"
 			}
 			hit, err := s.Locate("button:" + label)
 			if err != nil || hit.Bounds.Y <= previousY {

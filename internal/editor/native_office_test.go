@@ -152,7 +152,11 @@ func TestNativeOfficeEditing(t *testing.T) {
 								return
 							}
 							phase = 2
-							m.saveOfficeTab(sheetTab, false, func() {
+							m.saveOfficeTab(sheetTab, false, func(saved bool) {
+								if !saved {
+									finish(fmt.Errorf("Excel save failed: %s", m.errorText))
+									return
+								}
 								data, e := os.ReadFile(sheetPath)
 								if e != nil {
 									finish(e)
@@ -206,7 +210,11 @@ func TestNativeOfficeEditing(t *testing.T) {
 								return
 							}
 							phase = 5
-							m.saveOfficeTab(wordTab, false, func() {
+							m.saveOfficeTab(wordTab, false, func(saved bool) {
+								if !saved {
+									finish(fmt.Errorf("Word save failed: %s", m.errorText))
+									return
+								}
 								data, e := os.ReadFile(wordPath)
 								if e != nil {
 									finish(e)

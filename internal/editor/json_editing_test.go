@@ -305,7 +305,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 	if tab.source.text.String() != original || tab.result.text.String() != formatted {
 		t.Fatal("undo restored a canceled conversion")
 	}
-	click("结果折行")
+	click("自动折行")
 	if tab.source.view.Snapshot.Wrap || tab.result.view.Snapshot.Wrap {
 		t.Fatal("disabling wrap did not affect both panes")
 	}
@@ -314,7 +314,7 @@ func TestJSONAutoWrapAndReversibleConversions(t *testing.T) {
 	if restored.active == nil || !restored.active.wrapOverride || restored.active.result.view.Snapshot.Wrap {
 		t.Fatal("wrap selection was lost during session restore")
 	}
-	click("结果折行")
+	click("自动折行")
 	if !tab.source.view.Snapshot.Wrap || !tab.result.view.Snapshot.Wrap {
 		t.Fatal("enabling wrap did not affect both panes")
 	}

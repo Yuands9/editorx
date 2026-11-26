@@ -372,13 +372,20 @@ func (office *officeDocument) flush(done func(error)) {
 	}
 	office.view.Eval(fmt.Sprintf("window.office.flush(%d)", office.request))
 }
-func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func()) {
+func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 	office := t.office
 	if office.view != nil && !office.ready {
 		m.fail(errors.New("文档尚未加载完成，请稍后再保存"))
+		if done != nil {
+			done(false)
+		}
 		return
 	}
 	office.flush(func(err error) {
+		saved := false
+		if done != nil {
+			defer func() { done(saved) }()
+		}
 		if err != nil {
 			m.fail(err)
 			return
@@ -406,11 +413,9 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func()) {
 			m.fail(err)
 			return
 		}
-		for _, other := range m.tabs {
-			if other != t && strings.EqualFold(other.doc.path, path) {
-				m.fail(errors.New("该文件已在另一个标签中打开，请使用其他文件名"))
-				return
-			}
+		if m.savePathInUse(t, path) {
+			m.fail(errors.New("该文件已在另一个标签中打开，请使用其他文件名"))
+			return
 		}
 		if err = saveOfficeFile(&t.doc, office, path, m.documentHistory()); err != nil {
 			m.fail(err)
@@ -422,9 +427,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func()) {
 		if office.view != nil {
 			office.view.Eval(fmt.Sprintf("window.office.ack(%d)", office.revision))
 		}
-		if done != nil {
-			done()
-		}
+		saved = true
 	})
 }
 func saveOfficeFile(doc *document, office *officeDocument, path string, history *localHistoryStore) error {

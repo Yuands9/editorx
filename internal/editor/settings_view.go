@@ -12,7 +12,7 @@ const (
 	settingsEditor     = "编辑器"
 	settingsSidebar    = "侧栏"
 	settingsBackup     = "备份"
-	settingsStorage    = "存储感知"
+	settingsStorage    = "存储管理"
 	settingsShortcuts  = "快捷键"
 	settingsAI         = "AI"
 	settingsAbout      = "关于"
@@ -22,7 +22,7 @@ var settingSections = []struct {
 	label, topics string
 	icon          gfx.Icon
 }{
-	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、询问保存、不再询问", themeIcon},
+	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、退出程序、询问保存、不再询问", themeIcon},
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
 	{settingsSidebar, "左侧、右侧、显示按钮、设置按钮、模板库、本地词库、AI 翻译、密码本", leftPanelIcon},
 	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
@@ -264,6 +264,12 @@ func (m *editorApp) windowSettings(c ui.C) {
 	if m.applicationSettingSwitch(c.Part("save-confirmation"), "关闭标签时询问保存",
 		"关闭询问后，关闭有修改的标签会自动保存。未命名文件会先选择保存位置。", &ask) {
 		draft.SkipSaveConfirmation = !ask
+		c.After(m.saveApplicationSettings)
+	}
+	askOnExit := !draft.SkipExitSaveConfirmation
+	if m.applicationSettingSwitch(c.Part("exit-save-confirmation"), "退出时询问保存",
+		"关闭询问后，退出时会保留未保存的草稿，下次打开时可恢复。", &askOnExit) {
+		draft.SkipExitSaveConfirmation = !askOnExit
 		c.After(m.saveApplicationSettings)
 	}
 }

@@ -2,7 +2,7 @@ package version
 
 import "runtime/debug"
 
-const Number = "0.38.0"
+const Number = "0.38.1"
 
 // BuildDate is set by dev.ps1 when packaging the executable.
 var BuildDate string

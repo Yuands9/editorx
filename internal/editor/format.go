@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/markdown"
+	"github.com/vivaui/viva/ui"
 )
 
 var syntaxLanguages = [...]string{"纯文本", "JSON", "YAML", "INI", "TOML", "XML", "HTML", "Properties", "ENV", "Markdown"}
@@ -33,6 +34,87 @@ func (m *editorApp) selectLanguage(t *editorTab, language string) {
 		t.html.close()
 	}
 	m.focusActiveSource()
+}
+
+func suggestOpenedFormat(name, source string) string {
+	value := strings.TrimLeft(source, " \t\r\n")
+	if value == "" {
+		return ""
+	}
+	format := documentFormat(name)
+	if (value[0] == '{' || value[0] == '[') && json.Valid([]byte(value)) {
+		if format != "JSON" {
+			return "JSON"
+		}
+		return ""
+	}
+	if format == "Markdown" || strings.HasPrefix(value, "#!") {
+		return ""
+	}
+
+	// 在完整行处截取样本，避免打开大文本时为检测解析整篇 Markdown。
+	const sampleBytes = 64 << 10
+	if len(source) > sampleBytes {
+		end := strings.LastIndexByte(source[:sampleBytes], '\n')
+		if end < 0 {
+			return ""
+		}
+		source = source[:end]
+	}
+	var parsed markdown.Document
+	parsed.Parse(source)
+	// 有既定语法的文件里，注释、列表和普通引号可能与 Markdown 标记相似。
+	textLike := format == "纯文本" || format == "日志" || format == "JSON"
+	items := 0
+	for _, block := range parsed.Blocks {
+		if block.Kind == markdown.Code || block.Kind == markdown.Table {
+			return "Markdown"
+		}
+		if block.Kind == markdown.Item {
+			items++
+		}
+		spans := parsed.Spans(&block)
+		if textLike && (items >= 2 || len(spans) > 0 && (block.Kind == markdown.Heading || block.Quote > 0)) {
+			return "Markdown"
+		}
+		for _, span := range spans {
+			if span.Image != "" || span.Link != "" && span.Text != span.Link ||
+				textLike && span.Style&(markdown.Bold|markdown.Strike|markdown.Mono) != 0 {
+				return "Markdown"
+			}
+		}
+	}
+	return ""
+}
+
+func (m *editorApp) fileFormatPromptPending() bool {
+	return !m.appSettings.open && !m.vaultActive() && m.active != nil && m.active.formatPromptOpen
+}
+
+func (m *editorApp) fileFormatDialog(c ui.C) {
+	if !m.fileFormatPromptPending() || m.otherInteractionsBlocked() {
+		return
+	}
+	tab := m.active
+	format := tab.suggestedFormat
+	closePrompt := func() {
+		tab.formatPromptOpen, tab.suggestedFormat = false, ""
+		m.focusActiveSource()
+	}
+	description := "「" + tab.title() + "」的内容看起来是 " + format + "。请选择显示格式。"
+	if ui.ModalWith(c, &tab.formatPromptOpen, "检测到文件格式", ui.ModalSpec{Description: description, Width: 470}, nil, func() {
+		if ui.Button(c, "保留原格式").Outline().Clicked() {
+			c.After(closePrompt)
+		}
+		if ui.Button(c, "以 "+format+" 展示").Clicked() {
+			c.After(func() {
+				tab.formatPromptOpen, tab.suggestedFormat = false, ""
+				m.selectLanguage(tab, format)
+			})
+		}
+	}) {
+		closePrompt()
+	}
 }
 
 // 自动识别只对没有后缀的未保存文档推断正文类型。

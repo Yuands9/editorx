@@ -28,12 +28,13 @@ type largeTextView struct {
 	selecting          bool
 	search             *ui.EffectState[int64, int]
 	edit               *ui.EffectState[largeEditOpening, int]
+	afterOpen          func(bool)
 	loadStore          *largeEditStorage
 	editing            *largeEditView
 	editSession        *largeEditSession
 	resumeEdit         bool
 	saving             *ui.EffectState[document, int]
-	afterSave          func()
+	afterSave          func(bool)
 	savePath           string
 	replacing          *ui.EffectState[largeEditReplacement, int]
 }
@@ -362,7 +363,7 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			if ui.Button(c, "下一页").Ghost().FontSize(12).Height(28).Disabled(disabled || state.index+1 >= total).Clicked() {
 				c.After(func() { tab.stepLargeText(1, false) })
 			}
-			if ui.Button(c, "到末尾").Ghost().FontSize(12).Height(28).Disabled(disabled).Tooltip("重新读取文件大小并跳到末尾").Clicked() {
+			if ui.Button(c, "到末尾").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { tab.moveLargeText(-1, true) })
 			}
 			if ui.Button(c, "重新读取").Icon(refreshIcon).IconOnly().Ghost().Size(25, 26).Disabled(disabled).Tooltip("重新读取当前页").Clicked() {
@@ -376,7 +377,7 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			if state.edit != nil {
 				label = "正在打开…"
 			}
-			if ui.Button(c, label).Outline().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			if ui.Button(c, label).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { m.startLargeTextEdit(tab, tab.doc.encoding) })
 			}
 			if state.editSession.hasChanges() &&

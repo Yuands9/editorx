@@ -168,13 +168,6 @@ func (m *editorApp) jsonView(c ui.C, t *editorTab, blocked bool) {
 						c.After(func() { m.applyResult(t) })
 					}
 				}
-				wrap := ui.Button(c, "结果折行").Icon(wrapIcon).IconOnly().Ghost().Width(24).Height(24).Tooltip("双栏自动折行（仅影响显示）").Disabled(blocked)
-				if t.result.view.Snapshot.Wrap {
-					wrap.Secondary()
-				}
-				if wrap.Clicked() {
-					t.toggleWrap()
-				}
 			})
 		})
 	})

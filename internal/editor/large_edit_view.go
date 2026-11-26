@@ -873,6 +873,9 @@ func (m *editorApp) largeEditToolbar(c ui.C, t *editorTab, disabled bool) {
 		if ui.Button(c, "替换").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 			c.After(t.openReplace)
 		}
+		if ui.Button(c, "退出完整编辑").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			c.After(func() { m.exitLargeTextEdit(t) })
+		}
 	})
 }
 

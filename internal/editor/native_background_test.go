@@ -149,6 +149,10 @@ func TestNativeEditorBackground(t *testing.T) {
 		if err := os.MkdirAll(directory, 0700); err != nil {
 			t.Fatal(err)
 		}
+		preferences := applicationPreferences{ExitOnClose: true, SkipExitSaveConfirmation: true}
+		if err := preferences.save(directory); err != nil {
+			t.Fatal(err)
+		}
 		state := savedSession{Version: editorSessionVersion, Windows: []windowSession{
 			{Tabs: []tabSession{{Name: "原窗口.txt", Source: paneSession{Content: "current window draft"}}}},
 			{Tabs: []tabSession{{Name: "旧备份.txt", Source: paneSession{Content: "old imported draft"}}}},
@@ -190,6 +194,64 @@ func TestNativeEditorBackground(t *testing.T) {
 			if err != nil || len(reopened.Windows) != 1 || len(reopened.Windows[0].Tabs) != 2 ||
 				reopened.Windows[0].Tabs[1].Source.Content != "old imported draft" {
 				t.Fatalf("closing the window lost part of the migrated session: %v", err)
+			}
+		}
+	})
+
+	t.Run("closing a dirty last window waits for a save decision", func(t *testing.T) {
+		root := t.TempDir()
+		directory := filepath.Join(root, "data")
+		paths := []string{filepath.Join(root, "退出保存1.txt"), filepath.Join(root, "退出保存2.txt")}
+		preferences := applicationPreferences{ExitOnClose: true, DisableAutoUpdate: true}
+		if err := preferences.save(directory); err != nil {
+			t.Fatal(err)
+		}
+		store, err := openSessionStore(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		editor := newEditorApp()
+		store.attach(editor)
+		for _, path := range paths {
+			if err := os.WriteFile(path, []byte("原文件"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			editor.load(path)
+			editor.active.source.replace("确认退出后保存")
+		}
+		if err := store.save(); err != nil {
+			t.Fatal(err)
+		}
+
+		window, exited := openWindow(t, newLaunch(t, directory))
+		send(t, window, closeMessage, 0)
+		select {
+		case err := <-exited:
+			t.Fatalf("close exited without a save decision: %v", err)
+		case <-time.After(250 * time.Millisecond):
+		}
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != "原文件" {
+				t.Fatalf("%s changed before the user confirmed: %v", path, err)
+			}
+		}
+		const keyDown, returnKey = 0x0100, 0x0d
+		if ok, _, err := post.Call(window, keyDown, returnKey, 0x001c0001); ok == 0 {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-exited:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(8 * time.Second):
+			t.Fatal("confirming the save did not terminate the editor")
+		}
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != "确认退出后保存" {
+				t.Fatalf("quit did not save %s: %v", path, err)
 			}
 		}
 	})

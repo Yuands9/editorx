@@ -609,7 +609,7 @@ func TestPasswordVaultOptionalMasterPassword(t *testing.T) {
 		check(s.Frame())
 	}
 	const master, backupPassword = "测试master2026", "测试backup2026"
-	click("button:打开密码本")
+	click("button:密码本")
 	click("switch:使用主密码")
 	if _, err := s.Locate("textfield:主密码"); err == nil {
 		t.Fatal("disabled master password still required input at creation")
@@ -668,7 +668,7 @@ func TestPasswordVaultOptionalMasterPassword(t *testing.T) {
 		t.Fatal("enabling master password did not change the protection mode")
 	}
 	click("button:关闭密码本标签")
-	click("button:打开密码本")
+	click("button:密码本")
 	v = m.passwordVault
 	if v.store != nil || v.windowsProtected {
 		t.Fatal("opening a master-protected vault did not require the password")
@@ -690,7 +690,7 @@ func TestPasswordVaultOptionalMasterPassword(t *testing.T) {
 		t.Fatal("disabling master password did not switch to Windows protection")
 	}
 	click("button:关闭密码本标签")
-	click("button:打开密码本")
+	click("button:密码本")
 	v = m.passwordVault
 	assertEntry()
 	if !v.windowsProtected {
@@ -851,17 +851,24 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	}
 	click := func(label string) {
 		t.Helper()
-		check(s.ClickLabel("button:" + label))
+		if !strings.HasPrefix(label, "id:") {
+			label = "button:" + label
+		}
+		check(s.ClickLabel(label))
 		check(s.Frame())
 	}
 	check(s.Resize(1280, 820))
-	click("打开密码本")
+	rail, err := s.Locate("button:密码本")
+	check(err)
+	railSelector := "id:" + s.Snapshot().Tree.Text(rail.ID)
+	click(railSelector)
 	if !m.vaultActive() {
 		t.Fatal("sidebar did not open the password vault")
 	}
 	opened := m.passwordVault
 	label, err := s.Locate("button:密码本")
 	check(err)
+	const tabSelector = "id:vault-tab/select"
 	closeButton, err := s.Locate("button:关闭密码本标签")
 	check(err)
 	if gap := closeButton.Bounds.X - (label.Bounds.X + label.Bounds.Width); gap < 0 || gap > 2 || closeButton.Bounds.Y != label.Bounds.Y {
@@ -870,11 +877,11 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	if output := os.Getenv("VIVA_PREVIEW_DIR"); output != "" {
 		check(s.Screenshot(filepath.Join(output, "password-vault-tab-active.png")))
 	}
-	click("密码本")
+	click(tabSelector)
 	if m.vaultActive() || m.passwordVault != opened {
 		t.Fatal("clicking the title did not return to the editor while keeping the vault tab")
 	}
-	click("密码本")
+	click(tabSelector)
 	if !m.vaultActive() || m.passwordVault != opened {
 		t.Fatal("clicking the inactive title did not reopen the same vault tab")
 	}
@@ -882,13 +889,13 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	if m.vaultActive() || m.passwordVault != nil {
 		t.Fatal("the close button did not remove the vault tab")
 	}
-	click("打开密码本")
+	click(railSelector)
 	click("关闭密码本")
 	if m.passwordVault != nil {
 		t.Fatal("clicking the active sidebar key did not close the vault")
 	}
 
-	click("打开密码本")
+	click(railSelector)
 	vault := m.passwordVault
 	vault.password.SetText(testVaultMaster)
 	vault.confirmation.SetText(testVaultMaster)
@@ -902,7 +909,7 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	} {
 		for range 2 {
 			if !m.vaultActive() {
-				click("打开密码本")
+				click(railSelector)
 			}
 			click(tool.button)
 			if m.vaultActive() || m.passwordVault != vault || vault.store != nil {
@@ -917,7 +924,7 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 		}
 	}
 	click("收起底部面板")
-	click("密码本")
+	click(tabSelector)
 	if !m.vaultActive() || !s.HasText("密码本已锁定") {
 		t.Fatal("the inactive password tab did not reopen at its lock screen")
 	}
@@ -942,29 +949,29 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	const content = "侧栏切换测试"
 	tab.source.replace(content)
 	check(s.Frame())
-	click("打开密码本")
+	click(railSelector)
 	vault.password.SetText(testVaultMaster)
 	click("解锁")
 	if vault.store == nil {
 		t.Fatal("could not unlock the vault before switching tabs")
 	}
-	click("密码本")
+	click(tabSelector)
 	if m.active != tab || m.vaultActive() || m.passwordVault != vault || vault.store != nil || tab.source.text.String() != content {
 		t.Fatal("clicking the vault title did not lock it and return to the last document")
 	}
-	click("密码本")
+	click(tabSelector)
 	wrapped := tab.source.view.Snapshot.Wrap
 	click("自动折行")
 	if m.vaultActive() || m.active != tab || tab.source.view.Snapshot.Wrap == wrapped {
 		t.Fatal("word wrap did not act on the last document")
 	}
-	click("打开密码本")
+	click(railSelector)
 	click("查找内容")
 	if m.vaultActive() || !tab.search.open {
 		t.Fatal("document search did not open from the password vault")
 	}
 	click("关闭搜索")
-	click("打开密码本")
+	click(railSelector)
 	path := filepath.Join(t.TempDir(), "saved.txt")
 	check(s.Driver().QueueSaveFile(path, nil))
 	click("保存文件")

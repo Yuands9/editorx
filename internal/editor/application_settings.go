@@ -19,16 +19,17 @@ const (
 )
 
 type applicationPreferences struct {
-	ShowTrayIcon         bool                    `json:"showTrayIcon"`
-	ExitOnClose          bool                    `json:"exitOnClose"`
-	SkipSaveConfirmation bool                    `json:"skipSaveConfirmation,omitempty"`
-	TranslationEnabled   bool                    `json:"translationEnabled,omitempty"`
-	DisableAutoUpdate    bool                    `json:"disableAutoUpdate,omitempty"`
-	Theme                string                  `json:"theme,omitempty"`
-	Editor               editorPreferences       `json:"editor"`
-	Sidebar              sidebarPreferences      `json:"sidebar"`
-	Shortcuts            shortcutOverrides       `json:"shortcuts,omitempty"`
-	LocalHistory         localHistoryPreferences `json:"localHistory,omitzero"`
+	ShowTrayIcon             bool                    `json:"showTrayIcon"`
+	ExitOnClose              bool                    `json:"exitOnClose"`
+	SkipSaveConfirmation     bool                    `json:"skipSaveConfirmation,omitempty"`
+	SkipExitSaveConfirmation bool                    `json:"skipExitSaveConfirmation,omitempty"`
+	TranslationEnabled       bool                    `json:"translationEnabled,omitempty"`
+	DisableAutoUpdate        bool                    `json:"disableAutoUpdate,omitempty"`
+	Theme                    string                  `json:"theme,omitempty"`
+	Editor                   editorPreferences       `json:"editor"`
+	Sidebar                  sidebarPreferences      `json:"sidebar"`
+	Shortcuts                shortcutOverrides       `json:"shortcuts,omitempty"`
+	LocalHistory             localHistoryPreferences `json:"localHistory,omitzero"`
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
@@ -79,6 +80,7 @@ func (m *editorApp) saveApplicationSettings() {
 	settings := &m.appSettings
 	if settings.draft.ShowTrayIcon == settings.original.ShowTrayIcon && settings.draft.ExitOnClose == settings.original.ExitOnClose &&
 		settings.draft.SkipSaveConfirmation == settings.original.SkipSaveConfirmation &&
+		settings.draft.SkipExitSaveConfirmation == settings.original.SkipExitSaveConfirmation &&
 		settings.draft.TranslationEnabled == settings.original.TranslationEnabled &&
 		settings.draft.DisableAutoUpdate == settings.original.DisableAutoUpdate &&
 		settings.draft.LocalHistory == settings.original.LocalHistory &&
@@ -102,6 +104,9 @@ func (m *editorApp) saveApplicationSettings() {
 	}
 	if settings.draft.SkipSaveConfirmation != settings.original.SkipSaveConfirmation {
 		preferences.SkipSaveConfirmation = settings.draft.SkipSaveConfirmation
+	}
+	if settings.draft.SkipExitSaveConfirmation != settings.original.SkipExitSaveConfirmation {
+		preferences.SkipExitSaveConfirmation = settings.draft.SkipExitSaveConfirmation
 	}
 	if settings.draft.Theme != settings.original.Theme {
 		preferences.Theme = settings.draft.Theme

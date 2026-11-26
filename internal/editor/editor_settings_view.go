@@ -104,7 +104,7 @@ func (m *editorApp) editorWrapSettings(c ui.C, draft *editorPreferences) {
 			Border(1, m.theme.Border).Children(func() {
 			for _, language := range editorWrapLanguages {
 				enabled := draft.wraps(language)
-				if settingsSwitchRow(c.Key(language), language, &enabled) {
+				if ui.Switch(c.Key(language), &enabled, language).FontSize(13).Height(30).HitExact().Changed() {
 					draft.setWrapFileType(language, enabled)
 				}
 			}

@@ -43,11 +43,21 @@ func (m *editorApp) page(c ui.C) {
 	m.updateLinkedFile(c.Part("link-download"))
 	m.updateImageOCR(c.Part("image-ocr-job"))
 	m.updateImageAI(c.Part("image-ai-job"))
+	var afterLargeSaves []func()
 	for _, tab := range m.tabs {
 		jobs := c.Part("large-file").KeyInt(tab.id)
-		m.updateLargeTextEdit(jobs, tab)
+		if after := m.updateLargeTextEdit(jobs, tab); after != nil {
+			afterLargeSaves = append(afterLargeSaves, after)
+		}
 		m.updateLargeFindAll(jobs.Part("find-all"), tab)
 		m.updateDocumentTranslation(c.Part("document-translation-job").KeyInt(tab.id), tab)
+	}
+	for _, after := range afterLargeSaves {
+		if m.post != nil {
+			m.post(after)
+		} else {
+			after()
+		}
 	}
 	m.updateSearchBatch(c.Part("search-batch"))
 	m.updateHistoryWindow(c.Part("history-window"))
@@ -90,6 +100,8 @@ func (m *editorApp) page(c ui.C) {
 	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
+	m.fileFormatDialog(c.Part("file-format-dialog"))
+	m.exitConfirmationDialog(c.Part("exit-confirmation"))
 	m.dialogs(c)
 }
 
@@ -322,7 +334,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if preferences.PasswordVault {
-			label := "打开密码本"
+			label := "密码本"
 			if vaultActive {
 				label = "关闭密码本"
 			}
@@ -846,12 +858,11 @@ func (m *editorApp) dialogs(c ui.C) {
 	if m.confirmTab != nil {
 		description = m.confirmTab.title() + " 有未保存的修改。"
 	}
-	ui.ModalWith(c, &m.confirm, "保存当前修改？", ui.ModalSpec{Description: description, Width: 480, NoClose: true}, func() {
+	dismissed := ui.ModalWith(c, &m.confirm, "保存当前修改？", ui.ModalSpec{Description: description, Width: 480, NoClose: true}, func() {
 		ui.Checkbox(c.Part("save-confirmation-choice"), &m.dontAskToSave, "不再询问").Height(28)
 	}, func() {
 		if ui.Button(c, "取消").Outline().Clicked() {
-			m.clearSaveConfirmation()
-			m.focusActiveSource()
+			c.After(m.cancelSaveConfirmation)
 		}
 		var state *largeTextView
 		if m.confirmTab != nil {
@@ -869,14 +880,17 @@ func (m *editorApp) dialogs(c ui.C) {
 		if save.Clicked() && m.confirmTab != nil {
 			tab := m.confirmTab
 			c.After(func() {
-				m.saveBeforeClosing(tab, func() {
-					if m.confirmTab == tab {
+				m.saveBeforeClosing(tab, func(saved bool) {
+					if saved && m.confirmTab == tab {
 						m.finishSaveConfirmation()
 					}
 				})
 			})
 		}
 	})
+	if dismissed {
+		c.After(m.cancelSaveConfirmation)
+	}
 	ui.ModalWith(c, &m.showError, "操作未完成", ui.ModalSpec{Description: m.errorText, Width: 640, NoClose: true}, nil, func() {
 		if ui.Button(c, "确定").Clicked() {
 			m.showError = false
