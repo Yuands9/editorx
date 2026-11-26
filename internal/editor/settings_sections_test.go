@@ -175,7 +175,7 @@ func TestSettingsSectionsSearchBackupAndUpdateDialog(t *testing.T) {
 		!strings.HasSuffix(report, "\n运行时 "+runtime.Version()) || !s.HasText("已复制") {
 		t.Fatalf("About did not copy the displayed version information: %q", report)
 	}
-	if !s.HasText("启动约 10 秒后检查，之后每 6 小时一次。重启沿用上次检查时间。") {
+	if !s.HasText("每次启动约 10 秒后检查，运行期间每 6 小时检查一次。") {
 		t.Fatal("About does not state the automatic check schedule")
 	}
 	if directory := os.Getenv("VIVA_PREVIEW_DIR"); directory != "" {

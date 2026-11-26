@@ -91,7 +91,7 @@ func (m *editorApp) aboutSettings(c ui.C) {
 		}
 	})
 	enabled := !m.appSettings.draft.DisableAutoUpdate
-	schedule := fmt.Sprintf("启动约 %g 秒后检查，之后每 %g 小时一次。重启沿用上次检查时间。",
+	schedule := fmt.Sprintf("每次启动约 %g 秒后检查，运行期间每 %g 小时检查一次。",
 		editorUpdateStartupDelay.Seconds(), editorUpdateInterval.Hours())
 	if m.applicationSettingSwitch(c.Part("auto-update"), "自动检查更新", schedule, &enabled) {
 		m.appSettings.draft.DisableAutoUpdate = !enabled

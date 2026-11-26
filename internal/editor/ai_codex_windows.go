@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -99,7 +98,7 @@ func (client *codexRPC) close() {
 	if client.command.Process != nil {
 		_ = client.command.Wait()
 	}
-	_ = os.RemoveAll(client.job)
+	removeCLIJob(client.job)
 }
 
 func (client *codexRPC) next() (codexRPCMessage, error) {

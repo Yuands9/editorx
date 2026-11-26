@@ -62,6 +62,11 @@ type CodeDiffSnapshot struct {
 	// regions. GutterAt maps a pointer to the aligned row and source line.
 	LeftGutterID, RightGutterID gfx.ID
 	Actions                     []CodeDiffGutterAction
+	// CenterGutters puts the numbers and compact merge arrows between the panes.
+	// ActiveRows outlines the selected hunk and RowSeparators labels collapsed rows.
+	CenterGutters bool
+	ActiveRows    CodeDiffHunk
+	RowSeparators map[int]string
 }
 
 // CodeDiff paints a line-aligned source comparison on the same grid of
@@ -210,8 +215,11 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 	// it always was.
 	numberCell, _ := canvas.MonoCellSize(theme.Metrics.FontSizeS, snapshot.MonoFace)
 	digits := decimalDigits(max(len(snapshot.Result.Left), len(diff.lines)))
+	center := diff.usesCenterGutters()
 	diff.gutter = max(float32(codeDiffGutterWidth), 17+float32(digits)*numberCell+6)
-	if len(snapshot.Actions) > 0 {
+	if center {
+		diff.gutter = max(float32(codeDiffGutterWidth), codeDiffMergeWidth+float32(digits)*numberCell+8)
+	} else if len(snapshot.Actions) > 0 {
 		diff.gutter += 80
 	}
 
@@ -243,7 +251,7 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 	if !snapshot.ViewportID.IsZero() {
 		area = area.Viewport(snapshot.ViewportID, snapshot.Label)
 	}
-	if snapshot.ReadOnly || snapshot.Disabled {
+	if snapshot.Disabled || snapshot.ReadOnly && !center {
 		area = area.Disabled()
 	}
 	diff.Geometry = area.BeginContent()
@@ -265,9 +273,6 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 	canvas.Fill(leftPane, theme.Background)
 	if snapshot.Layout != CodeDiffUnified {
 		canvas.Fill(rightPane, theme.Background)
-		if snapshot.Layout == CodeDiffSideBySide {
-			canvas.Fill(gfx.Rect{X: bounds.X + half + codeDiffPaneGap/2, Y: paneTop, Width: 1, Height: paneHeight}, theme.Border)
-		}
 	}
 
 	diff.rightCode = gfx.Rect{X: rightPane.X + diff.gutter, Y: rightPane.Y, Width: max(rightPane.Width-diff.gutter, 1), Height: rightPane.Height}
@@ -275,6 +280,13 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 	diff.rightGutter = gfx.Rect{X: rightPane.X, Y: rightPane.Y, Width: min(diff.gutter, rightPane.Width), Height: rightPane.Height}
 	if snapshot.Layout == CodeDiffUnified {
 		diff.leftGutter = gfx.Rect{}
+	}
+	if center {
+		diff.leftGutter.X += leftPane.Width - diff.leftGutter.Width
+		canvas.Fill(gfx.Rect{X: diff.leftGutter.X, Y: paneTop, Width: diff.rightGutter.X + diff.rightGutter.Width - diff.leftGutter.X, Height: paneHeight}, theme.Card)
+	}
+	if snapshot.Layout == CodeDiffSideBySide {
+		canvas.Fill(gfx.Rect{X: bounds.X + half + codeDiffPaneGap/2, Y: paneTop, Width: 1, Height: paneHeight}, theme.Border)
 	}
 	diff.visibleRows = max(int(rightPane.Height/diff.rowHeight), 0)
 	first := max(int(diff.Geometry.OffsetY/diff.rowHeight), 0)
@@ -285,6 +297,13 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 		}
 		if y+diff.rowHeight <= 0 {
 			continue
+		}
+		if center {
+			rowBounds := gfx.Rect{X: leftPane.X, Y: paneTop + y, Width: diff.Geometry.Viewport.Width, Height: diff.rowHeight}
+			if label := snapshot.RowSeparators[rowIndex]; label != "" {
+				diff.paintRowSeparator(canvas, rowBounds, label)
+				continue
+			}
 		}
 		if snapshot.Layout == CodeDiffUnified {
 			visual := diff.visualRows[rowIndex]
@@ -314,11 +333,18 @@ func (diff *CodeDiff) Paint(canvas *gfx.Canvas, theme gfx.Theme, bounds gfx.Rect
 		if snapshot.Layout == CodeDiffStacked {
 			canvas.Unclip()
 		}
+		if center && rowIndex >= snapshot.ActiveRows.Start && rowIndex < snapshot.ActiveRows.End {
+			diff.paintActiveHunkRow(canvas, rowBounds.Y, rowIndex)
+		}
 	}
 
 	if !snapshot.ID.IsZero() {
+		cursor := gfx.PointerCursorDefault
+		if !snapshot.ReadOnly {
+			cursor = gfx.PointerCursorText
+		}
 		canvas.HitWithOptions(snapshot.ID, diff.rightCode, snapshot.Label, gfx.HitOptions{
-			Role: gfx.RoleTextField, Value: snapshot.Value, Hint: snapshot.Hint,
+			Role: gfx.RoleTextField, Cursor: cursor, Value: snapshot.Value, Hint: snapshot.Hint,
 			Disabled: snapshot.Disabled, ReadOnly: snapshot.ReadOnly, Multiline: true,
 			TextBounds: diff.rightCode, TextSize: size, TextColor: gfx.Color{},
 			HideNativeOverlays: true,
@@ -354,6 +380,10 @@ func (diff *CodeDiff) paintActions(canvas *gfx.Canvas, theme gfx.Theme, leftPane
 		}
 		y := pane.Y + float32(visualRow)*diff.rowHeight - diff.scrollY
 		if y < pane.Y || y+diff.rowHeight > pane.Y+pane.Height {
+			continue
+		}
+		if diff.usesCenterGutters() {
+			diff.paintMergeArrow(canvas, action, y)
 			continue
 		}
 		button := gfx.Rect{X: pane.X + 4, Y: y + 1, Width: min(float32(72), max(pane.Width-8, 1)), Height: max(diff.rowHeight-2, 1)}
@@ -435,6 +465,7 @@ func (diff *CodeDiff) rowLines(index int) (int, int) {
 }
 
 func (diff *CodeDiff) paintRowSide(canvas *gfx.Canvas, rowBounds, pane gfx.Rect, kind CodeDiffKind, line int, left bool, rowIndex int) {
+	center := diff.usesCenterGutters()
 	changed := kind != CodeDiffUnchanged
 	countsSide := left && (kind == CodeDiffRemoved || kind == CodeDiffChanged) ||
 		!left && (kind == CodeDiffAdded || kind == CodeDiffChanged)
@@ -457,13 +488,26 @@ func (diff *CodeDiff) paintRowSide(canvas *gfx.Canvas, rowBounds, pane gfx.Rect,
 		canvas.Fill(rowBounds, background)
 		gutter := color
 		gutter.Alpha *= .85
-		canvas.Fill(gfx.Rect{X: rowBounds.X, Y: rowBounds.Y, Width: 2, Height: rowBounds.Height}, gutter)
-		canvas.Label(sign, gfx.Rect{X: rowBounds.X + 4, Y: rowBounds.Y, Width: 14, Height: rowBounds.Height}, gfx.TextStyle{
-			Size: diff.theme.Metrics.FontSizeS, Weight: gfx.WeightSemibold, Color: color, Mono: true,
-		})
+		if center {
+			x := diff.rightGutter.X + diff.rightGutter.Width
+			if left {
+				x = diff.leftGutter.X - 2
+			}
+			canvas.Fill(gfx.Rect{X: x, Y: rowBounds.Y, Width: 2, Height: rowBounds.Height}, gutter)
+		} else {
+			canvas.Fill(gfx.Rect{X: rowBounds.X, Y: rowBounds.Y, Width: 2, Height: rowBounds.Height}, gutter)
+			canvas.Label(sign, gfx.Rect{X: rowBounds.X + 4, Y: rowBounds.Y, Width: 14, Height: rowBounds.Height}, gfx.TextStyle{
+				Size: diff.theme.Metrics.FontSizeS, Weight: gfx.WeightSemibold, Color: color, Mono: true,
+			})
+		}
+	}
+	codeX, numberRight := pane.X+diff.gutter, pane.X+diff.gutter
+	if center && left {
+		codeX = pane.X
+		numberRight = diff.leftGutter.X + diff.leftGutter.Width
 	}
 	if line >= 0 {
-		diff.paintLineNumber(canvas, pane, rowBounds, line)
+		diff.paintLineNumber(canvas, rowBounds, numberRight, line)
 	}
 	var value, shown string
 	if left {
@@ -473,7 +517,7 @@ func (diff *CodeDiff) paintRowSide(canvas *gfx.Canvas, rowBounds, pane gfx.Rect,
 	} else if line >= 0 && line < len(diff.lines) {
 		value, shown = diff.lines[line], diff.rightShown[line]
 	}
-	code := gfx.Rect{X: pane.X + diff.gutter, Y: rowBounds.Y, Width: max(pane.Width-diff.gutter-codeDiffPadX, 1), Height: rowBounds.Height}
+	code := gfx.Rect{X: codeX, Y: rowBounds.Y, Width: max(pane.Width-diff.gutter-codeDiffPadX, 1), Height: rowBounds.Height}
 	canvas.Clip(code)
 	origin := code.X - diff.Geometry.OffsetX + codeDiffPadX // where column 0 of the line is
 	lineStart := 0
@@ -502,7 +546,7 @@ func (diff *CodeDiff) paintRowSide(canvas *gfx.Canvas, rowBounds, pane gfx.Rect,
 		if selectionEnd <= selectionStart {
 			spec.selectionStart, spec.selectionEnd = 0, 0
 		}
-		if changed && diff.snapshot.Highlight != nil && len(value) <= CodeEditorMaxHighlightedLine {
+		if (changed || center) && diff.snapshot.Highlight != nil && len(value) <= CodeEditorMaxHighlightedLine {
 			spec.highlight = cleanHighlight(value, diff.snapshot.Highlight(diff.snapshot.Language, value, diff.marks[:0]))
 			diff.marks = spec.highlight[:0]
 		}
@@ -649,12 +693,12 @@ func (diff *CodeDiff) fontSize() float32 {
 }
 
 // paintLineNumber draws the number of line at the right of the pane's gutter.
-func (diff *CodeDiff) paintLineNumber(canvas *gfx.Canvas, pane, rowBounds gfx.Rect, line int) {
+func (diff *CodeDiff) paintLineNumber(canvas *gfx.Canvas, rowBounds gfx.Rect, right float32, line int) {
 	number := diff.numbers.text(line)
 	size := diff.theme.Metrics.FontSizeS
 	cell, height := canvas.MonoCellSize(size, diff.snapshot.MonoFace)
 	width := float32(len(number)) * cell
-	bounds := gfx.Rect{X: pane.X + diff.gutter - 6 - width, Y: rowBounds.Y + (rowBounds.Height-height)/2, Width: width, Height: height}
+	bounds := gfx.Rect{X: right - 6 - width, Y: rowBounds.Y + (rowBounds.Height-height)/2, Width: width, Height: height}
 	runs := [1]gfx.TextRun{{Bytes: int32(len(number)), Cells: int32(len(number)), Color: diff.theme.MutedForeground}}
 	canvas.LabelRuns(number, bounds, gfx.TextStyle{Size: size, Color: diff.theme.MutedForeground, Mono: true, MonoFace: diff.snapshot.MonoFace}, cell, runs[:])
 }

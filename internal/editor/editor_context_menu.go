@@ -43,18 +43,18 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 		removeSelection := window.TextEvent{Kind: window.TextPaste}
 		menu.RowHeight(28)
 		if !pane.readOnly {
-			if menu.Item("撤销").Keys(ui.Ctrl, "z").Disabled(composing || !canUndo).Clicked() {
+			if menu.Item("撤销").Icon(blankMenuIcon).Keys(ui.Ctrl, "z").Disabled(composing || !canUndo).Clicked() {
 				c.After(func() {
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextUndo})
 				})
 			}
-			if menu.Item("重做").Keys(ui.Ctrl, "y").Disabled(composing || !canRedo).Clicked() {
+			if menu.Item("重做").Icon(blankMenuIcon).Keys(ui.Ctrl, "y").Disabled(composing || !canRedo).Clicked() {
 				c.After(func() {
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextRedo})
 				})
 			}
 			menu.Separator()
-			if menu.Item("剪切").Keys(ui.Ctrl, "x").Disabled(composing || !selected).Clicked() {
+			if menu.Item("剪切").Icon(blankMenuIcon).Keys(ui.Ctrl, "x").Disabled(composing || !selected).Clicked() {
 				c.After(func() {
 					if m.copyEditorSelection(tab, pane) {
 						m.applyEditorMenuEvent(tab, pane, removeSelection)
@@ -70,14 +70,14 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 			})
 		}
 		if !pane.readOnly {
-			if menu.Item("粘贴").Keys(ui.Ctrl, "v").Disabled(composing).Clicked() {
+			if menu.Item("粘贴").Icon(blankMenuIcon).Keys(ui.Ctrl, "v").Disabled(composing).Clicked() {
 				c.After(func() { m.pasteEditorClipboard(tab, pane) })
 			}
-			if menu.Item("删除选区").Disabled(composing || !selected).Clicked() {
+			if menu.Item("删除选区").Icon(aiDeleteIcon).Disabled(composing || !selected).Clicked() {
 				c.After(func() { m.applyEditorMenuEvent(tab, pane, removeSelection) })
 			}
 		}
-		if menu.Item(selectAll).Keys(ui.Ctrl, "a").Disabled(composing || !hasText).Clicked() {
+		if menu.Item(selectAll).Icon(blankMenuIcon).Keys(ui.Ctrl, "a").Disabled(composing || !hasText).Clicked() {
 			c.After(func() {
 				m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextSelectAll})
 			})
@@ -89,15 +89,18 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 				c.After(func() { tab.openSearchIn(pane) })
 			}
 			if source && !pane.readOnly && tab.canReplace() &&
-				m.shortcutMenu(menu.Item("替换…"), shortcutReplace).Clicked() {
+				m.shortcutMenu(menu.Item("替换…").Icon(blankMenuIcon), shortcutReplace).Clicked() {
 				c.After(tab.openReplace)
 			}
-			if source && m.shortcutMenu(menu.Item("转到行…"), shortcutGotoLine).Clicked() {
+			if source && m.shortcutMenu(menu.Item("转到行…").Icon(blankMenuIcon), shortcutGotoLine).Clicked() {
 				c.After(m.openGotoLine)
 			}
 		}
 		if !source {
 			return
+		}
+		if tab.doc.path != "" && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+			c.After(func() { m.openHistoryComparison(tab.doc.path, localHistoryVersion{}) })
 		}
 		translateSelection := !composing && tab.hasTranslationSelection()
 		translateDocument := tab.canTranslateDocument() && !tab.showingDocumentTranslation()

@@ -2,6 +2,7 @@ package editor
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -20,7 +21,10 @@ type document struct {
 	diskHash [32]byte
 }
 
-var errTextHasNUL = errors.New("文件含有空字符，无法作为文本编辑")
+var (
+	errTextHasNUL      = errors.New("文件含有空字符，无法作为文本编辑")
+	errDocumentChanged = errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
+)
 
 func readDocument(path string) (document, error) { return readDocumentAs(path, "") }
 
@@ -63,27 +67,46 @@ func decodeDocumentAs(path string, data []byte, requested textEncoding) (documen
 	return doc, nil
 }
 
-func (doc *document) save(path, value string) error {
-	if doc.path != "" && strings.EqualFold(filepath.Clean(path), filepath.Clean(doc.path)) {
-		current, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("无法核对原文件，请另存为：%w", err)
-		}
-		if sha256.Sum256(current) != doc.diskHash {
-			return errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
-		}
-		if value == doc.saved {
-			return nil
-		}
+func (doc document) checkDisk(ctx context.Context, path string) (os.FileInfo, error) {
+	if doc.path == "" || !strings.EqualFold(filepath.Clean(path), filepath.Clean(doc.path)) {
+		return nil, nil
+	}
+	input, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("无法核对原文件，请另存为：%w", err)
+	}
+	defer input.Close()
+	info, err := input.Stat()
+	if err != nil {
+		return nil, err
+	}
+	digest := sha256.New()
+	if _, err := io.Copy(digest, largeEditContextReader{ctx: ctx, Reader: input}); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(digest.Sum(nil), doc.diskHash[:]) {
+		return nil, errDocumentChanged
+	}
+	return info, nil
+}
+
+func (doc *document) save(path, value string, history *localHistoryStore) error {
+	original, err := doc.checkDisk(context.Background(), path)
+	if err != nil {
+		return err
+	}
+	if original != nil && value == doc.saved {
+		return nil
 	}
 	data, err := doc.fileBytes(value)
 	if err != nil {
 		return err
 	}
-	if err := writeFile(path, data); err != nil {
+	digest, err := writeDocumentBytes(path, data, original, history)
+	if err != nil {
 		return err
 	}
-	doc.path, doc.saved, doc.diskHash = path, value, sha256.Sum256(data)
+	doc.path, doc.saved, doc.diskHash = path, value, digest
 	return nil
 }
 

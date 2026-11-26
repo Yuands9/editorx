@@ -1318,13 +1318,23 @@ func (state *windowState) destroyed(window uintptr) {
 		windowStates.Delete(window)
 		state.window = 0
 		state.application.windows--
-	}
-	defer func() {
-		release()
-		if state.application.windows == 0 {
-			active.CompareAndSwap(state, nil)
+		if active.Load() != state {
+			return
 		}
-	}()
+		// The last dispatched window may be a closed popup. Keep native
+		// operations on a live window and release the old painter and page.
+		var remaining *windowState
+		windowStates.Range(func(_, value any) bool {
+			candidate := value.(*windowState)
+			if candidate.application != state.application || !candidate.ready {
+				return true
+			}
+			remaining = candidate
+			return false
+		})
+		active.CompareAndSwap(state, remaining)
+	}
+	defer release()
 	state.stopCaretTimer()
 	state.closeBackdropPower()
 	state.closeDrop()

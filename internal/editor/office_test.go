@@ -167,12 +167,20 @@ func TestOfficeSessionAndConflict(t *testing.T) {
 		t.Fatal("draft lost")
 	}
 	os.WriteFile(path, append(original, 0), 0600)
-	if err := saveOfficeFile(&restored.active.doc, restored.active.office, path); err == nil {
+	if err := saveOfficeFile(&restored.active.doc, restored.active.office, path, nil); err == nil {
 		t.Fatal("overwrote external edit")
 	}
 	alternate := filepath.Join(directory, "另存.docx")
-	if err := saveOfficeFile(&restored.active.doc, restored.active.office, alternate); err != nil {
+	previous := append(bytes.Clone(original), 1)
+	if err := os.WriteFile(alternate, previous, 0600); err != nil {
 		t.Fatal(err)
+	}
+	history := &localHistoryStore{directory: filepath.Join(directory, localHistoryDirectory)}
+	if err := saveOfficeFile(&restored.active.doc, restored.active.office, alternate, history); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(storedHistoryBytes(t, history, alternate), previous) {
+		t.Fatal("saving over an Office file lost the previous bytes")
 	}
 	saved, _ := os.ReadFile(alternate)
 	if !bytes.Equal(saved, original) {

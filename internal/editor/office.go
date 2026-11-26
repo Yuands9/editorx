@@ -3,6 +3,7 @@ package editor
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -411,7 +412,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func()) {
 				return
 			}
 		}
-		if err = saveOfficeFile(&t.doc, office, path); err != nil {
+		if err = saveOfficeFile(&t.doc, office, path, m.documentHistory()); err != nil {
 			m.fail(err)
 			return
 		}
@@ -426,24 +427,20 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func()) {
 		}
 	})
 }
-func saveOfficeFile(doc *document, office *officeDocument, path string) error {
-	if strings.EqualFold(filepath.Clean(path), filepath.Clean(doc.path)) {
-		current, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("无法核对原文件，请另存为：%w", err)
-		}
-		if sha256.Sum256(current) != doc.diskHash {
-			return errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
-		}
+func saveOfficeFile(doc *document, office *officeDocument, path string, history *localHistoryStore) error {
+	original, err := doc.checkDisk(context.Background(), path)
+	if err != nil {
+		return err
 	}
 	data, err := office.output()
 	if err != nil {
 		return err
 	}
-	if err = writeFile(path, data); err != nil {
+	digest, err := writeDocumentBytes(path, data, original, history)
+	if err != nil {
 		return err
 	}
-	doc.path, doc.diskHash = path, sha256.Sum256(data)
+	doc.path, doc.diskHash = path, digest
 	office.state.Dirty = false
 	return nil
 }

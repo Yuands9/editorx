@@ -11,6 +11,7 @@ import (
 )
 
 const workspaceInset = 8
+const toolRailWidth = 44
 
 func skipButtonTabStop(button ui.Box, id gfx.ID) {
 	button.DrawOver(func(d *ui.DrawContext) {
@@ -49,6 +50,7 @@ func (m *editorApp) page(c ui.C) {
 		m.updateDocumentTranslation(c.Part("document-translation-job").KeyInt(tab.id), tab)
 	}
 	m.updateSearchBatch(c.Part("search-batch"))
+	m.updateHistoryWindow(c.Part("history-window"))
 	blocked := m.interactionBlocked()
 	if !blocked && m.appSettings.shortcutEdit.action == shortcutNone && m.shortcutPressed(c, shortcutOpenSettings) {
 		c.After(m.toggleApplicationSettings)
@@ -235,10 +237,16 @@ func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 }
 
 func (m *editorApp) toolRail(c ui.C, blocked bool) {
-	ui.Column(c).Width(44).Shrink(0).FillHeight().PadX(6).PadY(workspaceInset + 4).Gap(6).Children(func() {
+	preferences := m.sidebarPrefs
+	if preferences.HideSave && preferences.HideSearch && preferences.HideWrap && preferences.HideAI &&
+		preferences.HideGit && preferences.HideTerminal && preferences.HideTheme && preferences.HideSettings &&
+		!preferences.PasswordVault && !preferences.Templates && !m.translationEnabled && !m.editorUpdates().available() {
+		return
+	}
+	ui.Column(c).Width(toolRailWidth).Shrink(0).FillHeight().PadX(6).PadY(workspaceInset + 4).Gap(6).Children(func() {
 		t := m.active
 		vaultActive := m.vaultActive()
-		if !m.sidebarPrefs.HideSave {
+		if !preferences.HideSave {
 			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
 			if t != nil && t.modified() {
 				save.Secondary().ButtonRecipe(m.pinButtonRecipe)
@@ -252,7 +260,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				})
 			}
 		}
-		if !m.sidebarPrefs.HideSearch {
+		if !preferences.HideSearch {
 			searchHint := m.shortcutHint("查找", shortcutFind) + " / " + m.shortcutHint("替换", shortcutReplace)
 			if t != nil && t.office != nil {
 				searchHint = "Office 文档请使用文档内的查找功能"
@@ -265,7 +273,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				})
 			}
 		}
-		if !m.sidebarPrefs.HideWrap {
+		if !preferences.HideWrap {
 			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(32).Height(34).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint("自动折行", shortcutWrap))
 			if t != nil && !t.readOnlyPreview() && t.source.view.Snapshot.Wrap {
 				wrap.Secondary()
@@ -279,7 +287,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				})
 			}
 		}
-		if !m.sidebarPrefs.HideAI {
+		if !preferences.HideAI {
 			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(32).Height(34).Tooltip("AI 助手").Disabled(blocked)
 			if !vaultActive && (m.ai.open || m.ai.hasPendingRequest()) {
 				assistant.Secondary()
@@ -292,7 +300,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			name string
 			icon gfx.Icon
 		}{{"Git", gitBranchIcon}, {"终端", shellIcon}} {
-			if tool.name == "Git" && m.sidebarPrefs.HideGit || tool.name == "终端" && m.sidebarPrefs.HideTerminal {
+			if tool.name == "Git" && preferences.HideGit || tool.name == "终端" && preferences.HideTerminal {
 				continue
 			}
 			entry := ui.Button(c.Key(tool.name), tool.name).Icon(tool.icon).IconOnly().Ghost().Width(32).Height(34).Tooltip(tool.name).Disabled(blocked)
@@ -313,7 +321,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				c.After(func() { m.closeSettings(); m.toggleTranslation() })
 			}
 		}
-		if m.sidebarPrefs.PasswordVault {
+		if preferences.PasswordVault {
 			label := "打开密码本"
 			if vaultActive {
 				label = "关闭密码本"
@@ -326,7 +334,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 				c.After(m.togglePasswordVault)
 			}
 		}
-		if m.sidebarPrefs.Templates {
+		if preferences.Templates {
 			button := ui.Button(c.Part("templates"), "模板库").Icon(templateIcon).IconOnly().Ghost().Size(32, 34).Tooltip("模板库").Disabled(blocked)
 			if !vaultActive && m.templatePanel != nil {
 				button.Secondary()
@@ -337,8 +345,11 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 		}
 		ui.Slot(c).Grow(1)
 		m.updateButton(c.Part("update-available"), blocked)
-		if !m.sidebarPrefs.HideTheme {
+		if !preferences.HideTheme {
 			m.themeButton(c.Part("theme-toggle"), blocked)
+		}
+		if preferences.HideSettings {
+			return
 		}
 		label := "设置"
 		if m.appSettings.open {

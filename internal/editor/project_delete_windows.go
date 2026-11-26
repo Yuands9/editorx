@@ -21,7 +21,7 @@ type projectDeleteDialog struct {
 }
 
 func (m *editorApp) projectDeleteAction(c ui.C, menu *ui.MenuItems, path string, directory bool) {
-	if menu.Item("删除").Disabled(filepath.Dir(path) == path).Clicked() {
+	if menu.Item("删除").Icon(aiDeleteIcon).Disabled(filepath.Dir(path) == path).Clicked() {
 		c.After(func() {
 			m.projectDelete = &projectDeleteDialog{open: true, directory: directory, path: path}
 		})

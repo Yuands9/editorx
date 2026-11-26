@@ -54,8 +54,12 @@ func TestLargeEditPreservesEncodingAndMixedLineEndings(t *testing.T) {
 			if line, err := next.lineAt(position + int64(len(char)) + 1); err != nil || line != 2 {
 				t.Fatalf("line %d, err %v", line, err)
 			}
-			if _, err := saveLargeEdit(ctx, loaded.doc, path, next); err != nil {
+			history := &localHistoryStore{directory: filepath.Join(t.TempDir(), localHistoryDirectory)}
+			if _, err := saveLargeEdit(ctx, loaded.doc, path, next, history); err != nil {
 				t.Fatal(err)
+			}
+			if !bytes.Equal(storedHistoryBytes(t, history, path), raw) {
+				t.Fatal("the large-file snapshot lost the original bytes")
 			}
 			got, err := os.ReadFile(path)
 			if err != nil {
@@ -73,7 +77,7 @@ func TestLargeEditPreservesEncodingAndMixedLineEndings(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := saveLargeEdit(ctx, loaded.doc, path, bad); err == nil {
+				if _, err := saveLargeEdit(ctx, loaded.doc, path, bad, nil); err == nil {
 					t.Fatal("unencodable text was saved")
 				}
 				if bytesAfter, err := os.ReadFile(path); err != nil || !bytes.Equal(bytesAfter, raw) {
@@ -83,7 +87,7 @@ func TestLargeEditPreservesEncodingAndMixedLineEndings(t *testing.T) {
 			if err := os.WriteFile(path, append(raw, '!'), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := saveLargeEdit(ctx, loaded.doc, path, next); err == nil {
+			if _, err := saveLargeEdit(ctx, loaded.doc, path, next, nil); err == nil {
 				t.Fatal("overwrote an external modification")
 			}
 		})

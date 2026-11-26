@@ -186,6 +186,83 @@ func TestSidebarButtonsWithoutDocumentAndAlignment(t *testing.T) {
 	}
 }
 
+func TestSidebarCollapsesWithoutVisibleButtons(t *testing.T) {
+	m := newEditorApp()
+	m.dataDirectory = t.TempDir()
+	m.showFiles = false
+	m.newDocument()
+	s := openTestSession(t, m)
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
+	editorBounds := func() gfx.Rect {
+		t.Helper()
+		hit, err := s.Locate("textfield:代码编辑区")
+		check(err)
+		return hit.Bounds
+	}
+	check(s.Resize(900, 560))
+	withRail := editorBounds()
+	click("button:设置")
+	click("button:侧栏")
+	for _, label := range []string{"保存文件", "查找内容", "自动折行", "AI 助手", "Git", "终端", "颜色主题"} {
+		click("switch:" + label)
+	}
+	if _, err := s.Locate("button:关闭设置"); err != nil {
+		t.Fatal("the last sidebar button disappeared before it was disabled", err)
+	}
+	click("switch:设置")
+	if _, shown := s.AccessByRole(gfx.RoleButton, "关闭设置"); shown {
+		t.Fatal("settings button is still shown after it was disabled")
+	}
+	click("button:关闭设置页")
+	withoutRail := editorBounds()
+	if withoutRail.X != withRail.X || withoutRail.Width != withRail.Width+toolRailWidth {
+		t.Fatalf("empty right sidebar did not return its width: %+v → %+v", withRail, withoutRail)
+	}
+
+	offered := testEditorRelease(t, 1)
+	m.update.cache.Release = offered
+	check(s.Frame())
+	if _, err := s.Locate("button:发现新版本 " + offered.Version); err != nil || editorBounds() != withRail {
+		t.Fatal("an available update did not bring back the sidebar", err)
+	}
+	m.update.cache.SkippedVersion = offered.Version
+	check(s.Frame())
+	if editorBounds() != withoutRail {
+		t.Fatal("the sidebar left reserved width after its update was dismissed")
+	}
+
+	click("button:主菜单")
+	firstItem, err := s.Locate("menuitem:新建")
+	check(err)
+	check(s.Driver().Scroll(gfx.ScrollEvent{X: firstItem.Bounds.X + 10, Y: firstItem.Bounds.Y + 10, DeltaY: 1000}))
+	click("menuitem:设置")
+	click("button:侧栏")
+	click("button:左侧")
+	click("button:关闭设置页")
+	if editorBounds() != withoutRail {
+		t.Fatal("an empty left sidebar also needs to give its full width to the editor")
+	}
+	handled, err := s.Driver().ShortcutChord(gfx.ModifierControl, ',')
+	check(err)
+	if !handled || !m.appSettings.open {
+		t.Fatal("the settings shortcut stopped working with the sidebar hidden")
+	}
+	click("button:侧栏")
+	click("switch:设置")
+	click("button:关闭设置页")
+	gear, err := s.Locate("button:设置")
+	check(err)
+	if gear.Bounds.X >= toolRailWidth || editorBounds().X != withoutRail.X+toolRailWidth || editorBounds().Width != withRail.Width {
+		t.Fatal("enabling the settings button did not bring back the left sidebar")
+	}
+}
+
 func TestSidebarAcrossWindowsAndSession(t *testing.T) {
 	store, err := openSessionStore(t.TempDir())
 	if err != nil {
@@ -206,10 +283,11 @@ func TestSidebarAcrossWindowsAndSession(t *testing.T) {
 	}
 	m.appSettings.draft.Sidebar.Position = "left"
 	m.appSettings.draft.Sidebar.Templates = true
+	m.appSettings.draft.Sidebar.HideSettings = true
 	m.appSettings.draft.TranslationEnabled = true
 	m.saveApplicationSettings()
 	for _, window := range []*editorApp{m, another} {
-		if window.sidebarPrefs.Position != "left" || !window.sidebarPrefs.Templates || !window.translationEnabled || math.Abs(float64(window.aiEditorSplit.Ratio-.28)) > .00001 {
+		if window.sidebarPrefs.Position != "left" || !window.sidebarPrefs.Templates || !window.sidebarPrefs.HideSettings || !window.translationEnabled || math.Abs(float64(window.aiEditorSplit.Ratio-.28)) > .00001 {
 			t.Fatal("sidebar preferences or panel width did not reach both windows")
 		}
 	}
@@ -223,7 +301,7 @@ func TestSidebarAcrossWindowsAndSession(t *testing.T) {
 		t.Fatal("could not restore both windows", err)
 	}
 	for _, window := range restored.windows {
-		if window.sidebarPrefs.Position != "left" || !window.sidebarPrefs.HideSearch || !window.sidebarPrefs.Templates || math.Abs(float64(window.aiEditorSplit.Ratio-.28)) > .00001 {
+		if window.sidebarPrefs.Position != "left" || !window.sidebarPrefs.HideSearch || !window.sidebarPrefs.Templates || !window.sidebarPrefs.HideSettings || math.Abs(float64(window.aiEditorSplit.Ratio-.28)) > .00001 {
 			t.Fatal("sidebar or editor width changed after restart")
 		}
 		if math.Abs(float64(window.snapshotSession().AIEditorRatio-.72)) > .00001 {

@@ -23,14 +23,14 @@ func TestFileRoundTrip(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := doc.save(path, doc.saved); err != nil {
+				if err := doc.save(path, doc.saved, nil); err != nil {
 					t.Fatal(err)
 				}
 				actual, err := os.ReadFile(path)
 				if err != nil || !bytes.Equal(actual, []byte(value)) {
 					t.Fatalf("round trip = %q, %v", actual, err)
 				}
-				if err := doc.save(path, doc.saved+"新增中文"); err != nil {
+				if err := doc.save(path, doc.saved+"新增中文", nil); err != nil {
 					t.Fatal(err)
 				}
 				reopened, err := readDocument(path)
@@ -54,14 +54,14 @@ func TestSaveConflictAndFailureKeepContents(t *testing.T) {
 	if err := os.WriteFile(path, []byte("external"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.save(path, "my changes"); err == nil {
+	if err := doc.save(path, "my changes", nil); err == nil {
 		t.Fatal("external change overwritten")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "external" || doc.saved != "original" {
 		t.Fatal("conflict lost data")
 	}
-	if err := doc.save(filepath.Join(path, "missing"), "my changes"); err == nil {
+	if err := doc.save(filepath.Join(path, "missing"), "my changes", nil); err == nil {
 		t.Fatal("expected save failure")
 	}
 	if doc.saved != "original" {

@@ -90,7 +90,7 @@ func (settings aiSettings) runTextCLI(ctx context.Context, system string, messag
 	if err != nil {
 		return aiCompletion{}, err
 	}
-	defer os.RemoveAll(job)
+	defer removeCLIJob(job)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	data, err := json.Marshal(messages)
@@ -295,7 +295,7 @@ func (settings aiSettings) cliModelList(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(job)
+	defer removeCLIJob(job)
 	args := []string{"--list-models"}
 	if settings.Provider == aiOpenCodeCLI {
 		args = []string{"models"}

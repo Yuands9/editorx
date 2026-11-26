@@ -42,6 +42,25 @@ var closeIcon = gfx.Icon{
 	Commands: []gfx.PathCommand{gfx.MoveTo(7, 7), gfx.LineTo(17, 17), gfx.MoveTo(17, 7), gfx.LineTo(7, 17)},
 }
 
+// A move without a stroke uses the menu's icon column without drawing a glyph.
+var blankMenuIcon = gfx.Icon{ViewBox: 24, Commands: []gfx.PathCommand{gfx.MoveTo(0, 0)}}
+
+var historyCompareIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(4, 11), gfx.CubicTo(4.6, 6.9, 8, 4, 12, 4), gfx.CubicTo(16.4, 4, 20, 7.6, 20, 12),
+		gfx.CubicTo(20, 16.4, 16.4, 20, 12, 20), gfx.CubicTo(9.2, 20, 6.8, 18.6, 5.4, 16.5),
+		gfx.MoveTo(3.5, 7), gfx.LineTo(3.5, 12), gfx.LineTo(8.5, 12),
+		gfx.MoveTo(12, 8), gfx.LineTo(12, 12), gfx.LineTo(15, 14),
+	},
+}
+
+var historyUpIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{gfx.MoveTo(6, 10), gfx.LineTo(12, 4), gfx.LineTo(18, 10), gfx.MoveTo(12, 4), gfx.LineTo(12, 20)},
+}
+var historyDownIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{gfx.MoveTo(6, 14), gfx.LineTo(12, 20), gfx.LineTo(18, 14), gfx.MoveTo(12, 20), gfx.LineTo(12, 4)},
+}
+
 var chevronDownIcon = gfx.Icon{
 	ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{gfx.MoveTo(7, 10), gfx.LineTo(12, 15), gfx.LineTo(17, 10)},

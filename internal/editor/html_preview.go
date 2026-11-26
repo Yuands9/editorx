@@ -115,12 +115,12 @@ func previewHTML(source, originalPath string) string {
 
 // 预览可从编辑缓冲重建，不必像用户文件那样等待磁盘持久化；原子替换仍避免浏览器读到半份内容。
 func writeHTMLPreview(path, source string) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".viva-preview-*")
+	file, err := createEditorPreviewCache(filepath.Dir(path), editorPreviewWritePattern)
 	if err != nil {
 		return err
 	}
 	temporaryPath := file.Name()
-	defer os.Remove(temporaryPath)
+	defer removeEditorPreviewCache(temporaryPath)
 	if _, err = file.WriteString(source); err != nil {
 		file.Close()
 		return err
@@ -158,7 +158,7 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 	}
 	source := t.source.text.String()
 	if t.html.file == "" {
-		file, err := m.writePreviewFile("page-*.html", previewHTML(source, t.doc.path))
+		file, err := m.writePreviewFile(previewHTML(source, t.doc.path))
 		if err != nil {
 			t.html.errorText = err.Error()
 			return
@@ -229,7 +229,7 @@ func (preview *htmlPreview) close() {
 		preview.view = nil
 	}
 	if preview.file != "" {
-		_ = os.Remove(preview.file)
+		removeEditorPreviewCache(preview.file)
 		preview.file = ""
 	}
 }

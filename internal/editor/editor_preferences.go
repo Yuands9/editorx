@@ -125,6 +125,9 @@ func (m *editorApp) applyEditorPreferences(preferences editorPreferences) {
 	for _, tab := range m.tabs {
 		tab.applyEditorPreferences(preferences)
 	}
+	if state := m.historyCompare; state != nil {
+		state.invalidator.Invalidate()
+	}
 }
 
 func (t *editorTab) applyEditorPreferences(preferences editorPreferences) {

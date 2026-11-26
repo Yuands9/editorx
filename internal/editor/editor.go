@@ -241,7 +241,10 @@ type editorApp struct {
 	browser            *ui.EffectState[string, int]
 	desktop            *editorDesktop
 	nativeWindow       *app.Window
+	application        *app.Application
 	appSettings        settingsPageState
+	localHistory       *localHistoryStore
+	historyCompare     *historyCompareState
 	backup             editorBackupState
 	update             editorUpdateState
 	editorPrefs        editorPreferences
@@ -736,7 +739,7 @@ func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
 	if !ok {
 		return false
 	}
-	if err := t.doc.save(path, t.source.text.String()); err != nil {
+	if err := t.doc.save(path, t.source.text.String(), m.documentHistory()); err != nil {
 		m.fail(fmt.Errorf("保存 %s 失败\n%w", path, err))
 		return false
 	}
@@ -774,6 +777,7 @@ func openEditorWindow(application *app.Application, m *editorApp) error {
 }
 
 func (m *editorApp) editorWindowConfig(application *app.Application) app.Config {
+	m.application = application
 	m.post = application.Post
 	if m.dataDirectory == "" {
 		m.dataDirectory, _ = editorDataDirectory()
@@ -904,6 +908,11 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 	if err != nil {
 		store.windows[0].status = "无法读取应用设置，已使用默认值：" + err.Error()
 	}
+	desktop.history = &localHistoryStore{
+		directory: filepath.Join(directory, localHistoryDirectory),
+		policy:    desktop.preferences.LocalHistory,
+	}
+	defer desktop.historyWork.Wait()
 
 	for _, window := range store.windows {
 		window.applyEditorPreferences(desktop.preferences.Editor)
@@ -966,7 +975,9 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 					return
 				case <-ticker.C:
 					application.Post(func() {
-						desktop.checkEditorUpdates(time.Now())
+						now := time.Now()
+						desktop.checkEditorUpdates(now)
+						desktop.maintainLocalHistory(now)
 						if store.backgroundSaving {
 							return
 						}
@@ -1053,6 +1064,7 @@ func (m *editorApp) releaseWindowState() {
 	state := m.snapshotSession()
 	m.closedSession = &state
 	m.windowClosed = true
+	m.closeHistoryComparison()
 	m.droppedPaths = nil
 	for len(m.tools.terminals) > 0 {
 		m.closeLocalShell(m.tools.terminals[len(m.tools.terminals)-1])
@@ -1083,5 +1095,5 @@ func (m *editorApp) releaseWindowState() {
 	m.newWindow, m.browser = nil, nil
 	m.webHost = app.WebHost{}
 	m.webReady = false
-	m.nativeWindow = nil
+	m.nativeWindow, m.application = nil, nil
 }

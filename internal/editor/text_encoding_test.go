@@ -48,7 +48,7 @@ func TestTextEncodingsPreserveOriginalBytes(t *testing.T) {
 				rawSuffix, suffixStart = []byte("\x00!\x00\x0d\x00\x0a"), len(expected)-4
 			}
 			expected = append(expected[:suffixStart], rawSuffix...)
-			if err := doc.save(path, sample.source+"!\n"); err != nil {
+			if err := doc.save(path, sample.source+"!\n", nil); err != nil {
 				t.Fatal(err)
 			}
 			got, err := os.ReadFile(path)
@@ -56,7 +56,7 @@ func TestTextEncodingsPreserveOriginalBytes(t *testing.T) {
 				t.Fatalf("saved bytes %x, want %x, error %v", got, expected, err)
 			}
 			if sample.encoding == gbkEncoding || sample.encoding == windows1252Encoding {
-				if err := doc.save(path, "😀\n"); err == nil {
+				if err := doc.save(path, "😀\n", nil); err == nil {
 					t.Fatal("unsupported characters were accepted")
 				}
 				got, err := os.ReadFile(path)

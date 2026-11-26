@@ -107,11 +107,22 @@ func (settings aiSettings) newCLIJob() (string, error) {
 			return "", err
 		}
 	}
-	workspace := filepath.Join(directory, "cli")
+	workspace := filepath.Join(directory, editorCLICacheDirectory)
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		return "", err
 	}
-	return os.MkdirTemp(workspace, "reply-")
+	activeEditorCache.Lock()
+	defer activeEditorCache.Unlock()
+	job, err := os.MkdirTemp(workspace, editorCLICachePattern)
+	if err == nil {
+		activeEditorCache.paths[editorCacheKey(job)] = struct{}{}
+	}
+	return job, err
+}
+
+func removeCLIJob(job string) {
+	_ = os.RemoveAll(job)
+	releaseEditorCache(job)
 }
 
 func (settings aiSettings) runCLI(ctx context.Context, system string, messages []aiMessage, effort aiReasoning) (aiCompletion, error) {
@@ -123,7 +134,7 @@ func (settings aiSettings) runCLI(ctx context.Context, system string, messages [
 	if err != nil {
 		return aiCompletion{}, err
 	}
-	defer os.RemoveAll(job)
+	defer removeCLIJob(job)
 
 	prompt, err := cliUserPrompt(messages, settings.Provider == aiCodexCLI)
 	if err != nil {

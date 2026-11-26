@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestDataLocationSettingsAndMigration(t *testing.T) {
@@ -46,13 +47,24 @@ func TestDataLocationSettingsAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := openTestSession(t, m)
-	for _, label := range []string{"设置", "数据目录"} {
+	for _, label := range []string{"设置", "存储感知"} {
 		if err := s.ClickLabel(label); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if _, shown := s.AccessByRole(gfx.RoleButton, "数据目录"); shown {
+		t.Fatal("data directory still has its own settings section")
+	}
 	if !s.HasText(location.Directory) {
 		t.Fatal("settings did not show the active directory")
+	}
+	change, err := s.Locate("button:更换位置…")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, err := s.Locate("button:清理缓存")
+	if err != nil || change.Bounds.Y != clean.Bounds.Y || change.Bounds.X >= clean.Bounds.X {
+		t.Fatalf("the directory and cleanup actions are out of order: %+v, %+v, %v", change.Bounds, clean.Bounds, err)
 	}
 	if err := s.Driver().QueueOpenDirectory("", app.ErrCanceled); err != nil {
 		t.Fatal(err)

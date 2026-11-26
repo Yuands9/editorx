@@ -409,17 +409,20 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 										items.Separator()
 										m.projectRenameAction(place, items, path, true)
 										m.projectDeleteAction(place, items, path, true)
-									})
+									}).Icon(folderIcon)
 									if path == row.start.path {
 										break
 									}
 								}
-							})
+							}).Icon(folderIcon)
 						}
 						menu.Separator()
 					}
 					if (node.directory || aiTextPath(node.path)) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
 						place.After(func() { m.openAIAt(nil, node.path, node.directory) })
+					}
+					if !node.directory && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+						place.After(func() { m.openHistoryComparison(node.path, localHistoryVersion{}) })
 					}
 					if menu.Item("打开所在文件夹").Icon(folderOpenIcon).Clicked() {
 						path := node.path

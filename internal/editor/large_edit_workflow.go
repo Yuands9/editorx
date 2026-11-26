@@ -292,9 +292,10 @@ func (m *editorApp) startLargeEditSave(t *editorTab, saveAs bool, after func()) 
 		return
 	}
 	doc, r := t.doc, state.editing.revision
+	history := m.documentHistory()
 	state.afterSave, state.savePath = after, path
 	state.saving = ui.NewEffect[document, int](func(ctx context.Context) (document, error) {
-		return saveLargeEdit(ctx, doc, path, r)
+		return saveLargeEdit(ctx, doc, path, r, history)
 	})
 }
 

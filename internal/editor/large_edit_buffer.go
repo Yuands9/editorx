@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -464,29 +463,12 @@ func (r largeEditContextReader) Read(data []byte) (int, error) {
 	return r.Reader.Read(data)
 }
 
-func saveLargeEdit(ctx context.Context, doc document, path string, r *largeEditRevision) (document, error) {
-	var original os.FileInfo
-	if doc.path != "" && strings.EqualFold(filepath.Clean(doc.path), filepath.Clean(path)) {
-		file, err := os.Open(path)
-		if err != nil {
-			return doc, fmt.Errorf("无法核对原文件，请另存为：%w", err)
-		}
-		original, err = file.Stat()
-		hash := sha256.New()
-		if err == nil {
-			_, err = io.Copy(hash, largeEditContextReader{ctx, file})
-		}
-		file.Close()
-		if err != nil {
-			return doc, err
-		}
-		if !bytes.Equal(hash.Sum(nil), doc.diskHash[:]) {
-			return doc, errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
-		}
+func saveLargeEdit(ctx context.Context, doc document, path string, r *largeEditRevision, history *localHistoryStore) (document, error) {
+	original, err := doc.checkDisk(ctx, path)
+	if err != nil {
+		return doc, err
 	}
-	hash := sha256.New()
-	err := writeFileAtomically(path, func(file io.Writer) error {
-		output := io.MultiWriter(file, hash)
+	digest, err := writeDocumentAtomically(ctx, path, original, history, func(output io.Writer) error {
 		if doc.bom {
 			if _, err := output.Write(doc.encoding.bomPrefix()); err != nil {
 				return err
@@ -504,18 +486,11 @@ func saveLargeEdit(ctx context.Context, doc document, path string, r *largeEditR
 		} else if _, err := io.Copy(output, input); err != nil {
 			return err
 		}
-		if original != nil {
-			current, err := os.Stat(path)
-			if err != nil || !sameTextFile(original, current) {
-				return errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
-			}
-		}
 		return ctx.Err()
 	})
 	if err != nil {
 		return doc, err
 	}
-	doc.path = path
-	copy(doc.diskHash[:], hash.Sum(nil))
+	doc.path, doc.diskHash = path, digest
 	return doc, nil
 }

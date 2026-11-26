@@ -150,6 +150,12 @@ func (m *editorApp) setLightMode(light bool) {
 	if m.nativeWindow != nil {
 		_ = m.nativeWindow.SetIcon(themedApplicationIcon(light))
 	}
+	if state := m.historyCompare; state != nil {
+		if state.window != nil {
+			_ = state.window.SetIcon(themedApplicationIcon(light))
+		}
+		state.invalidator.Invalidate()
+	}
 	for _, tab := range m.tabs {
 		tab.source.light, tab.result.light, tab.comparison.light = light, light, light
 		tab.office.setLightMode(light)

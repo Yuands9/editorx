@@ -11,7 +11,7 @@ import (
 
 func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editorTab) {
 	ui.ContextMenu(c, target, func(menu *ui.MenuItems) {
-		if menu.Item("重命名标签…").Clicked() {
+		if menu.Item("重命名标签…").Icon(modelEditIcon).Clicked() {
 			c.After(func() { m.rename.begin(tab, nil) })
 		}
 		label := "固定标签"
@@ -30,8 +30,11 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 		if menu.Item("打开所在文件夹").Icon(folderOpenIcon).Disabled(tab.doc.path == "").Clicked() {
 			c.After(func() { m.openExplorerFolder(filepath.Dir(tab.doc.path)) })
 		}
+		if tab.doc.path != "" && !tab.readOnlyPreview() && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+			c.After(func() { m.openHistoryComparison(tab.doc.path, localHistoryVersion{}) })
+		}
 		menu.Separator()
-		if menu.Item("添加到新分组").Clicked() {
+		if menu.Item("添加到新分组").Icon(plusIcon).Clicked() {
 			c.After(func() { m.newTabGroup(tab) })
 		}
 		var groups []*tabGroup
@@ -47,9 +50,9 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 						c.After(func() { m.moveToGroup(tab, group) })
 					}
 				}
-			})
+			}).Icon(blankMenuIcon)
 		}
-		if tab.group != nil && menu.Item("移出分组").Clicked() {
+		if tab.group != nil && menu.Item("移出分组").Icon(blankMenuIcon).Clicked() {
 			c.After(func() { m.moveToGroup(tab, nil) })
 		}
 		menu.Separator()
@@ -61,7 +64,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 			{"关闭左侧全部标签页", m.tabs[:index]},
 			{"关闭右侧全部标签页", m.tabs[index+1:]},
 		} {
-			if menu.Item(action.label).Disabled(!hasUnpinnedTab(action.tabs)).Clicked() {
+			if menu.Item(action.label).Icon(blankMenuIcon).Disabled(!hasUnpinnedTab(action.tabs)).Clicked() {
 				tabs := slices.Clone(action.tabs)
 				c.After(func() { m.closeTabs(tabs, true) })
 			}

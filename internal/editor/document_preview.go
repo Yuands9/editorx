@@ -308,12 +308,12 @@ func previewThemeJS(light bool) string {
 	return `document.documentElement.classList.remove("light")`
 }
 
-func (m *editorApp) writePreviewFile(pattern, content string) (string, error) {
-	dir := filepath.Join(m.dataDirectory, "preview")
+func (m *editorApp) writePreviewFile(content string) (string, error) {
+	dir := filepath.Join(m.dataDirectory, editorPreviewCacheDirectory)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	file, err := os.CreateTemp(dir, pattern)
+	file, err := createEditorPreviewCache(dir, editorPreviewCachePattern)
 	if err != nil {
 		return "", err
 	}
@@ -322,7 +322,7 @@ func (m *editorApp) writePreviewFile(pattern, content string) (string, error) {
 		err = closeErr
 	}
 	if err != nil {
-		_ = os.Remove(file.Name())
+		removeEditorPreviewCache(file.Name())
 		return "", err
 	}
 	return file.Name(), nil

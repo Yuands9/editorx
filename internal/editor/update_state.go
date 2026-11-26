@@ -110,9 +110,6 @@ func (state *editorUpdateState) initialize(directory string, now time.Time) {
 	state.initialized = true
 	state.cache, _ = readEditorUpdateCache(directory, version.Number)
 	state.nextCheck = now.Add(editorUpdateStartupDelay)
-	if !state.cache.CheckedAt.After(now) && now.Sub(state.cache.CheckedAt) < editorUpdateInterval {
-		state.nextCheck = state.cache.CheckedAt.Add(editorUpdateInterval)
-	}
 }
 
 func (state *editorUpdateState) save(directory string) error {

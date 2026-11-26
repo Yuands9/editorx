@@ -11,6 +11,7 @@ type sidebarPreferences struct {
 	HideGit       bool   `json:"hideGit,omitempty"`
 	HideTerminal  bool   `json:"hideTerminal,omitempty"`
 	HideTheme     bool   `json:"hideTheme,omitempty"`
+	HideSettings  bool   `json:"hideSettings,omitempty"`
 	Templates     bool   `json:"templates,omitempty"`
 	PasswordVault bool   `json:"passwordVault,omitempty"`
 }
@@ -46,6 +47,9 @@ func (preferences sidebarPreferences) withChanges(before, after sidebarPreferenc
 	}
 	if before.HideTheme != after.HideTheme {
 		preferences.HideTheme = after.HideTheme
+	}
+	if before.HideSettings != after.HideSettings {
+		preferences.HideSettings = after.HideSettings
 	}
 	if before.Templates != after.Templates {
 		preferences.Templates = after.Templates
@@ -117,6 +121,7 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 		{"Git", &draft.Sidebar.HideGit, true}, {"终端", &draft.Sidebar.HideTerminal, true},
 		{"翻译", &draft.TranslationEnabled, false}, {"密码本", &draft.Sidebar.PasswordVault, false},
 		{"模板库", &draft.Sidebar.Templates, false}, {"颜色主题", &draft.Sidebar.HideTheme, true},
+		{"设置", &draft.Sidebar.HideSettings, true},
 	}
 	ui.Column(c).FillWidth().Pad(12).Gap(8).Radius(12).Border(1, m.theme.Border).Children(func() {
 		for row := 0; row < len(options); row += 2 {
@@ -136,5 +141,5 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 			})
 		}
 	})
-	ui.Wrap(c, "模板库、翻译和密码本默认隐藏。设置按钮始终保留。").FillWidth().Muted().FontSize(12)
+	ui.Wrap(c, "模板库、翻译和密码本默认隐藏。隐藏设置按钮后，可从主菜单打开设置。").FillWidth().Muted().FontSize(12)
 }

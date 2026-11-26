@@ -83,9 +83,11 @@ func TestUpdateConditionalRequestAndPersistentCache(t *testing.T) {
 		t.Fatal("installed version still offered", installed, err)
 	}
 	newState := editorUpdateState{}
-	newState.initialize(directory, time.Now())
-	if newState.available() || !newState.nextCheck.Equal(cache.CheckedAt.Add(editorUpdateInterval)) {
-		t.Fatal("restart ignored skip or last check", newState.nextCheck)
+	startedAt := cache.CheckedAt.Add(time.Minute)
+	newState.initialize(directory, startedAt)
+	if newState.available() || newState.cache.ETag != cache.ETag ||
+		!newState.nextCheck.Equal(startedAt.Add(editorUpdateStartupDelay)) {
+		t.Fatal("restart should keep the cache and skipped version and check after the startup delay", newState.nextCheck)
 	}
 	state.cache.Release.Download = "https://example.com/replacement.exe"
 	if err := state.save(directory); err != nil {
@@ -151,6 +153,9 @@ func TestUpdateAutomaticChecksShareWorkAndRespectOptOut(t *testing.T) {
 	}
 	if desktop.update.problem != "" || desktop.update.cache.CheckedAt.IsZero() || desktop.update.cache.CheckedAt.Before(now) {
 		t.Fatal("automatic failure was not quiet")
+	}
+	if !desktop.update.nextCheck.Equal(desktop.update.cache.CheckedAt.Add(editorUpdateInterval)) {
+		t.Fatal("runtime check did not schedule the normal interval")
 	}
 	desktop.checkEditorUpdates(now.Add(time.Hour))
 	if desktop.update.check != nil {

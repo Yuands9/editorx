@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/vivaui/viva/app"
 )
@@ -18,15 +19,16 @@ const (
 )
 
 type applicationPreferences struct {
-	ShowTrayIcon         bool               `json:"showTrayIcon"`
-	ExitOnClose          bool               `json:"exitOnClose"`
-	SkipSaveConfirmation bool               `json:"skipSaveConfirmation,omitempty"`
-	TranslationEnabled   bool               `json:"translationEnabled,omitempty"`
-	DisableAutoUpdate    bool               `json:"disableAutoUpdate,omitempty"`
-	Theme                string             `json:"theme,omitempty"`
-	Editor               editorPreferences  `json:"editor"`
-	Sidebar              sidebarPreferences `json:"sidebar"`
-	Shortcuts            shortcutOverrides  `json:"shortcuts,omitempty"`
+	ShowTrayIcon         bool                    `json:"showTrayIcon"`
+	ExitOnClose          bool                    `json:"exitOnClose"`
+	SkipSaveConfirmation bool                    `json:"skipSaveConfirmation,omitempty"`
+	TranslationEnabled   bool                    `json:"translationEnabled,omitempty"`
+	DisableAutoUpdate    bool                    `json:"disableAutoUpdate,omitempty"`
+	Theme                string                  `json:"theme,omitempty"`
+	Editor               editorPreferences       `json:"editor"`
+	Sidebar              sidebarPreferences      `json:"sidebar"`
+	Shortcuts            shortcutOverrides       `json:"shortcuts,omitempty"`
+	LocalHistory         localHistoryPreferences `json:"localHistory,omitzero"`
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
@@ -79,6 +81,7 @@ func (m *editorApp) saveApplicationSettings() {
 		settings.draft.SkipSaveConfirmation == settings.original.SkipSaveConfirmation &&
 		settings.draft.TranslationEnabled == settings.original.TranslationEnabled &&
 		settings.draft.DisableAutoUpdate == settings.original.DisableAutoUpdate &&
+		settings.draft.LocalHistory == settings.original.LocalHistory &&
 		settings.draft.Sidebar == settings.original.Sidebar &&
 		settings.draft.Theme == settings.original.Theme && settings.draft.Editor.equal(settings.original.Editor) {
 		return
@@ -108,6 +111,15 @@ func (m *editorApp) saveApplicationSettings() {
 	}
 	if settings.draft.DisableAutoUpdate != settings.original.DisableAutoUpdate {
 		preferences.DisableAutoUpdate = settings.draft.DisableAutoUpdate
+	}
+	if settings.draft.LocalHistory.Disabled != settings.original.LocalHistory.Disabled {
+		preferences.LocalHistory.Disabled = settings.draft.LocalHistory.Disabled
+	}
+	if settings.draft.LocalHistory.Days != settings.original.LocalHistory.Days {
+		preferences.LocalHistory.Days = settings.draft.LocalHistory.Days
+	}
+	if settings.draft.LocalHistory.Versions != settings.original.LocalHistory.Versions {
+		preferences.LocalHistory.Versions = settings.draft.LocalHistory.Versions
 	}
 	preferences.Editor = preferences.Editor.withChanges(settings.original.Editor, settings.draft.Editor)
 	preferences.Sidebar = preferences.Sidebar.withChanges(settings.original.Sidebar, settings.draft.Sidebar)
@@ -185,6 +197,10 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 		desktop := m.desktop
 		trayChanged := desktop.preferences.ShowTrayIcon != preferences.ShowTrayIcon ||
 			desktop.tray != nil && desktop.preferences.Theme != preferences.Theme
+		if desktop.history != nil && desktop.preferences.LocalHistory != preferences.LocalHistory {
+			desktop.history.setPolicy(preferences.LocalHistory)
+			desktop.nextHistoryCleanup = time.Time{}
+		}
 		desktop.preferences = preferences
 		if preferences.DisableAutoUpdate && desktop.update.check != nil && !desktop.update.manual {
 			desktop.update.check.cancel()
@@ -210,6 +226,9 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 			return desktop.syncTray()
 		}
 		return nil
+	}
+	if m.localHistory != nil {
+		m.localHistory.setPolicy(preferences.LocalHistory)
 	}
 	m.applyThemePreference(preferences.Theme)
 	m.applyEditorPreferences(preferences.Editor)

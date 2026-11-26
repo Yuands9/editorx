@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -21,6 +23,9 @@ type editorDesktop struct {
 	updateFile           string
 	updated              installedEditorUpdate
 	update               editorUpdateState
+	history              *localHistoryStore
+	nextHistoryCleanup   time.Time
+	historyWork          sync.WaitGroup
 	watchPasswordSession func() bool
 }
 
@@ -146,6 +151,7 @@ func (d *editorDesktop) closeLastWindow(window *editorApp) {
 		d.quit()
 		return
 	}
+	window.closeHistoryComparison()
 	window.nativeWindow.Hide()
 }
 
