@@ -396,10 +396,6 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			if ui.Button(c, uiText(label)).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { state.following = false; m.startLargeTextEdit(tab, tab.doc.encoding) })
 			}
-			if state.editSession.hasChanges() &&
-				ui.Button(c, uiText("导出未保存改动…")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
-				c.After(func() { m.exportLargeEditDraft(tab) })
-			}
 		})
 	}
 	if state.searchOpen {

@@ -42,6 +42,7 @@ type projectTools struct {
 	gitOpen, terminalOpen bool
 	split, gitSplit       ui.SplitterState
 	git                   gitPanelState
+	repositories          projectGitRepositories
 	terminal              *localShell
 	terminals             []*localShell
 }
@@ -52,6 +53,8 @@ type gitPanelState struct {
 	request                                                                        *ui.EffectState[gitResult, int]
 	commit, address                                                                ui.Field
 	commitAI                                                                       gitCommitAIState
+	commitProblem                                                                  string
+	commitAttempt                                                                  *gitCommitAttempt
 	focusCommit                                                                    bool
 	tree                                                                           ui.TreeState
 	branches                                                                       gitBranchDialogs
@@ -77,13 +80,33 @@ type gitPanelState struct {
 	pushingCommit                                                                  bool
 }
 
-func (m *editorApp) toolDirectories() []string {
-	var paths []string
-	if m.workspace != nil {
-		for _, root := range m.workspace.roots {
-			paths = append(paths, root.path)
+func (m *editorApp) gitProjectDirectory() string {
+	paths := m.gitProjects()
+	if len(paths) == 0 {
+		return ""
+	}
+	if slices.Contains(paths, m.tools.git.directory) {
+		return m.tools.git.directory
+	}
+	if m.tools.repositories.scan != nil && m.tools.repositories.byProject == nil {
+		return ""
+	}
+	if m.active != nil {
+		if repository := m.gitRepositoryAt(m.active.doc.path); repository != "" {
+			return repository
+		}
+		project := m.projectRoot(m.active.doc.path)
+		for _, path := range paths {
+			if m.projectRoot(path) == project {
+				return path
+			}
 		}
 	}
+	return paths[0]
+}
+
+func (m *editorApp) toolDirectories() []string {
+	paths := m.projectDirectories()
 	if active := m.active; active != nil && active.doc.path != "" && !slices.ContainsFunc(paths, func(path string) bool {
 		return gitPathWithin(path, active.doc.path)
 	}) {
@@ -119,11 +142,7 @@ func (m *editorApp) useTool(name string) {
 			m.focusActiveSource()
 			return
 		}
-		dir := m.tools.git.directory
-		if dir == "" {
-			dir = m.toolDirectory()
-		}
-		m.openProjectGit(dir)
+		m.openProjectGit(m.gitProjectDirectory())
 		return
 	}
 	if name == "终端" {
@@ -183,16 +202,24 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 	if action.updatesOpenFiles() {
 		git.fileHashes = make(map[string][32]byte)
 		for _, tab := range m.tabs {
+			owner := m.gitRepositoryAt(tab.doc.path)
+			if owner != "" && !strings.EqualFold(owner, git.snapshot.root) {
+				continue
+			}
 			if aiTextTab(tab) && !tab.modified() && !tab.hasResultDraft() && tab.doc.path != "" {
 				openFiles = append(openFiles, tab.doc.path)
 				git.fileHashes[tab.doc.path] = tab.doc.diskHash
 			}
 		}
 	}
-	git.issue, git.message = "", fmt.Sprintf(uiText("正在执行 %s…"), uiText(string(action)))
 	git.requestAction = action
-	if action == gitRefresh {
-		git.message = ""
+	if action == gitListMessages {
+		git.commitProblem = ""
+	} else {
+		git.issue, git.message = "", ""
+		if action != gitRefresh {
+			git.message = fmt.Sprintf(uiText("正在执行 %s…"), uiText(string(action)))
+		}
 	}
 	git.request = ui.NewEffect[gitResult, int](func(ctx context.Context) (gitResult, error) {
 		return runProjectGit(ctx, directory, action, input, paths, openFiles), nil
@@ -212,6 +239,22 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 		return
 	}
 	git.request = nil
+	if attempt := git.commitAttempt; attempt != nil && !attempt.open {
+		if result.commitWarning != "" {
+			attempt.warning, attempt.open = result.commitWarning, true
+			return
+		}
+		git.commitAttempt = nil
+		if result.commitProblem != "" {
+			git.commitProblem = result.commitProblem
+			m.checkFiles = true
+			m.invalidator.Invalidate()
+			return
+		}
+		if result.committed && attempt.pushRemote != "" {
+			git.pushAfterCommit, git.pushBranch = attempt.pushRemote, attempt.branch
+		}
+	}
 	scope := git.projectScope
 	git.projectScope = projectGitScope{}
 	fileHashes := git.fileHashes
@@ -220,24 +263,37 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 		git.issue = err.Error()
 		return
 	}
+	if result.action == gitListMessages {
+		git.commitProblem = result.fail
+		git.commitMessages = result.items
+		if git.amend && strings.TrimSpace(git.commit.Text()) == "" && len(git.commitMessages) > 0 {
+			git.commit.SetText(strings.TrimSpace(git.commitMessages[0]))
+			git.focusCommit = true
+		}
+		return
+	}
 	if scope.path != "" && result.statusValid && result.status.root == "" {
 		git.issue = uiText("此目录还没有 Git 仓库")
 		return
 	}
-	if scope.path != "" && result.statusValid && result.status.root != "" && !strings.EqualFold(git.snapshot.root, result.status.root) {
-		git.watch.close()
-		*git = gitPanelState{directory: result.status.root}
+	if scope.path != "" && result.statusValid && result.status.root != "" {
+		project := m.projectRoot(scope.path)
+		if project == "" {
+			return
+		}
+		directory := project
+		if gitPathWithin(project, result.status.root) {
+			directory = result.status.root
+		}
+		if !strings.EqualFold(git.directory, directory) || !strings.EqualFold(git.snapshot.root, result.status.root) {
+			git.watch.close()
+			*git = gitPanelState{directory: directory}
+		}
 	}
 	git.issue, git.message = result.fail, ""
 	switch result.action {
 	case gitListIgnored:
 		git.ignored, git.rows = result.items, nil
-		return
-	case gitListMessages:
-		git.commitMessages = result.items
-		if git.amend && strings.TrimSpace(git.commit.Text()) == "" && len(git.commitMessages) > 0 {
-			git.commit.SetText(strings.TrimSpace(git.commitMessages[0]))
-		}
 		return
 	case gitListStashes:
 		git.stashes = result.items
@@ -251,6 +307,9 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 	}
 	if result.statusValid {
 		git.snapshot, git.rows = result.status, nil
+		if project := m.projectRoot(git.directory); project != "" && gitPathWithin(project, result.status.root) && gitPathWithin(result.status.root, git.directory) {
+			git.directory = result.status.root
+		}
 	}
 	if result.statusValid && len(git.commitSelection) > 0 {
 		present := make(map[string]bool, len(git.snapshot.changes))
@@ -309,6 +368,9 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 	}
 	if result.action == gitAddRemote {
 		git.address.SetText("")
+	}
+	if result.action == gitInit {
+		m.tools.repositories.refresh = true
 	}
 	if result.action == gitCreateBranch {
 		git.commitSelection = nil
@@ -396,16 +458,13 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 	busy := blocked || git.request != nil
 	snapshot := git.snapshot
 	ui.Column(c).FillWidth().Grow(1).MinHeight(0).PadX(11).PadY(5).Gap(4).Children(func() {
-		paths := m.toolDirectories()
-		if git.directory != "" && !slices.Contains(paths, git.directory) {
-			paths = append(paths, git.directory)
-		}
+		paths := m.gitProjects()
 		if git.directory == "" {
-			if len(paths) != 0 && !busy && git.issue == "" {
-				c.After(func() { m.openProjectGit(m.toolDirectory()) })
-			}
 			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
 				label := uiText("添加项目后可查看 Git 状态")
+				if m.tools.repositories.scan != nil {
+					label = uiText("正在查找项目中的 Git 仓库…")
+				}
 				if git.issue != "" {
 					label = git.issue
 				}
@@ -418,11 +477,17 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 		}
 		ui.Row(c).FillWidth().Items(ui.Center).Gap(5).Children(func() {
 			selected := git.directory
-			if ui.Select(c, &selected, paths, filepath.Base).Label(uiText("Git 项目")).Grow(1).MinWidth(0).Height(28).Disabled(busy).Changed() {
+			if !slices.Contains(paths, selected) {
+				paths = append(paths, selected)
+			}
+			if ui.Select(c, &selected, paths, m.gitRepositoryLabel).Label(uiText("Git 项目")).Grow(1).MinWidth(0).Height(28).Disabled(busy).Changed() {
 				c.After(func() { m.openProjectGit(selected) })
 			}
 			if ui.Button(c, uiText("刷新 Git 状态")).Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Disabled(busy).Clicked() {
-				c.After(func() { m.startGit(gitRefresh, "", nil) })
+				c.After(func() {
+					m.tools.repositories.refresh = true
+					m.startGit(gitRefresh, "", nil)
+				})
 			}
 			if ui.Button(c, uiText("提交记录")).Icon(historyCompareIcon).Ghost().Height(28).PadX(6).FontSize(12).Tooltip(uiText("浏览 Git 提交记录")).Disabled(busy || snapshot.root == "").Clicked() {
 				c.After(m.openGitLog)

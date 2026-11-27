@@ -2,6 +2,7 @@ package editor
 
 import (
 	"encoding/json"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -36,6 +37,23 @@ func (m *editorApp) selectLanguage(t *editorTab, language string) {
 	m.focusActiveSource()
 }
 
+var structuredLogEntry = regexp.MustCompile(`^\[?\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:[.,]\d+)?(?:Z|[+-]\d\d:?\d\d)?\]?\s+\[?(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)(?:\]|\s|:)`)
+
+func looksLikeLog(source string) bool {
+	// Exported logs may start with several metadata lines before the first event.
+	for line := range strings.SplitSeq(source[:min(len(source), 8<<10)], "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
+		// An example inside a Markdown heading, quote or fenced block is still Markdown.
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, ">") || strings.HasPrefix(line, "\x60\x60\x60") || strings.HasPrefix(line, "~~~") {
+			return false
+		}
+		if structuredLogEntry.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 func suggestOpenedFormat(name, source string) string {
 	value := strings.TrimLeft(source, " \t\r\n")
 	if value == "" {
@@ -49,6 +67,12 @@ func suggestOpenedFormat(name, source string) string {
 		return ""
 	}
 	if format == "Markdown" || strings.HasPrefix(value, "#!") {
+		return ""
+	}
+	if (format == "纯文本" || format == "日志") && looksLikeLog(source) {
+		if format == "纯文本" {
+			return "日志"
+		}
 		return ""
 	}
 
@@ -135,6 +159,8 @@ func (t *editorTab) detectFormat() string {
 	lower := strings.ToLower(value)
 	if strings.HasPrefix(lower, "<!doctype html") || strings.HasPrefix(lower, "<html>") || strings.HasPrefix(lower, "<html ") {
 		kind = "HTML"
+	} else if looksLikeLog(value) {
+		kind = "日志"
 	} else if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") && (arrayValue == "" || json.Valid([]byte(value)) || strings.ContainsRune("{[\"-0123456789tfn]", rune(arrayValue[0]))) {
 		kind = "JSON"
 	} else {

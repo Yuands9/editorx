@@ -49,6 +49,7 @@ try {
             foreach ($source in $notices.Keys) {
                 Copy-Item -LiteralPath (Join-Path $assets $source) -Destination (Join-Path $output $notices[$source]) -Force
             }
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'tools\register-open-with.ps1') -Destination $output -Force
             if ($Action -eq 'run') {
                 Start-Process -FilePath $exe -WorkingDirectory $PSScriptRoot -WindowStyle Normal
             }

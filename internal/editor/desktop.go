@@ -155,6 +155,7 @@ func (d *editorDesktop) closeLastWindow(window *editorApp) {
 	}
 	window.closeHistoryComparison()
 	window.closeGitLog()
+	window.debug = editorDebugLog{}
 	window.nativeWindow.Hide()
 }
 
@@ -271,6 +272,9 @@ func (d *editorDesktop) finishExit() {
 		d.tray = nil
 	}
 	d.exitConfirmation = nil
+	for _, window := range d.store.windows {
+		window.debug = editorDebugLog{}
+	}
 	d.application.Quit()
 }
 

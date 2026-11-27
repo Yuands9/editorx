@@ -22,37 +22,66 @@ const (
 )
 
 func (m *editorApp) projectGitActions(c ui.C, menu *ui.MenuItems, path string, directory bool) {
-	location := path
-	if !directory {
-		location = filepath.Dir(path)
+	project := m.projectRoot(path)
+	if project == "" {
+		return
 	}
-	busy := m.tools.git.request != nil || m.tools.git.review != nil && m.tools.git.review.apply != nil
+	location := m.gitRepositoryAt(path)
 	menu.Sub("Git", func(items *ui.MenuItems) {
-		if items.Item(uiText("提交记录…")).Icon(historyCompareIcon).Clicked() {
-			c.After(func() { m.openGitLogAt(location, path, directory) })
+		if location != "" {
+			m.projectGitRepositoryActions(c, items, location, path, directory)
+			return
 		}
-		if !directory && items.Item(uiText(string(gitDiffScope))).Icon(historyCompareIcon).Disabled(busy).Clicked() {
-			c.After(func() { m.startProjectGitScope(location, projectGitScope{path, false, gitDiffScope}) })
-		}
-		items.Separator()
-		for _, action := range []struct {
-			kind  gitAction
-			label string
-			icon  gfx.Icon
-		}{
-			{gitSelectScope, "勾选提交", gitCommitIcon},
-			{gitStage, "暂存变更", gitPullIcon},
-			{gitUnstage, "取消暂存", exportIcon},
-		} {
-			if items.Item(uiText(action.label)).Icon(action.icon).Disabled(busy).Clicked() {
-				c.After(func() { m.startProjectGitScope(location, projectGitScope{path, directory, action.kind}) })
+		if directory {
+			found := false
+			for _, repository := range m.tools.repositories.byProject[project] {
+				if gitPathWithin(path, repository) {
+					found = true
+					items.Sub(m.gitRepositoryLabel(repository), func(repoMenu *ui.MenuItems) {
+						m.projectGitRepositoryActions(c, repoMenu, repository, repository, true)
+					}).Icon(gitBranchIcon)
+				}
 			}
+			if found {
+				return
+			}
+			if m.tools.repositories.scan != nil {
+				items.Label(uiText("正在查找项目中的 Git 仓库…"))
+				return
+			}
+			m.projectGitRepositoryActions(c, items, path, path, true)
+			return
 		}
-		items.Separator()
-		if items.Item(uiText("打开 Git 面板")).Icon(gitBranchIcon).Disabled(busy).Clicked() {
-			c.After(func() { m.openProjectGit(location) })
-		}
+		m.projectGitRepositoryActions(c, items, filepath.Dir(path), path, false)
 	}).Icon(gitBranchIcon)
+}
+
+func (m *editorApp) projectGitRepositoryActions(c ui.C, items *ui.MenuItems, location, path string, directory bool) {
+	busy := m.tools.git.request != nil || m.tools.git.review != nil && m.tools.git.review.apply != nil
+	if items.Item(uiText("提交记录…")).Icon(historyCompareIcon).Clicked() {
+		c.After(func() { m.openGitLogAt(location, path, directory) })
+	}
+	if !directory && items.Item(uiText(string(gitDiffScope))).Icon(historyCompareIcon).Disabled(busy).Clicked() {
+		c.After(func() { m.startProjectGitScope(location, projectGitScope{path, false, gitDiffScope}) })
+	}
+	items.Separator()
+	for _, action := range []struct {
+		kind  gitAction
+		label string
+		icon  gfx.Icon
+	}{
+		{gitSelectScope, "勾选提交", gitCommitIcon},
+		{gitStage, "暂存变更", gitPullIcon},
+		{gitUnstage, "取消暂存", exportIcon},
+	} {
+		if items.Item(uiText(action.label)).Icon(action.icon).Disabled(busy).Clicked() {
+			c.After(func() { m.startProjectGitScope(location, projectGitScope{path, directory, action.kind}) })
+		}
+	}
+	items.Separator()
+	if items.Item(uiText("打开 Git 面板")).Icon(gitBranchIcon).Disabled(busy).Clicked() {
+		c.After(func() { m.openProjectGit(location) })
+	}
 }
 
 func (m *editorApp) startProjectGitScope(location string, scope projectGitScope) {

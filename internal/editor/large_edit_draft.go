@@ -1,14 +1,12 @@
 package editor
 
 import (
-	"archive/zip"
 	"bufio"
 	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -220,63 +218,6 @@ func bindLargeEditDraftPaths(saved savedSession, directory string) {
 	for _, draft := range saved.largeDrafts() {
 		draft.patchPath = largeDraftPath(directory, draft.Patch)
 	}
-}
-
-func includeLargeEditDrafts(ctx context.Context, archive *zip.Writer, saved savedSession) error {
-	included := make(map[string]bool)
-	for _, draft := range saved.largeDrafts() {
-		if draft.patchError != "" {
-			return errors.New(draft.patchError)
-		}
-		if included[draft.Patch] {
-			continue
-		}
-		file, err := os.Open(draft.patchPath)
-		if err != nil {
-			return err
-		}
-		name := largeDraftDirectory + "/" + draft.Patch + ".patch.gz"
-		entry, err := archive.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
-		if err == nil {
-			_, err = io.Copy(entry, largeEditContextReader{ctx, file})
-		}
-		file.Close()
-		if err != nil {
-			return err
-		}
-		included[draft.Patch] = true
-	}
-	return nil
-}
-
-func importLargeEditDrafts(archive *zip.ReadCloser, saved savedSession, directory string) error {
-	sources := make(map[string]string)
-	for _, draft := range saved.largeDrafts() {
-		if !validLargeDraftID(draft.Patch) || directory == "" {
-			return errors.New(uiText("备份中的大文件草稿无效"))
-		}
-		if id := sources[draft.Patch]; id != "" {
-			draft.Patch, draft.patchPath = id, largeDraftPath(directory, id)
-			continue
-		}
-		entry, err := archive.Open(largeDraftDirectory + "/" + draft.Patch + ".patch.gz")
-		if err != nil {
-			return fmt.Errorf(uiText("备份中缺少大文件草稿：%w"), err)
-		}
-		id := rand.Text()
-		path := largeDraftPath(directory, id)
-		err = os.MkdirAll(filepath.Dir(path), 0700)
-		if err == nil {
-			err = writeFileAtomically(path, func(output io.Writer) error { _, err := io.Copy(output, entry); return err })
-		}
-		entry.Close()
-		if err != nil {
-			return err
-		}
-		sources[draft.Patch] = id
-		draft.Patch, draft.patchPath = id, path
-	}
-	return nil
 }
 
 func pruneLargeEditDrafts(directory string, current, previous savedSession) {

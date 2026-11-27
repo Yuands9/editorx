@@ -309,7 +309,7 @@ func TestLargeEditViewportKeyboardIMEAndDraft(t *testing.T) {
 	}
 }
 
-func TestLargeEditStreamsDraftAndBackup(t *testing.T) {
+func TestLargeEditStreamsSessionDraft(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "draft.out")
@@ -361,18 +361,6 @@ func TestLargeEditStreamsDraftAndBackup(t *testing.T) {
 		t.Fatal("session did not bind the streamed draft")
 	}
 
-	backup := filepath.Join(dir, "draft.zip")
-	if err := writeEditorBackup(ctx, backup, savedSession{Version: editorSessionVersion, Windows: []windowSession{m.snapshotSession()}}); err != nil {
-		t.Fatal(err)
-	}
-	imported, err := readEditorBackupDrafts(backup, filepath.Join(dir, "restored"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := imported.Windows[0].Tabs[0].LargeEdit
-	if restored.patchPath == draft.patchPath || restored.Patch == draft.Patch {
-		t.Fatal("import did not make an independent draft")
-	}
 	verify := func(draft *largeEditSession) {
 		t.Helper()
 		opening, err := restoreLargeEditOpening(ctx, loaded, draft)
@@ -393,11 +381,10 @@ func TestLargeEditStreamsDraftAndBackup(t *testing.T) {
 		}
 	}
 	verify(staged)
-	verify(restored)
-	if err := os.WriteFile(restored.patchPath, []byte("invalid data"), 0600); err != nil {
+	if err := os.WriteFile(staged.patchPath, []byte("invalid data"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restoreLargeEditOpening(ctx, loaded, restored); err == nil {
+	if _, err := restoreLargeEditOpening(ctx, loaded, staged); err == nil {
 		t.Fatal("accepted a corrupted streamed draft")
 	}
 }

@@ -102,15 +102,29 @@ func (m *editorApp) saveTextTabWithCallback(t *editorTab, saveAs bool, complete 
 		return finish(false)
 	}
 	value := t.source.text.String()
-	if max(len(value), len(t.doc.saved)) < backgroundTextBytes {
-		if err := t.doc.save(path, value, m.documentHistory()); err != nil {
-			m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), path, err))
-			return finish(false)
-		}
-		m.finishTextSave(t, path)
-		return finish(true)
-	}
+	return m.saveTextSnapshot(t, path, value, nil, complete)
+}
+
+func (m *editorApp) saveTextSnapshot(t *editorTab, path, value string, overwrite *[32]byte, complete func(bool)) bool {
 	doc, history := t.doc, m.documentHistory()
+	if overwrite != nil {
+		doc.diskHash, doc.formatDirty = *overwrite, true
+	}
+	if max(len(value), len(doc.saved)) < backgroundTextBytes && overwrite == nil {
+		if err := doc.save(path, value, history); err != nil {
+			m.reportSaveError(t, path, err)
+			if complete != nil {
+				complete(false)
+			}
+			return false
+		}
+		t.doc = doc
+		m.finishTextSave(t, path)
+		if complete != nil {
+			complete(true)
+		}
+		return true
+	}
 	job := &textSaveJob{path: path, doc: doc, complete: complete}
 	job.request = ui.NewEffect[document, int](func(ctx context.Context) (document, error) {
 		if err := ctx.Err(); err != nil {
@@ -126,6 +140,8 @@ func (m *editorApp) saveTextTabWithCallback(t *editorTab, saveAs bool, complete 
 }
 
 func (m *editorApp) finishTextSave(t *editorTab, path string) {
+	m.debug.record("document.save", nil)
+	m.markDiskSaved(t)
 	m.rememberPath(path, false)
 	if t.html.view != nil {
 		m.refreshHTML(t)
@@ -165,7 +181,7 @@ func (m *editorApp) updateTextIO(c ui.C) {
 		if doc, err, done := job.request.Take(); done {
 			tab.savingText = nil
 			if err != nil {
-				m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), job.path, err))
+				m.reportSaveError(tab, job.path, err)
 			} else {
 				// Edits made during the write remain dirty against the saved snapshot.
 				tab.doc.path, tab.doc.saved, tab.doc.diskHash = doc.path, doc.saved, doc.diskHash

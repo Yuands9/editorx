@@ -82,15 +82,16 @@ func (action gitAction) updatesOpenFiles() bool {
 }
 
 type gitResult struct {
-	status      gitStatus
-	action      gitAction
-	updated     map[string]document
-	missing     []string
-	branches    []string
-	items       []string
-	fail        string
-	committed   bool
-	statusValid bool
+	status                       gitStatus
+	action                       gitAction
+	updated                      map[string]document
+	missing                      []string
+	branches                     []string
+	items                        []string
+	fail                         string
+	committed                    bool
+	statusValid                  bool
+	commitProblem, commitWarning string
 }
 
 func runGitCommand(ctx context.Context, git, directory string, args ...string) (string, error) {

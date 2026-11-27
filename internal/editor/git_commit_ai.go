@@ -174,7 +174,11 @@ func (m *editorApp) gitCommitAIAction(c ui.C, busy bool, selected int) {
 		if len(state.profiles) == 0 {
 			menu.Label(uiText("未配置 AI 服务"))
 			if menu.Item(uiText("打开 AI 设置…")).Icon(settingsIcon).Clicked() {
-				c.After(m.openAISettings)
+				c.After(func() {
+					state.menu, state.profiles = false, nil
+					m.showSettings(settingsAI)
+					m.appSettings.returnToGit = true
+				})
 			}
 			return
 		}

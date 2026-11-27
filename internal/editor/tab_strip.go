@@ -230,6 +230,7 @@ func tabCardWidth(canvas *gfx.Canvas, title string, modified bool) float32 {
 
 func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx float32, modified, blocked bool) {
 	active := tab == m.active
+	diskChanged := tab.diskChange != nil && tab.diskChange.changed
 	card := ui.Column(c).Absolute().Left(tabStripInset+dx).Top(tabStripItemTop).Size(width-2*tabStripInset, tabStripItemSize)
 	if active || tab.group == nil {
 		background := m.theme.Background
@@ -268,11 +269,18 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 					hint += "\n" + tab.doc.path
 				}
 			}
+			if diskChanged {
+				hint = uiText("磁盘文件已变化") + "\n" + hint
+			}
 			target.Tooltip(hint)
 		}
 
 		target.Children(func() {
 			icon, color := m.fileAppearance(tab.title())
+			if diskChanged {
+				color, _ = m.diskWarningColors()
+				icon = diskWarningIcon
+			}
 			ui.Icon(c, icon).Size(tabStripIconSize, tabStripIconSize).Shrink(0).Color(color)
 			name := ui.Text(c, title).FontSize(tabStripTitleSize).Grow(1).MinWidth(0).Ellipsis()
 			if tab.projectPreview {

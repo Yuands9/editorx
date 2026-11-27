@@ -86,10 +86,10 @@ func TestSaveConfirmationCanBeDisabledAndRestored(t *testing.T) {
 	closeTab(conflict)
 	data, err = os.ReadFile(path)
 	check(err)
-	if !m.showError || m.active != conflict || !conflict.modified() || string(data) != "磁盘上的新内容" {
+	if m.saveConflict == nil || m.active != conflict || !conflict.modified() || string(data) != "磁盘上的新内容" {
 		t.Fatal("automatic save overwrote a changed file or closed its draft")
 	}
-	click("button:确定")
+	click("button:取消")
 
 	m.newDocument()
 	unnamed := m.active
@@ -333,7 +333,7 @@ func TestDesktopExitStopsOnLargeFileSaveFailure(t *testing.T) {
 	check(session.WaitFor(func(app.Snapshot) bool { return desktop.exitConfirmation == nil }, 3*time.Second))
 	data, err := os.ReadFile(path)
 	check(err)
-	if desktop.exiting || !window.showError || !tab.modified() || string(data) != "externally changed\r\n" {
+	if desktop.exiting || window.saveConflict == nil || !tab.modified() || string(data) != "externally changed\r\n" {
 		t.Fatal("the failed asynchronous save did not stop exit and protect the file and draft")
 	}
 }

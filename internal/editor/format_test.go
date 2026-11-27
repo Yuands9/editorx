@@ -8,6 +8,26 @@ import (
 	"github.com/vivaui/viva/gfx"
 )
 
+func TestDBXDebugLogFormat(t *testing.T) {
+	const source = "DBX debug log\r\nExported: 2026-11-27T23:49:41+08:00\r\nPlatform: Win32\r\n\r\n" +
+		"[2026-11-27T19:37:39.486+08:00] [DEBUG] [DBX][api:success] request to https://example.test **operation**\r\n"
+	m := newTestEditorWithDocument()
+	m.active.source.replace(source)
+	if got := m.active.format(); got != "日志" {
+		t.Fatalf("pasted DBX log detected as %s", got)
+	}
+	for _, test := range []struct{ name, source, want string }{
+		{"debug.log", source, ""},
+		{"debug.txt", source, "日志"},
+		{"debug.md", source, ""},
+		{"example.txt", "# 日志示例\n\n\x60\x60\x60text\n" + source + "\x60\x60\x60", "Markdown"},
+	} {
+		if got := suggestOpenedFormat(test.name, test.source); got != test.want {
+			t.Fatalf("%s: got %q, want %q", test.name, got, test.want)
+		}
+	}
+}
+
 func TestSuggestOpenedFormat(t *testing.T) {
 	for _, test := range []struct {
 		name, source, want string

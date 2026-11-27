@@ -163,16 +163,46 @@ func TestGitSelectedCommitPostCommitInterruption(t *testing.T) {
 	if err := os.WriteFile(path, []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".git", "hooks", "post-commit"), []byte("#!/bin/sh\n: > .git/editorx-post-commit-started\nsleep 5\n"), 0700); err != nil {
+	const hook = `#!/bin/sh
+markers=$(pwd)/.git
+# Git for Windows can terminate git.exe while the hook shell is still alive.
+# Leave the fixture directory before signaling that the hook has started.
+cd "${TMPDIR:-/tmp}" || exit 1
+: > "$markers/editorx-post-commit-started"
+for attempt in $(seq 1 200); do
+	test ! -f "$markers/editorx-post-commit-release" || break
+	sleep 0.05
+done
+: > "$markers/editorx-post-commit-finished"
+`
+	if err := os.WriteFile(filepath.Join(root, ".git", "hooks", "post-commit"), []byte(hook), 0700); err != nil {
 		t.Fatal(err)
 	}
+	started := filepath.Join(root, ".git", "editorx-post-commit-started")
+	t.Cleanup(func() {
+		if _, err := os.Stat(started); err != nil {
+			return
+		}
+		release := filepath.Join(root, ".git", "editorx-post-commit-release")
+		if err := os.WriteFile(release, nil, 0600); err != nil {
+			t.Error(err)
+			return
+		}
+		finished := filepath.Join(root, ".git", "editorx-post-commit-finished")
+		for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline); {
+			if _, err := os.Stat(finished); err == nil {
+				return
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+		t.Error("post-commit hook did not exit after the fixture released it")
+	})
 	executable, err := exec.LookPath("git.exe")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	started := filepath.Join(root, ".git", "editorx-post-commit-started")
 	go func() {
 		ticker := time.NewTicker(15 * time.Millisecond)
 		defer ticker.Stop()

@@ -167,7 +167,7 @@ func TestEfficiencySaveAllStopsOnCancelAndConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.saveAllTabs()
-	if m.savingAll || draft.modified() || !last.modified() || !m.showError {
+	if m.savingAll || draft.modified() || !last.modified() || m.saveConflict == nil {
 		t.Fatal("save all did not stop on conflict")
 	}
 	bytes, err := os.ReadFile(paths[1])

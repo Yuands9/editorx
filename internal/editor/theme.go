@@ -32,6 +32,15 @@ var editorControlStyles = ui.Styles{
 	},
 }
 
+func settingsExternalLink(c ui.C, label string) ui.Box {
+	return ui.Button(c, label).Icon(externalLinkIcon).Link().Height(32).Shrink(0).
+		ButtonRecipe(func(theme gfx.Theme, variant components.ButtonVariant, state gfx.State) components.ButtonLook {
+			look := components.ButtonRecipe(theme, variant, state)
+			look.Foreground, look.Underlined = theme.Ring, true
+			return look
+		})
+}
+
 func (m *editorApp) themeButton(c ui.C, blocked bool) {
 	if ui.Button(c, m.menuText("切换颜色主题")).Icon(themeIcon).IconOnly().Ghost().Size(32, 34).
 		Tooltip(m.menuText("切换主题 · 深色 / 浅色")).TooltipOn(ui.TooltipLeft).Disabled(blocked).Clicked() {
@@ -197,4 +206,11 @@ func groupedTabButtonRecipe(theme gfx.Theme, variant components.ButtonVariant, s
 	look := components.ButtonRecipe(theme, components.ButtonGhost, state)
 	look.Filled = false
 	return look
+}
+
+func (m *editorApp) diskWarningColors() (ink, surface gfx.Color) {
+	if m.light {
+		return gfx.RGB(129, 65, 0), gfx.RGB(255, 244, 216)
+	}
+	return gfx.RGB(255, 205, 112), gfx.RGB(51, 40, 24)
 }

@@ -27,6 +27,13 @@ var (
 	errDocumentChanged = errors.New("磁盘文件已被其他程序修改，请另存为以保留两个版本")
 )
 
+type documentVersionChanged struct {
+	digest [sha256.Size]byte
+}
+
+func (err *documentVersionChanged) Error() string { return errDocumentChanged.Error() }
+func (err *documentVersionChanged) Unwrap() error { return errDocumentChanged }
+
 func readDocument(path string) (document, error) { return readDocumentAs(path, "") }
 
 func readDocumentAs(path string, requested textEncoding) (document, error) {
@@ -87,8 +94,10 @@ func (doc document) checkDisk(ctx context.Context, path string) (os.FileInfo, er
 	if _, err := io.Copy(digest, largeEditContextReader{ctx: ctx, Reader: input}); err != nil {
 		return nil, err
 	}
-	if !bytes.Equal(digest.Sum(nil), doc.diskHash[:]) {
-		return nil, errDocumentChanged
+	var actual [sha256.Size]byte
+	copy(actual[:], digest.Sum(nil))
+	if actual != doc.diskHash {
+		return nil, &documentVersionChanged{digest: actual}
 	}
 	return info, nil
 }

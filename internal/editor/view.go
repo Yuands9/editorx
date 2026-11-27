@@ -34,10 +34,10 @@ func (m *editorApp) page(c ui.C) {
 	m.observeNavigation()
 	m.updateProjectWatches(c.Part("project-watches"))
 	m.updateProjectDirectories(c.Part("project-directories"))
+	m.updateProjectRepositories(c.Part("project-repositories"))
 	m.updateTextIO(c.Part("document-io"))
 	m.updateFileWatches(c.Part("file-watch"))
 	m.checkMacroRecording()
-	m.backupProgress(c.Part("backup"))
 	m.updateProgress()
 	m.browserUpdate(c)
 	m.aiUpdate(c)
@@ -101,7 +101,6 @@ func (m *editorApp) page(c ui.C) {
 		m.aiConversationDialog(c)
 		m.aiReviewDialog(c)
 	}
-	m.backupSelectionDialog(c.Part("backup-selection"))
 	m.aiDiscardDraftDialog(c.Part("ai-discard-draft"))
 	m.updateDialog(c.Part("update-dialog"))
 	m.linkedFileDialog(c.Part("link-dialog"))
@@ -111,8 +110,10 @@ func (m *editorApp) page(c ui.C) {
 	m.showProjectFolderDialog(c.Part("project-folder-dialog"))
 	m.showProjectRenameDialog(c.Part("project-rename-dialog"))
 	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
+	m.projectRemovalDialog(c.Part("project-removal-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
 	m.gitStashDialog(c.Part("git-stash-dialog"))
+	m.gitCommitCheckDialog(c.Part("git-commit-check"))
 	m.gitReviewDialog(c.Part("git-review-dialog"))
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
 	m.fileFormatDialog(c.Part("file-format-dialog"))
@@ -122,6 +123,7 @@ func (m *editorApp) page(c ui.C) {
 	m.textCompareDialog(c.Part("compare-picker"))
 	m.workflowDialogView(c.Part("workflow"))
 	m.dialogs(c)
+	m.saveConflictDialog(c.Part("save-conflict"))
 }
 
 func (m *editorApp) editorPage(c ui.C, blocked bool) {
@@ -652,7 +654,8 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 	}
 	if t.largeText != nil {
 		ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
-			ui.Text(c, m.status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
+			label, color := m.fileStatus(t, m.status, m.theme.MutedForeground)
+			ui.Text(c, label).Color(color).FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 			state := t.largeText
 			if int(state.index) < len(state.lines.breaks)-1 {
 				value := t.source.text.String()
@@ -703,6 +706,7 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 	if _, composing := t.source.text.Composition(); composing {
 		status, color = uiText("正在输入"), m.theme.Ring
 	}
+	status, color = m.fileStatus(t, status, color)
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
 		ui.Text(c, "●").FontSize(7).Color(color)

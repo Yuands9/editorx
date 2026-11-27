@@ -14,7 +14,6 @@ import (
 )
 
 func (m *editorApp) aboutSettings(c ui.C) {
-	state := m.editorUpdates()
 	buildType := uiText("便携版")
 	if hasWordEditor {
 		buildType = uiText("本机构建")
@@ -46,7 +45,7 @@ func (m *editorApp) aboutSettings(c ui.C) {
 		if m.appSettings.aboutCopied {
 			label = "已复制"
 		}
-		if ui.Button(c.Part("copy-version"), uiText(label)).Icon(copyIcon).Outline().Height(32).Shrink(0).Clicked() {
+		if ui.Button(c.Part("copy-version"), uiText(label)).Icon(copyIcon).Secondary().Height(34).PadX(12).Radius(9).Shrink(0).Clicked() {
 			c.After(func() {
 				var report strings.Builder
 				report.WriteString(applicationName)
@@ -81,29 +80,28 @@ func (m *editorApp) aboutSettings(c ui.C) {
 			})
 		}
 	})
-	m.applicationSetting(c.Part("update"), uiText("软件更新"), uiText("检查 GitHub 上的最新公开版本。"), func() {
-		label := "检查更新"
-		if state.staged != "" && state.download == nil {
-			label = "查看已下载的更新"
-		}
-		if ui.Button(c, uiText(label)).Icon(refreshIcon).Height(32).Clicked() {
-			c.After(m.checkEditorUpdate)
+	m.configurationTransferSettings(c.Part("configuration-transfer"))
+	description := uiText("在 Windows 文件右键菜单中添加 EditorX。")
+	if m.appSettings.openWithRegistered {
+		description = uiText("已添加，可在资源管理器的「打开方式」中选择 EditorX。")
+	}
+	m.applicationSetting(c.Part("open-with"), uiText("Windows 打开方式"), description, func() {
+		if ui.Button(c, uiText("添加到打开方式")).Icon(addOpenWithIcon).Secondary().Height(34).PadX(12).Radius(9).Shrink(0).Clicked() {
+			c.After(func() {
+				if err := registerEditorOpenWith(); err != nil {
+					m.appSettings.openWithRegistered = false
+					m.appSettings.problem = uiText("无法添加到打开方式：") + err.Error()
+					return
+				}
+				m.appSettings.problem = ""
+				m.appSettings.openWithRegistered = true
+			})
 		}
 	})
-	enabled := !m.appSettings.draft.DisableAutoUpdate
-	schedule := fmt.Sprintf(uiText("每次启动约 %g 秒后检查，运行期间每 %g 小时检查一次。"),
-		editorUpdateStartupDelay.Seconds(), editorUpdateInterval.Hours())
-	if m.applicationSettingSwitch(c.Part("auto-update"), uiText("自动检查更新"), schedule, &enabled) {
-		m.appSettings.draft.DisableAutoUpdate = !enabled
-		c.After(m.saveApplicationSettings)
-	}
+	m.diagnosticSettings(c.Part("diagnostics"))
 	m.applicationSetting(c.Part("project"), uiText("开源项目"), "Apache-2.0", func() {
-		if ui.Button(c, uiText("打开 GitHub")).Outline().Height(32).Clicked() {
-			c.After(func() {
-				if err := app.OpenURL(editorRepositoryURL); err != nil {
-					m.appSettings.problem = uiText("无法打开 GitHub：") + err.Error()
-				}
-			})
+		if settingsExternalLink(c, uiText("打开 GitHub")).Clicked() {
+			c.After(func() { m.openReleasePage(editorRepositoryURL) })
 		}
 	})
 }
@@ -208,14 +206,14 @@ func (m *editorApp) updateDialog(c ui.C) {
 			return
 		}
 		if release.comparison <= 0 {
-			if state.problem != "" && ui.Button(c, uiText("重新检查")).FontSize(12).Clicked() {
+			if state.problem != "" && ui.Button(c, uiText("重新检查")).Icon(checkUpdateIcon).FontSize(12).Clicked() {
 				c.After(m.checkEditorUpdate)
 			}
 			return
 		}
 		switch {
 		case release.PageOnly:
-			if ui.Button(c, uiText("打开 GitHub 发布页")).FontSize(12).Clicked() {
+			if settingsExternalLink(c, uiText("打开 GitHub 发布页")).FontSize(12).Clicked() {
 				c.After(func() {
 					if err := app.OpenURL(release.Page); err != nil {
 						state.problem = uiText("无法打开发布页：") + err.Error()

@@ -891,8 +891,9 @@ func (m *editorApp) largeEditStatusBar(c ui.C, t *editorTab, blocked bool) {
 	if t.modified() {
 		status = uiText("未保存")
 	}
+	status, color := m.fileStatus(t, status, m.theme.MutedForeground)
 	ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
-		ui.Text(c, status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
+		ui.Text(c, status).Color(color).FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 		if err == nil {
 			ui.Text(c, fmt.Sprintf(uiText("行 %d · 共 %d 行"), line+1, edit.revision.breaks+1)).Muted().FontSize(12)
 		}

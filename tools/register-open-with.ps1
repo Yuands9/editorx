@@ -1,10 +1,16 @@
 ﻿param(
-    [string]$Executable = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\EditorX.exe'),
+    [string]$Executable,
     [switch]$Unregister
 )
 
 $ErrorActionPreference = 'Stop'
-$appKey = 'Applications\EditorX.exe'
+if (!$Executable) {
+    $Executable = Join-Path $PSScriptRoot 'EditorX.exe'
+    if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
+        $Executable = Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\EditorX.exe'
+    }
+}
+$appKey = 'Applications\' + [IO.Path]::GetFileName($Executable)
 $progId = 'EditorX.File'
 $openVerb = '*\shell\EditorX.Open'
 $extensions = @(
@@ -17,7 +23,7 @@ $extensions = @(
 
 if (!$Unregister) {
     $exe = Get-Item -LiteralPath $Executable
-    if ($exe.PSIsContainer -or $exe.Name -ne 'EditorX.exe') {
+    if ($exe.PSIsContainer -or $exe.Extension -ne '.exe') {
         throw '请选择要注册的 EditorX.exe 文件。'
     }
     $command = '"{0}" "%1"' -f $exe.FullName

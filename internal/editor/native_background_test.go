@@ -34,6 +34,22 @@ func TestNativeEditorBackground(t *testing.T) {
 		command.Env = append(os.Environ(), "VIVA_EDITOR_DATA_DIR="+directory, editorCommandRegistration+"=0")
 		return command
 	}
+	class, _ := syscall.UTF16PtrFromString("VivaNativeWindow")
+	title, _ := syscall.UTF16PtrFromString(applicationName)
+	windowForProcess := func(pid int, after uintptr) uintptr {
+		for {
+			window, _, _ := findWindowEx.Call(0, after, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(title)))
+			if window == 0 {
+				return 0
+			}
+			var owner uint32
+			getWindowProcess.Call(window, uintptr(unsafe.Pointer(&owner)))
+			if owner == uint32(pid) {
+				return window
+			}
+			after = window
+		}
+	}
 	openWindow := func(t *testing.T, command *exec.Cmd) (uintptr, <-chan error) {
 		t.Helper()
 		if err := command.Start(); err != nil {
@@ -50,17 +66,10 @@ func TestNativeEditorBackground(t *testing.T) {
 			}
 		})
 
-		name, _ := syscall.UTF16PtrFromString("VivaNativeWindow")
-		title, _ := syscall.UTF16PtrFromString(applicationName)
 		var window uintptr
 		waitForNativeEditor(t, "main window appears", func() bool {
-			window, _, _ = findWindowEx.Call(0, 0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(title)))
-			if window == 0 {
-				return false
-			}
-			var process uint32
-			getWindowProcess.Call(window, uintptr(unsafe.Pointer(&process)))
-			return process == uint32(command.Process.Pid)
+			window = windowForProcess(command.Process.Pid, 0)
+			return window != 0
 		})
 		return window, exited
 	}
@@ -171,10 +180,7 @@ func TestNativeEditorBackground(t *testing.T) {
 			if err := newLaunch(t, directory).Run(); err != nil {
 				t.Fatal(err)
 			}
-			class, _ := syscall.UTF16PtrFromString("VivaNativeWindow")
-			title, _ := syscall.UTF16PtrFromString(applicationName)
-			second, _, _ := findWindowEx.Call(0, window, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(title)))
-			if second != 0 {
+			if windowForProcess(command.Process.Pid, window) != 0 {
 				t.Fatal("a backup opened a second native window")
 			}
 			send(t, window, closeMessage, 0)
@@ -253,6 +259,42 @@ func TestNativeEditorBackground(t *testing.T) {
 			if err != nil || string(data) != "确认退出后保存" {
 				t.Fatalf("quit did not save %s: %v", path, err)
 			}
+		}
+	})
+
+	t.Run("portable executable migrates sibling data", func(t *testing.T) {
+		root := t.TempDir()
+		old := filepath.Join(root, "data")
+		target := filepath.Join(root, applicationName, "data")
+		putDataLocationFixture(t, old, translationLibraryFile, "old translation library")
+		prefs := applicationPreferences{ExitOnClose: true, DisableAutoUpdate: true}
+		if err := prefs.save(old); err != nil {
+			t.Fatal(err)
+		}
+		binary, err := os.ReadFile(executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		portable := filepath.Join(root, updateExecutable)
+		if err := os.WriteFile(portable, binary, 0700); err != nil {
+			t.Fatal(err)
+		}
+		command := newLaunch(t, "")
+		command.Path, command.Args[0], command.Dir = portable, portable, root
+		window, exited := openWindow(t, command)
+		for _, directory := range []string{old, target} {
+			if got, err := os.ReadFile(filepath.Join(directory, translationLibraryFile)); err != nil || string(got) != "old translation library" {
+				t.Fatalf("data not found at %s: %q, %v", directory, got, err)
+			}
+		}
+		send(t, window, closeMessage, 0)
+		select {
+		case err := <-exited:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(8 * time.Second):
+			t.Fatal("close did not terminate the migrated editor")
 		}
 	})
 

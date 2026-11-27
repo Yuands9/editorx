@@ -12,6 +12,35 @@ var updateAvailableIcon = gfx.Icon{
 	},
 }
 
+var checkUpdateIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(4, 10), gfx.CubicTo(5.2, 5.6, 9.6, 3.1, 14, 4.3), gfx.CubicTo(16.3, 4.9, 18.2, 6.4, 19.4, 8.5),
+		gfx.MoveTo(19.5, 4.3), gfx.LineTo(19.5, 8.8), gfx.LineTo(15, 8.8),
+		gfx.MoveTo(20, 14), gfx.CubicTo(18.8, 18.4, 14.4, 20.9, 10, 19.7), gfx.CubicTo(7.7, 19.1, 5.8, 17.6, 4.6, 15.5),
+		gfx.MoveTo(4.5, 19.7), gfx.LineTo(4.5, 15.2), gfx.LineTo(9, 15.2),
+		gfx.MoveTo(9, 11.8), gfx.LineTo(11.1, 14), gfx.LineTo(15.3, 9.9),
+	},
+}
+
+var externalLinkIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(11, 5), gfx.LineTo(5, 5), gfx.LineTo(5, 19), gfx.LineTo(19, 19), gfx.LineTo(19, 13),
+		gfx.MoveTo(14, 4), gfx.LineTo(20, 4), gfx.LineTo(20, 10),
+		gfx.MoveTo(20, 4), gfx.LineTo(11, 13),
+	},
+}
+
+var addOpenWithIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(13, 21), gfx.LineTo(5, 21), gfx.LineTo(5, 3), gfx.LineTo(13, 3), gfx.LineTo(18, 8), gfx.LineTo(18, 11),
+		gfx.MoveTo(13, 3), gfx.LineTo(13, 8), gfx.LineTo(18, 8),
+		gfx.MoveTo(18, 14), gfx.LineTo(18, 22), gfx.MoveTo(14, 18), gfx.LineTo(22, 18),
+	},
+}
+
 var pinIcon = gfx.Icon{
 	ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{
@@ -97,6 +126,23 @@ var infoIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.J
 var folderIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{gfx.MoveTo(3, 6), gfx.LineTo(10, 6), gfx.LineTo(12, 8), gfx.LineTo(21, 8), gfx.LineTo(21, 19), gfx.LineTo(3, 19), gfx.LineTo(3, 6)},
 }
+var revealFileIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(20, 12), gfx.CubicTo(20, 16.4, 16.4, 20, 12, 20),
+		gfx.CubicTo(7.6, 20, 4, 16.4, 4, 12), gfx.CubicTo(4, 7.6, 7.6, 4, 12, 4),
+		gfx.CubicTo(16.4, 4, 20, 7.6, 20, 12), gfx.ClosePath(),
+		gfx.MoveTo(12, 4), gfx.LineTo(12, 8), gfx.MoveTo(12, 16), gfx.LineTo(12, 20),
+		gfx.MoveTo(4, 12), gfx.LineTo(8, 12), gfx.MoveTo(16, 12), gfx.LineTo(20, 12),
+	},
+}
+
+var expandAllIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(7, 9), gfx.LineTo(12, 4), gfx.LineTo(17, 9), gfx.MoveTo(7, 15), gfx.LineTo(12, 20), gfx.LineTo(17, 15),
+}}
+var collapseAllIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(7, 5), gfx.LineTo(12, 10), gfx.LineTo(17, 5), gfx.MoveTo(7, 19), gfx.LineTo(12, 14), gfx.LineTo(17, 19),
+}}
+
 var folderOpenIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound,
 	Commands: []gfx.PathCommand{
 		gfx.MoveTo(3, 19), gfx.LineTo(3, 6), gfx.LineTo(10, 6), gfx.LineTo(12, 8), gfx.LineTo(20, 8), gfx.LineTo(20, 11),
@@ -191,4 +237,9 @@ var passwordRecognizeIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound
 	gfx.MoveTo(3, 8), gfx.LineTo(3, 3), gfx.LineTo(8, 3), gfx.MoveTo(16, 3), gfx.LineTo(21, 3), gfx.LineTo(21, 8),
 	gfx.MoveTo(3, 16), gfx.LineTo(3, 21), gfx.LineTo(8, 21), gfx.MoveTo(16, 21), gfx.LineTo(21, 21), gfx.LineTo(21, 16),
 	gfx.MoveTo(7, 8), gfx.LineTo(17, 8), gfx.MoveTo(7, 12), gfx.LineTo(17, 12), gfx.MoveTo(7, 16), gfx.LineTo(13, 16),
+}}
+
+var diskWarningIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(12, 3), gfx.LineTo(22, 20), gfx.LineTo(2, 20), gfx.ClosePath(),
+	gfx.MoveTo(12, 9), gfx.LineTo(12, 13), gfx.MoveTo(12, 16.5), gfx.LineTo(12, 16.8),
 }}

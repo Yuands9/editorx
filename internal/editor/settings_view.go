@@ -11,10 +11,10 @@ const (
 	settingsAppearance = "外观"
 	settingsEditor     = "编辑器"
 	settingsSidebar    = "侧栏"
-	settingsBackup     = "备份"
 	settingsStorage    = "存储管理"
 	settingsShortcuts  = "快捷键"
 	settingsAI         = "AI"
+	settingsUpdate     = "更新"
 	settingsAbout      = "关于"
 )
 
@@ -25,25 +25,33 @@ var settingSections = []struct {
 	{settingsAppearance, "界面语言、简体中文、English、颜色主题、跟随系统、深浅配色、托盘、关闭窗口、退出程序、询问保存、不再询问", themeIcon},
 	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON、输入时自动补全", codeIcon},
 	{settingsSidebar, "左侧、右侧、显示按钮、设置按钮、模板库、本地词库、AI 翻译、密码本", leftPanelIcon},
-	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
 	{settingsStorage, "应用数据、数据目录、存储位置、文件夹、迁移、本地历史、历史版本、保存天数、版本数、占用空间、缓存、清理", folderIcon},
 	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行、IntelliJ IDEA、VS Code、补全", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
-	{settingsAbout, "EditorX、版本、构建、运行平台、运行时、自动检查更新、GitHub", infoIcon},
+	{settingsUpdate, "检查更新、自动检查更新、更新日志、版本历史、下载源、GitHub、CNB", updateAvailableIcon},
+	{settingsAbout, "EditorX、版本、构建、运行平台、运行时、导入配置、导出配置、恢复默认配置、JSON、调试日志、Windows 打开方式、GitHub", infoIcon},
 }
 
 type settingsPageState struct {
-	open, returnToAI bool
-	aboutCopied      bool
-	section, problem string
-	original, draft  applicationPreferences
-	query            ui.Field
-	editorPreview    *editorPane
-	fonts            []string
-	fontRequest      *ui.EffectState[[]string, int]
-	wrapTypesOpen    bool
-	shortcutEdit     shortcutEditState
-	history          localHistoryPage
+	open, returnToAI, returnToGit   bool
+	aboutCopied, openWithRegistered bool
+	section, problem                string
+	transferNotice                  string
+	importPreferences               *applicationPreferences
+	restoreDefaults                 bool
+	mirrorField                     ui.Field
+	mirrorSaved                     string
+	mirrorEdit                      bool
+	debugNotice                     string
+	releases                        editorReleaseHistory
+	original, draft                 applicationPreferences
+	query                           ui.Field
+	editorPreview                   *editorPane
+	fonts                           []string
+	fontRequest                     *ui.EffectState[[]string, int]
+	wrapTypesOpen                   bool
+	shortcutEdit                    shortcutEditState
+	history                         localHistoryPage
 }
 
 func (m *editorApp) openApplicationSettings() {
@@ -91,15 +99,17 @@ func (m *editorApp) showSettings(section string) {
 }
 
 func (m *editorApp) closeSettings() {
-	returnToAI := m.appSettings.returnToAI
+	returnToAI, returnToGit := m.appSettings.returnToAI, m.appSettings.returnToGit
 	m.update.open = false
-	m.backup.selecting, m.backup.choices = false, nil
 	m.pauseAISettings()
 	if !m.ai.settingsEditing || !m.ai.settings.dirty() {
 		m.ai.settings, m.ai.settingsEditing = aiSettingsEditor{}, false
 	}
 	m.appSettings = settingsPageState{}
-	if returnToAI && m.ai.open {
+	if returnToGit {
+		m.showProjectGitPanel()
+		m.tools.git.focusCommit = true
+	} else if returnToAI && m.ai.open {
 		m.ai.focusPrompt = true
 	} else if m.active != nil && m.active.search.open {
 		m.active.search.focus = true
@@ -128,7 +138,7 @@ func (m *editorApp) settingsPage(c ui.C) {
 			title = uiText("删除模型配置？")
 		}
 	}
-	if !m.update.open && !settings.history.confirm && ui.Shortcut(c, 0, "escape") {
+	if !m.update.open && !settings.history.confirm && settings.importPreferences == nil && ui.Shortcut(c, 0, "escape") {
 		if settings.shortcutEdit.action != shortcutNone {
 			settings.shortcutEdit = shortcutEditState{}
 		} else {
@@ -137,6 +147,10 @@ func (m *editorApp) settingsPage(c ui.C) {
 	}
 	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Pad(10).Gap(8).Children(func() {
 		ui.Row(c.Part("heading")).FillWidth().Height(48).PadX(12).Gap(10).Items(ui.Center).Children(func() {
+			if settings.returnToGit && ui.Button(c.Part("back-to-git"), uiText("返回 Git 提交")).
+				Icon(chevronLeftIcon).Ghost().Height(34).Clicked() {
+				c.After(m.closeSettings)
+			}
 			ui.Icon(c, settingsIcon).Size(19, 19).Color(m.theme.MutedForeground)
 			ui.Text(c, m.menuText("设置")).FontSize(20).Bold().Grow(1)
 			if ui.Button(c.Part("close-settings-page"), m.menuText("关闭设置页")).Icon(closeIcon).IconOnly().
@@ -211,14 +225,14 @@ func (m *editorApp) settingsPage(c ui.C) {
 							m.editorSettings(c)
 						case settingsSidebar:
 							m.sidebarSettings(c)
-						case settingsBackup:
-							m.backupSettings(c)
 						case settingsStorage:
 							m.localHistorySettings(c)
 						case settingsShortcuts:
 							m.shortcutSettings(c, query)
 						case settingsAI:
 							m.aiSettingsContent(c, &submitted)
+						case settingsUpdate:
+							m.updateSettings(c)
 						case settingsAbout:
 							m.aboutSettings(c)
 						}
@@ -233,6 +247,7 @@ func (m *editorApp) settingsPage(c ui.C) {
 			})
 		})
 	})
+	m.configurationImportDialog(c.Part("configuration-import"))
 }
 
 func (m *editorApp) settingsSearchResults(c ui.C, query string) {

@@ -265,20 +265,32 @@ func TestHTMLConflictAndMissingFile(t *testing.T) {
 			if err := s.Frame(); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.WaitFor(func(app.Snapshot) bool { return m.browser == nil }, time.Second); err != nil {
+			if err := s.WaitFor(func(app.Snapshot) bool {
+				return m.browser == nil && (m.saveConflict != nil || m.showError)
+			}, time.Second); err != nil {
 				t.Fatal(err)
-			}
-			if !m.showError {
-				t.Fatal("open failure not shown")
 			}
 			if _, ok := s.Driver().LastOpenedInBrowser(); ok {
 				t.Fatal("browser opened despite failure")
 			}
-			if mode == "external-change" {
-				data, err := os.ReadFile(path)
-				if err != nil || string(data) != "<html>外部修改</html>" {
-					t.Fatal("external modification overwritten")
+			if mode == "removed" {
+				if !m.showError {
+					t.Fatal("missing HTML file did not show an open error")
 				}
+				return
+			}
+			if m.saveConflict == nil || m.saveConflict.tab != tab || !s.HasText("保存冲突") {
+				t.Fatal("external change did not open the save conflict dialog")
+			}
+			if err := s.ClickLabel("button:取消"); err != nil {
+				t.Fatal(err)
+			}
+			if m.saveConflict != nil || tab.source.text.String() != "<html>本地编辑</html>" || !tab.modified() {
+				t.Fatal("canceling the conflict did not retain the local HTML draft")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != "<html>外部修改</html>" {
+				t.Fatal("external modification overwritten")
 			}
 		})
 	}

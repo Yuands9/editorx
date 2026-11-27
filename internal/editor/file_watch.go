@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -23,6 +24,10 @@ type diskChangeState struct {
 	action                                                   string
 	before                                                   string
 	beforeFormat                                             document
+	beforeRevision                                           *largeEditRevision
+	beforeResult                                             uint64
+	beforeOffice                                             *officeDocument
+	beforeOfficeRevision                                     int
 }
 type diskReadResult struct {
 	digest     [32]byte
@@ -46,9 +51,41 @@ func watchedTextTab(tab *editorTab) bool {
 }
 
 func (m *editorApp) updateFileWatches(c ui.C) {
-	if !m.watchFiles || m.windowClosed {
+	if m.windowClosed {
 		return
 	}
+	if m.watchFiles {
+		m.collectFileWatchChanges()
+	}
+	for _, tab := range m.tabs {
+		s := tab.diskChange
+		if s == nil {
+			continue
+		}
+		s.pending = s.pending || m.watchFiles && m.checkFiles && watchedTextTab(tab)
+		if s.request != nil {
+			ui.Effect(c.Part("read").KeyInt(tab.id), s.request, 0)
+			if result, err, ready := s.request.Take(); ready {
+				s.request = nil
+				m.acceptDiskRead(tab, s, result, err)
+				s.before, s.beforeFormat, s.beforeRevision, s.beforeOffice = "", document{}, nil, nil
+			}
+		}
+		if m.watchFiles && watchedTextTab(tab) && s.request == nil && s.pending && tab.savingText == nil && (tab.largeText == nil || !tab.largeText.busyEditing()) {
+			action := "check"
+			if s.followRequested || tab.largeText != nil && tab.largeText.following {
+				action = "follow"
+			}
+			m.startDiskRead(tab, action)
+			if s.request != nil {
+				ui.Effect(c.Part("read").KeyInt(tab.id), s.request, 0)
+			}
+		}
+	}
+	m.checkFiles = false
+}
+
+func (m *editorApp) collectFileWatchChanges() {
 	if m.fileWatches == nil {
 		m.fileWatches = map[string]*app.DirectoryWatch{}
 	}
@@ -97,32 +134,6 @@ func (m *editorApp) updateFileWatches(c ui.C) {
 			m.fileWatches[directory] = nil
 		}
 	}
-	for _, tab := range m.tabs {
-		s := tab.diskChange
-		if s == nil || !watchedTextTab(tab) {
-			continue
-		}
-		s.pending = s.pending || m.checkFiles
-		if s.request != nil {
-			ui.Effect(c.Part("read").KeyInt(tab.id), s.request, 0)
-			if result, err, ready := s.request.Take(); ready {
-				s.request = nil
-				m.acceptDiskRead(tab, s, result, err)
-				s.before, s.beforeFormat = "", document{}
-			}
-		}
-		if s.request == nil && s.pending && tab.savingText == nil && (tab.largeText == nil || !tab.largeText.busyEditing()) {
-			action := "check"
-			if s.followRequested || tab.largeText != nil && tab.largeText.following {
-				action = "follow"
-			}
-			m.startDiskRead(tab, action)
-			if s.request != nil {
-				ui.Effect(c.Part("read").KeyInt(tab.id), s.request, 0)
-			}
-		}
-	}
-	m.checkFiles = false
 }
 
 func inspectDiskFile(ctx context.Context, path string) (diskReadResult, error) {
@@ -142,22 +153,36 @@ func inspectDiskFile(ctx context.Context, path string) (diskReadResult, error) {
 }
 
 func (m *editorApp) startDiskRead(tab *editorTab, action string) {
-	if !watchedTextTab(tab) || tab.source.text.CompositionActive() || tab.savingText != nil {
+	officeReload := action == "reload-save-conflict" && tab.office != nil
+	if !watchedTextTab(tab) && !officeReload || tab.jsonComposing() || tab.savingText != nil ||
+		tab.largeText != nil && tab.largeText.busyEditing() {
 		return
 	}
 	if tab.diskChange == nil {
 		tab.diskChange = &diskChangeState{path: tab.doc.path}
 	}
 	s := tab.diskChange
-	if s.request != nil {
+	if s.request != nil && action != "reload-save-conflict" && (s.action != "check" || action != "compare") {
 		return
 	}
 	s.pending, s.action, s.problem = false, action, ""
 	s.before, s.beforeFormat = tab.source.text.CommittedString(), tab.doc
+	s.beforeRevision, s.beforeOffice = nil, nil
+	if action == "reload-save-conflict" {
+		s.beforeResult = tab.result.text.TrackEdits()
+		if tab.office != nil {
+			s.beforeOffice, s.beforeOfficeRevision = tab.office, tab.office.revision
+		}
+	}
 	path, enc, large := tab.doc.path, tab.doc.encoding, tab.largeText
 	var largeFile os.FileInfo
+	var revision *largeEditRevision
 	if large != nil {
 		largeFile = large.file
+		if large.editing != nil {
+			revision = large.editing.revision
+			s.beforeRevision = revision
+		}
 	}
 	current := tab.doc
 	current.saved = s.before
@@ -166,15 +191,27 @@ func (m *editorApp) startDiskRead(tab *editorTab, action string) {
 		case "follow":
 			page, err := readLargeTextPage(path, -1, -1, "", enc)
 			return diskReadResult{page: &page, missing: errors.Is(err, os.ErrNotExist)}, err
-		case "reload":
+		case "reload", "reload-save-conflict":
 			file, err := readEditorFile(path, enc)
 			return diskReadResult{file: file}, err
 		case "compare":
 			doc, err := readHistoryCurrentFile(ctx, path)
-			if err == nil {
-				err = historyCompareSize(current.saved)
-			}
 			if err != nil {
+				return diskReadResult{}, err
+			}
+			if revision != nil {
+				if revision.size > localHistoryFileSizeLimit {
+					return diskReadResult{}, errHistoryCompareBytes
+				}
+				current.saved, err = revision.read(0, revision.size)
+				if err != nil {
+					return diskReadResult{}, err
+				}
+				if current.eol != "混合" {
+					current.saved = strings.ReplaceAll(current.saved, "\r\n", "\n")
+				}
+			}
+			if err := historyCompareSize(current.saved); err != nil {
 				return diskReadResult{}, err
 			}
 			comparison := &localHistoryComparison{old: doc, current: current, fromEditor: true}
@@ -210,31 +247,62 @@ func (m *editorApp) acceptDiskRead(tab *editorTab, s *diskChangeState, result di
 			s.followRequested = false
 		}
 		s.problem = uiText("无法读取磁盘文件：") + err.Error()
+		if s.action == "reload-save-conflict" || s.action == "compare" {
+			m.fail(errors.New(s.problem))
+		}
 		return
 	}
 	switch s.action {
 	case "compare":
 		m.openTextComparison(*result.comparison, tab, tab.tabTitle()+" · 磁盘内容")
-	case "reload":
-		if tab.source.text.CommittedString() != s.before || tab.doc != s.beforeFormat || tab.hasResultDraft() || tab.source.text.CompositionActive() {
+	case "reload", "reload-save-conflict":
+		var revision *largeEditRevision
+		if tab.largeText != nil && tab.largeText.editing != nil {
+			revision = tab.largeText.editing.revision
+		}
+		resultChanged := tab.hasResultDraft()
+		if s.action == "reload-save-conflict" {
+			resultChanged = s.beforeResult != tab.result.text.TrackEdits()
+		}
+		if tab.source.text.CommittedString() != s.before || tab.doc != s.beforeFormat || resultChanged || tab.jsonComposing() ||
+			revision != s.beforeRevision || tab.savingText != nil || tab.largeText != nil && tab.largeText.busyEditing() ||
+			tab.office != s.beforeOffice || tab.office != nil && (tab.office.revision != s.beforeOfficeRevision || tab.office.pending != nil) {
 			s.problem = uiText("读取期间编辑内容发生变化，请确认后重新读取。")
+			if s.action == "reload-save-conflict" {
+				m.fail(errors.New(s.problem))
+			}
 			return
 		}
 		caret := tab.source.text.Caret()
 		tab.doc = result.file.doc
 		tab.source.setResult(tab.doc.saved)
-		if result.file.largeText != nil {
-			tab.startLargeText(*result.file.largeText)
-		} else if tab.largeText != nil {
+		if tab.office != nil {
+			tab.office.close()
+			tab.office = result.file.office
+		}
+		wasLarge := tab.largeText != nil
+		if wasLarge {
 			tab.largeText.close()
 			tab.largeText = nil
+		}
+		if result.file.largeText != nil {
+			tab.startLargeText(*result.file.largeText)
+			if revision != nil {
+				m.startLargeTextEdit(tab, tab.doc.encoding)
+			}
+		} else if wasLarge {
 			tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = false, false
 			tab.source.view.Pointer, tab.source.view.Scroll = tab.source.pointer, nil
 			tab.applyEditorPreferences(m.editorPrefs)
 		}
 		tab.source.text.MoveTo(min(caret, tab.source.text.RuneCount()), false)
+		if s.action == "reload-save-conflict" {
+			tab.result.setResult("")
+			tab.resultOutput = ""
+		}
 		tab.resultReady, tab.resultDraft, tab.diffReady = false, false, false
-		s.changed, s.confirmReload, s.ignoredMissing = false, false, false
+		s.changed, s.missing, s.confirmReload, s.ignoredMissing = false, false, false, false
+		m.status = uiText("已重新读取 ") + filepath.Base(tab.doc.path)
 		s.ignored, s.problem = [32]byte{}, ""
 	case "follow":
 		if s.followRequested {
@@ -301,7 +369,9 @@ func (m *editorApp) fileChangeBar(c ui.C, tab *editorTab, blocked bool) {
 	if s == nil || !s.changed && s.problem == "" {
 		return
 	}
-	ui.Row(c).FillWidth().MinHeight(34).Gap(6).PadX(10).Items(ui.Center).Children(func() {
+	ink, surface := m.diskWarningColors()
+	ui.Column(c).FillWidth().Shrink(0).MarginX(5).MarginY(4).Pad(8).Gap(5).Radius(9).
+		Background(surface).Border(1, ink).Children(func() {
 		message := "磁盘文件已变化，编辑内容已保留"
 		if s.missing {
 			message = "磁盘文件已删除或移动，编辑内容已保留"
@@ -312,29 +382,42 @@ func (m *editorApp) fileChangeBar(c ui.C, tab *editorTab, blocked bool) {
 		if s.confirmReload {
 			message = "重新读取会替换未保存内容，确认继续？"
 		}
-		ui.Wrap(c, message).FontSize(12).Muted().Grow(1).MinWidth(0)
-		busy := blocked || s.request != nil || tab.source.text.CompositionActive() || m.macro != nil
-		if ui.Button(c, uiText("比对磁盘内容")).Ghost().FontSize(12).Height(28).Disabled(busy || s.missing || !historyEditableTab(tab)).Clicked() {
-			c.After(func() { m.startDiskRead(tab, "compare") })
-		}
-		label := "重新读取"
-		if s.confirmReload {
-			label = "确认重新读取"
-		}
-		if ui.Button(c, label).Ghost().FontSize(12).Height(28).Disabled(busy || s.missing || tab.hasResultDraft() || tab.largeText != nil && tab.largeText.editing != nil).Clicked() {
-			c.After(func() {
-				if tab.modified() && !s.confirmReload {
-					s.confirmReload = true
-					return
-				}
-				m.startDiskRead(tab, "reload")
-			})
-		}
-		if ui.Button(c, uiText("保留编辑内容")).Ghost().FontSize(12).Height(28).Disabled(busy).Clicked() {
-			c.After(func() {
-				s.ignored, s.ignoredMissing = s.digest, s.missing
-				s.changed, s.confirmReload, s.problem = false, false, ""
-			})
-		}
+		ui.Row(c).FillWidth().Gap(7).Items(ui.Center).Children(func() {
+			ui.Icon(c, diskWarningIcon).Size(17, 17).Shrink(0).Color(ink)
+			ui.Wrap(c, uiText(message)).FontSize(13).Bold().Color(ink).Grow(1).MinWidth(0)
+		})
+		ui.Row(c).FillWidth().Gap(5).Items(ui.Center).Justify(ui.End).Children(func() {
+			busy := blocked || s.request != nil || tab.source.text.CompositionActive() || m.macro != nil
+			if ui.Button(c, uiText("比对磁盘内容")).Ghost().FontSize(12).Height(28).Disabled(busy || s.missing || !historyEditableTab(tab)).Clicked() {
+				c.After(func() { m.startDiskRead(tab, "compare") })
+			}
+			label := "重新读取"
+			if s.confirmReload {
+				label = "确认重新读取"
+			}
+			if ui.Button(c, uiText(label)).Outline().FontSize(12).Height(28).Disabled(busy || s.missing || tab.hasResultDraft() || tab.largeText != nil && tab.largeText.editing != nil).Clicked() {
+				c.After(func() {
+					if tab.modified() && !s.confirmReload {
+						s.confirmReload = true
+						return
+					}
+					m.startDiskRead(tab, "reload")
+				})
+			}
+			if ui.Button(c, uiText("保留编辑内容")).Ghost().FontSize(12).Height(28).Disabled(busy).Clicked() {
+				c.After(func() {
+					s.ignored, s.ignoredMissing = s.digest, s.missing
+					s.changed, s.confirmReload, s.problem = false, false, ""
+				})
+			}
+		})
 	})
+}
+
+func (m *editorApp) fileStatus(tab *editorTab, label string, color gfx.Color) (string, gfx.Color) {
+	if tab.diskChange == nil || !tab.diskChange.changed {
+		return label, color
+	}
+	ink, _ := m.diskWarningColors()
+	return uiText("磁盘文件已变化"), ink
 }

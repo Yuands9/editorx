@@ -280,7 +280,7 @@ func TestCoreBackgroundIOAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(path)
-	if string(data) != "external" || !m.showError {
+	if string(data) != "external" || m.saveConflict == nil {
 		t.Fatal("background save bypassed conflict protection")
 	}
 }

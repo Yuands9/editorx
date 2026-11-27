@@ -279,7 +279,7 @@ func (m *editorApp) addProjects(paths ...string) {
 			root = tree.newProject(path)
 			root.expanded = true
 			tree.roots = append(tree.roots, root)
-			tree.queueDirectory(root, []string{root.path}, "").newProject = true
+			tree.queueDirectory(root, []string{root.path}, "", false).newProject = true
 			added++
 			lastName = root.name
 			if firstAdded == nil {
@@ -333,7 +333,8 @@ func (m *editorApp) refreshProject(root *fileNode, reveal string) {
 			}
 		}
 	}
-	tree.queueDirectory(root, folders, reveal).notice = uiText("已刷新项目 ") + root.name
+	m.tools.repositories.refresh = true
+	tree.queueDirectory(root, folders, reveal, false).notice = uiText("已刷新项目 ") + root.name
 	m.invalidator.Invalidate()
 	m.status = uiText("正在刷新项目 ") + root.name
 }
@@ -346,6 +347,10 @@ func (m *editorApp) removeProject(root *fileNode) {
 	index := slices.Index(tree.roots, root)
 	if index < 0 {
 		return
+	}
+	if git := &m.tools.git; strings.EqualFold(m.projectRoot(git.directory), root.path) {
+		git.watch.close()
+		*git = gitPanelState{}
 	}
 	tree.roots = slices.Delete(tree.roots, index, index+1)
 	tree.flatten()
@@ -360,14 +365,23 @@ var projectActionsIcon = gfx.Icon{ViewBox: 24, Stroke: 2.4, Cap: gfx.CapRound, C
 }}
 
 func (m *editorApp) filePanel(c ui.C, blocked bool) {
+	tree := m.workspace
 	ui.Row(c).FillWidth().Height(30).PadX(18).Items(ui.Center).Children(func() {
 		ui.Text(c, m.menuText("项目")).FontSize(12).Bold().Muted()
 		ui.Slot(c).Grow(1)
-		if ui.Button(c, m.menuText("定位当前文件")).Icon(searchIcon).IconOnly().Ghost().Size(24, 24).Tooltip(m.shortcutHint(uiText("定位当前文件"), shortcutRevealProjectFile)).Disabled(blocked || m.active == nil || m.active.doc.path == "" || m.projectRoot(m.active.doc.path) == "").Clicked() {
-			c.After(func() { m.revealProjectFile(m.active.doc.path) })
+		if ui.Button(c, m.menuText("定位当前文件")).Icon(revealFileIcon).IconOnly().Ghost().Size(24, 24).Tooltip(m.shortcutHint(uiText("定位当前文件"), shortcutRevealProjectFile)).Disabled(blocked || m.active == nil || m.active.doc.path == "" || m.projectRoot(m.active.doc.path) == "").Clicked() {
+			path := m.active.doc.path
+			c.After(func() { m.revealProjectFile(path) })
+		}
+		expand, collapse := uiText("全部展开"), uiText("全部收起")
+		initialLoad := tree != nil && slices.ContainsFunc(tree.loads, func(job *projectDirectoryJob) bool { return job.newProject })
+		if ui.Button(c, expand).Icon(expandAllIcon).IconOnly().Ghost().Size(24, 24).Tooltip(expand).Disabled(blocked || tree == nil || initialLoad).Clicked() {
+			c.After(m.expandProjectFolders)
+		}
+		if ui.Button(c, collapse).Icon(collapseAllIcon).IconOnly().Ghost().Size(24, 24).Tooltip(collapse).Disabled(blocked || tree == nil).Clicked() {
+			c.After(m.collapseProjectFolders)
 		}
 	})
-	tree := m.workspace
 	if tree == nil {
 		ui.Text(c, m.menuText("用「添加项目」打开文件夹")).PadX(18).PadTop(7).FontSize(12).Muted()
 		return
@@ -517,7 +531,7 @@ func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 		c.After(func() { m.refreshProject(root, "") })
 	}
 	if menu.Item(m.menuText("移除项目")).Icon(closeIcon).Clicked() {
-		c.After(func() { m.removeProject(root) })
+		c.After(func() { m.projectRemoval = root })
 	}
 	menu.Separator()
 	m.projectRenameAction(c, menu, root.path, true)

@@ -57,7 +57,7 @@ func (state *historyCompareState) pageConfig() ui.PageConfig {
 
 func (state *historyCompareState) blocked() bool {
 	owner := state.owner
-	return owner.historyCompare != state || owner.windowClosed || owner.windowClosePending || owner.confirm ||
+	return owner.historyCompare != state || owner.windowClosed || owner.windowClosePending || owner.confirm || owner.saveConflict != nil ||
 		owner.desktop != nil && owner.desktop.exiting
 }
 

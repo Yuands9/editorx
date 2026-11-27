@@ -271,6 +271,14 @@ func TestGitCommitAIProfileSelection(t *testing.T) {
 		if !m.appSettings.open || m.appSettings.section != settingsAI {
 			t.Fatal("unconfigured generation did not offer AI settings")
 		}
+		m.tools.git.commit.SetText("draft before settings")
+		if err := s.ClickLabel("button:返回 Git 提交"); err != nil {
+			t.Fatal(err)
+		}
+		git := &m.tools.git
+		if m.appSettings.open || !m.tools.gitOpen || git.commit.Text() != "draft before settings" || !git.commitSelection["selected.txt"] {
+			t.Fatal("going back from AI settings lost the Git selection or draft")
+		}
 	})
 	t.Run("multiple profiles", func(t *testing.T) {
 		_, m, s, _ := gitCommitAIUIFixture(t)

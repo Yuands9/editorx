@@ -11,14 +11,6 @@ import (
 
 const gitShelfPrefix = "[EditorX Shelf] "
 
-var gitExpandIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
-	gfx.MoveTo(7, 9), gfx.LineTo(12, 4), gfx.LineTo(17, 9), gfx.MoveTo(7, 15), gfx.LineTo(12, 20), gfx.LineTo(17, 15),
-}}
-
-var gitCollapseIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
-	gfx.MoveTo(7, 5), gfx.LineTo(12, 10), gfx.LineTo(17, 5), gfx.MoveTo(7, 19), gfx.LineTo(12, 14), gfx.LineTo(17, 19),
-}}
-
 func (m *editorApp) gitSidebar(c ui.C, blocked bool) {
 	m.workspacePanel(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		ui.Row(c.Part("header")).FillWidth().Height(44).PadX(8).Gap(4).Items(ui.Center).Children(func() {
@@ -97,7 +89,7 @@ func (m *editorApp) gitCommitTools(c ui.C, busy bool) {
 			label    string
 			icon     gfx.Icon
 			collapse bool
-		}{{"展开全部变更", gitExpandIcon, false}, {"折叠全部变更", gitCollapseIcon, true}} {
+		}{{"展开全部变更", expandAllIcon, false}, {"折叠全部变更", collapseAllIcon, true}} {
 			label := uiText(option.label)
 			if ui.Button(c.Key(option.label), label).Icon(option.icon).IconOnly().Ghost().Size(26, 27).
 				Tooltip(label).Disabled(busy || len(git.changeRows()) == 0).Clicked() {
@@ -150,6 +142,7 @@ func (m *editorApp) gitCommitComposer(c ui.C, busy bool) {
 		}
 	}
 	generating := git.commitAI.request != nil
+	loadingMessages := git.request != nil && git.requestAction == gitListMessages
 	ui.Column(c).FillWidth().Gap(7).PadTop(6).PadBottom(4).Children(func() {
 		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 		ui.Row(c.Part("compose-tools")).FillWidth().Items(ui.Center).Gap(3).Children(func() {
@@ -186,12 +179,20 @@ func (m *editorApp) gitCommitComposer(c ui.C, busy bool) {
 				}
 			})
 		})
+		if git.commitProblem != "" {
+			ui.Wrap(c, git.commitProblem).FillWidth().FontSize(12).Color(m.theme.Danger)
+		}
+		if git.commitAttempt != nil && git.request != nil {
+			ui.Text(c, uiText("正在检查并提交…")).FontSize(12).Muted().FillWidth().Ellipsis()
+		}
 		if git.commitAI.problem != "" {
 			ui.Wrap(c, git.commitAI.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 		}
 		placeholder := uiText("输入提交说明")
 		if generating {
 			placeholder = uiText("正在生成提交说明…")
+		} else if loadingMessages {
+			placeholder = uiText("正在读取提交说明…")
 		}
 		field := ui.TextArea(c, &git.commit, uiText("提交说明"), placeholder).FillWidth().Height(108).Disabled(busy || generating)
 		if git.focusCommit && !busy {
@@ -220,20 +221,21 @@ func (m *editorApp) gitCommitComposer(c ui.C, busy bool) {
 						if git.amend {
 							action = gitAmend
 						}
-						m.startGit(action, message, nil)
+						m.startGitCommit(action, message, nil, "", false)
 					})
 				}
 			})
 			if ready && (commitClicked || pushClicked) {
 				c.After(func() {
+					remote := ""
 					if pushClicked {
-						git.pushAfterCommit, git.pushBranch = git.remote, git.snapshot.branch
+						remote = git.remote
 					}
 					action := gitCommitSelected
 					if git.amend {
 						action = gitAmendSelected
 					}
-					m.startGit(action, message, git.selectedCommitPaths())
+					m.startGitCommit(action, message, git.selectedCommitPaths(), remote, false)
 				})
 			}
 		})

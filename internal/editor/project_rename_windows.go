@@ -169,6 +169,11 @@ func (m *editorApp) applyProjectRename(original, destination string, renamePath 
 			m.refreshHTML(tab)
 		}
 	}
+	git := &m.tools.git
+	if git.directory != "" && renamePath(git.directory) != git.directory {
+		git.watch.close()
+		*git = gitPanelState{}
+	}
 	if m.workspace != nil {
 		var updatePaths func(*fileNode)
 		updatePaths = func(node *fileNode) {

@@ -376,6 +376,10 @@ func (office *officeDocument) flush(done func(error)) {
 	office.view.Eval(fmt.Sprintf("window.office.flush(%d)", office.request))
 }
 func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
+	m.saveOfficeTabWithVersion(t, saveAs, nil, done)
+}
+
+func (m *editorApp) saveOfficeTabWithVersion(t *editorTab, saveAs bool, overwrite *[32]byte, done func(bool)) {
 	office := t.office
 	if office.view != nil && !office.ready {
 		m.fail(errors.New(uiText("文档尚未加载完成，请稍后再保存")))
@@ -420,10 +424,16 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 			m.fail(errors.New(uiText("该文件已在另一个标签中打开，请使用其他文件名")))
 			return
 		}
-		if err = saveOfficeFile(&t.doc, office, path, m.documentHistory()); err != nil {
-			m.fail(err)
+		doc := t.doc
+		if overwrite != nil {
+			doc.diskHash = *overwrite
+		}
+		if err = saveOfficeFile(&doc, office, path, m.documentHistory()); err != nil {
+			m.reportSaveError(t, path, err)
 			return
 		}
+		t.doc = doc
+		m.markDiskSaved(t)
 		m.rememberPath(path, false)
 		m.status = uiText("已保存 ") + filepath.Base(path)
 		office.errorText = ""

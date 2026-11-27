@@ -51,6 +51,13 @@ func writeDocumentAtomically(ctx context.Context, path string, original os.FileI
 		defer os.Remove(draft.temporary)
 	}
 	if err != nil {
+		// If the file changed during the atomic write, identify the version
+		// that an explicit overwrite could replace on the next attempt.
+		if original != nil && errors.Is(err, errDocumentChanged) {
+			if current, readErr := inspectDiskFile(ctx, path); readErr == nil && !current.missing {
+				err = &documentVersionChanged{digest: current.digest}
+			}
+		}
 		return digest, err
 	}
 	copy(digest[:], outputHash.Sum(nil))

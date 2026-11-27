@@ -7,11 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/ui"
 )
 
-var errLargeDraftBase = errors.New("原文件已变化，无法应用未保存的改动。请恢复原文件后重试，或导出未保存改动。")
+var errLargeDraftBase = errors.New("原文件已变化，无法应用未保存的改动。请恢复原文件后重试。")
 
 // Large-file sessions store the viewport and patches against the last saved
 // version. The temporary document file and undo history never enter the session.
@@ -314,12 +313,14 @@ func (m *editorApp) updateLargeTextEdit(c ui.C, t *editorTab) func() {
 		ui.Effect(c.Part("save"), state.saving, 0)
 		if doc, err, ready := state.saving.Take(); ready {
 			after := state.afterSave
+			path := state.savePath
 			state.saving, state.savePath = nil, ""
 			edit := state.editing
 			if err != nil {
-				m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), t.title(), err))
+				m.reportSaveError(t, path, err)
 			} else {
 				t.doc = doc
+				m.markDiskSaved(t)
 				edit.basePath = doc.path
 				edit.saved = edit.revision
 				edit.draftRevision, edit.draft = nil, largeEditSession{}
@@ -371,38 +372,20 @@ func (m *editorApp) startLargeEditSave(t *editorTab, saveAs bool, after func(boo
 		complete(false)
 		return
 	}
+	m.saveLargeEditTo(t, path, nil, after)
+}
+
+func (m *editorApp) saveLargeEditTo(t *editorTab, path string, overwrite *[32]byte, after func(bool)) {
+	state := t.largeText
 	doc, r := t.doc, state.editing.revision
+	if overwrite != nil {
+		doc.diskHash = *overwrite
+	}
 	history := m.documentHistory()
 	state.afterSave, state.savePath = after, path
 	state.saving = ui.NewEffect[document, int](func(ctx context.Context) (document, error) {
 		return saveLargeEdit(ctx, doc, path, r, history)
 	})
-}
-
-func (m *editorApp) exportLargeEditDraft(t *editorTab) {
-	draft := t.largeText.editSession
-	if !draft.hasChanges() {
-		return
-	}
-	path, err := app.SaveFile(app.SaveFileOptions{
-		Title: uiText("导出未保存改动"), SuggestedName: t.title() + ".editorx-backup.zip",
-		Filters: []app.FileFilter{{Name: uiText("EditorX 压缩备份"), Pattern: "*.zip"}},
-	})
-	if errors.Is(err, app.ErrCanceled) {
-		return
-	}
-	if err == nil && strings.EqualFold(filepath.Clean(path), filepath.Clean(t.doc.path)) {
-		err = errors.New(uiText("请选择不同于原文件的导出位置"))
-	}
-	if err == nil {
-		saved := savedSession{Version: editorSessionVersion, Windows: []windowSession{m.snapshotWorkspace([]*editorTab{t}, false)}}
-		err = writeEditorBackup(context.Background(), path, saved)
-	}
-	if err != nil {
-		m.fail(err)
-	} else {
-		m.status = uiText("已导出未保存改动")
-	}
 }
 
 func (m *editorApp) largeEditOperationPending() bool {

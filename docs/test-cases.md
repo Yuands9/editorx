@@ -73,10 +73,10 @@ $editorxGo = Initialize-VivaDevEnvironment $PWD
 | 效率入口与预设 | `TestEfficiency*`、`TestEditorShortcutRebinding`，以及主菜单、模板、密码本、最近文件和指定编码 UI 回归 |
 | 打开、保存和会话恢复 | `TestFileDropOpensDocuments`、`TestOpenTextFormatPrompt`、`TestSuggestOpenedFormat`、`TestSessionExternalChangesAndRecovery`、`TestSessionIMEAndExplicitClose` |
 | 查找、替换和 JSON | `TestSearchReplaceCurrentFileWithMultilineInput`、`TestSearchReplaceAllOpenWithEscapesAndMixedEndings`、`TestJSONAutoWrapAndReversibleConversions`、`TestJSONFoldSummaryRenderingAndPreservation`、`TestJSONSourceKeepsFreeInput` |
-| 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsDraftAndBackup`、`TestLargeEditReturnsToBrowsing` |
+| 多编码及大文件 | `TestTextEncodingsPreserveOriginalBytes`、`TestLargeTextEncodedBoundariesAndSearch`、`TestLargeEditPreservesEncodingAndMixedLineEndings`、`TestLargeEditViewportKeyboardIMEAndDraft`、`TestLargeEditStreamsSessionDraft`、`TestLargeEditReturnsToBrowsing` |
 | 大文件查找替换和结果 | `TestLargeEditFloatingFindAndReplace`、`TestLargeEditSearchMatchesNormalizedText`、`TestLargeEditSearchAcrossPiecesAndDenseReplace`、`TestLargeEditGroupedSearchResultsReveal`、`TestSearchResultsRenderWideLineAtHighDPI`、`TestClosedSearchResultsReleaseAndRefill` |
 | 链接打开和落盘 | `TestLinkedFileWithHTTPSRedirectAndDifferentFormats`、`TestLinkedFileSaveChoiceKeepsOriginalBytes`、`TestLinkedFileDraftsAndAttachmentsAfterRestart` |
-| 标签、项目和 ZIP | `TestPinnedGroupRestoresPinsAndAllowsExplicitClose`、`TestMultipleProjectsThroughUIAndSession`、`TestMergeBackupKeepsSeparateDraftsAndGroupIDs`、`TestLegacySessionRestoresImportedWindowsIntoTheMainWindow` |
+| 标签、项目和会话恢复 | `TestPinnedGroupRestoresPinsAndAllowsExplicitClose`、`TestMultipleProjectsThroughUIAndSession`、`TestMergeRestoredWindowsKeepsSeparateDraftsAndGroupIDs`、`TestLegacySessionRestoresImportedWindowsIntoTheMainWindow` |
 | 项目文件操作 | `TestProjectCreateOnCompactFolder`、`TestProjectRenameThroughContextMenu`、`TestProjectDeleteConfirmation` |
 | 密码本 | `TestPasswordVaultAuthenticatedStorage`、`TestPasswordVaultImportFormats`、`TestPasswordVaultOptionalMasterPassword`、`TestPasswordVaultTimingOptions`、`TestPasswordVaultDeleteFromContextMenu`、`TestPasswordVaultSidebarNavigation`、`TestPasswordVaultArchiveRestore` |
 | 图片 OCR 和 AI 识图 | `TestImageOCRIsOptIn`、`TestImageOCRPixels`、`TestImageAIOnlySendsCurrentImageOnStart`、`TestImageAICancelsAnInFlightRequest` |
@@ -85,7 +85,9 @@ $editorxGo = Initialize-VivaDevEnvironment $PWD
 | 侧栏设置 | `TestSidebarPreferencesAndTemplatePanel`、`TestSidebarAcrossWindowsAndSession`、`TestSidebarButtonsWithoutDocumentAndAlignment`、`TestSidebarCollapsesWithoutVisibleButtons` |
 | 模板与翻译 | `TestDocumentTemplatesThroughUI`、`TestLocalTranslationThroughUI`、`TestSelectionTranslationAIThroughUI`、`TestDownloadedDictionaryThroughUI`、`TestDictionaryDownloadIntegrityAndCleanup`、`TestAITranslationWithoutDictionary`、`TestDocumentTranslationStreamsInSplit`、`TestDocumentTranslationChunksPreserveBoundaries` |
 | 离线组件与压缩下载 | `TestOfflineComponentIntegrityAndCleanup`、`TestOfflineTranslationOptIn`、`TestOfflineDownloadStopsWithPanel`、`TestDictionaryCompressedTransfer`、`TestDictionaryDownloadStopsWithPanel` |
-| Git | `TestProjectGitStageCommitPushFetchAndPull` |
+| Git | `TestProjectGitStageCommitPushFetchAndPull`、`TestGitPanelUsesOpenedProjects`、`TestGitCommitChecksDiskAndDraft`、`TestGitCommitChecksLiveUpstream` |
+| 保存冲突与外部变更 | `TestSaveConflictActions`、`TestLargeEditSaveConflictActions`、`TestOfficeSaveConflictReload`、`TestWorkflowExternalChangesAndFollow` |
+| 打开方式、便携数据与项目栏 | `TestEditorOpenWithRegistration`、`TestDataLocationSettingsAndMigration`、`TestLegacyDefaultDataMigration`、`TestDefaultDataLocationPortableFolderAndExistingCopies`、`TestLegacyDefaultMigrationFailureKeepsActiveDirectory`、`TestProjectTreeToolbarExpandsCollapsesAndReveals` |
 | 应用内更新 | `TestUpdateConditionalRequestAndPersistentCache`、`TestUpdateAutomaticChecksShareWorkAndRespectOptOut`、`TestUpdateHomeIndicatorSkipAndManualCheck`、`TestUpdateDownloadContinuesAcrossWindowsAndCleansCancellation`、`TestUpdateDownloadsVerifiedExecutableAndPreservesPrevious` |
 | 本地历史和存储管理 | `TestLocalHistoryCapturesOverwrittenBytes`、`TestLocalHistorySnapshotSizeLimit`、`TestLocalHistoryRetentionAndClear`、`TestLocalHistoryThroughStorageSettings`、`TestEditorStorageCountsAndClearsCache`、`TestHistoryCompareFromEditorAndProject`、`TestHistoryComparisonEditsCurrentBuffer`、`TestHistoryComparisonLargerText`、`TestHistoryComparisonBoundsAndUndo`、`TestHistoryDiffRetainsFourContextLines`、`TestHistoryDiffPreservesLineBoundaries` |
 
@@ -160,7 +162,7 @@ $env:VIVA_EDITOR_DATA_DIR = Join-Path $PWD '.dev\qa\public\data'
 | F-02 多行查找和替换 | 在两个临时文件中分别写入相邻两行 `alpha` 和 `beta`，再放入一个不匹配的标签。按 Ctrl+F 粘贴两行原文，拖动浮窗标题栏，执行「查找全部已打开文档」后点击结果定位。按 Ctrl+R，用两行 `甲` 和 `乙` 进行当前文件替换，再执行「替换全部已打开文档」。分别撤销。 | 查找结果按文件分组，点击可定位到匹配，浮窗拖动跟随鼠标。替换按所选范围生效，第三个标签不受影响，撤销能逐文件恢复。 |
 | J-01 JSON 双栏和转换 | 新建 JSON，分别从左右两栏粘贴下方样例。编辑嵌套字段并临时删掉一个结构字符，再补回。切换 2 和 4 空格，折叠对象和数组，切换压缩，点两次「更多 → 去转义」。 | 两侧可复制和编辑。左侧原样保留粘贴和输入，在大括号／数组中连续回车、添加空行和 Tab 后不能被自动清除。格式化显示在右侧，主动编辑右侧才同步回原文。保存、撤销重做和重启均保留左侧内容。遗漏结构字符时保留输入。折叠显示 `Object{...}` 和 `Array[2]`，右侧压缩结果只有一行，长内容可自动折行显示。去转义显示嵌套数据，再点一次退出预览，源文语义保持一致。 |
 | T-01 标签、分组和项目 | 拖入两个不同目录和三份文件。双击标签和组名重命名并回车，分别拖动标签与整组，固定其中一组。执行批量关闭，然后显式关闭该组，再移除一个项目。 | 拖动与展开、收起有效。批量关闭跳过固定项，显式关闭可移除固定组。移除项目不删除磁盘文件。关完所有标签后主界面仍可打开文件。 |
-| S-01 ZIP 备份与会话 | 打开文件和有内容的未命名草稿，导出选中的文件与草稿。改动当前草稿后导入 ZIP，观察进度，另做一轮在任务完成前取消。正常退出并重新打开。 | 完成后备份内容加入当前窗口，当前草稿仍可找回。取消时未合并内容。重启后会话仍在原窗口。旧多窗口备份分别覆盖在 `TestLegacySessionRestoresImportedWindowsIntoTheMainWindow`。 |
+| S-01 应用配置与会话 | 打开文件和有内容的未命名草稿。在「关于」导出配置 JSON，修改偏好后导入。点击恢复默认配置，先取消，再确认。正常退出并重新打开。 | 取消时设置未变。确认后偏好恢复默认，文件和草稿仍可编辑，重启后会话恢复。 |
 | S-02 托盘和重复启动 | 使用一个测试数据目录，设置关闭时隐藏，再关闭最后一个窗口。再次运行同一个 EXE，并从命令行传入一个文件。切换到关闭即退出，再关窗。 | 隐藏时重复启动只唤起已有窗口，命令行文件在已有实例打开。关闭即退出后进程结束，下次启动能恢复会话。 |
 | S-03 数据目录迁移 | 将试用 EXE 放在独立测试目录，使用默认 `data`，创建未保存草稿并改一项设置。在「存储管理 → 应用数据」点「更换位置」并选择空文件夹，先取消一次，再重新选择并迁移。另试非空目标。 | 重启后草稿和设置从新目录恢复，原数据可作为备份。非空目标保持原有文件。打开 HTML 预览后，WebView2 缓存位于系统临时目录，关闭后清理。 |
 | L-01 临时打开和另存 | 用测试 HTTP 或 HTTPS 地址依次打开小型 JSON 和 PDF。重新打开链接，选择「保存并打开…」并取消选址，再另存到指定路径。另对一个临时文本做修改并重启。 | 仅查看时只有临时标签，无自动下载副本，重启时不恢复。取消不会生成文件，指定路径保存时原始字节一致。编辑过的文本能作为草稿恢复。PDF 首屏渲染，可另存原件。 |
@@ -237,7 +239,7 @@ for ($round = 1; $round -le 3; $round++) {
 
 ## 自动更新检查与首页提示
 
-使用新数据目录确认自动检查默认开启、启动约 10 秒后执行，没有自动弹窗。即使近期已有检查记录，每次重启仍重新检查；持续运行期间间隔 6 小时。断网或 HTTP 错误时自动检查保持静默，手动检查应显示失败原因。关闭「关于 → 自动检查更新」开关后停止自动请求，手动检查仍可用。
+使用新数据目录确认自动检查默认开启、启动约 10 秒后执行，没有自动弹窗。即使近期已有检查记录，每次重启仍重新检查；持续运行期间间隔 6 小时。断网或 HTTP 错误时自动检查保持静默，手动检查应显示失败原因。关闭「更新 → 自动检查更新」开关后停止自动请求，手动检查仍可用。
 
 本地测试服务提供更高版本时，确认无文件的首页也显示绿色图标，左右侧栏均对齐。打开弹窗，滚动查看完整 Markdown 更新说明；「稍后」保留图标，「跳过此版本」重启后仍生效，下一个版本重新提示，手动检查可查看已跳过版本。界面不提供更新源选择。
 
@@ -337,7 +339,7 @@ $env:VIVA_PREVIEW_DIR = Join-Path $PWD '.dev/workflow-qa'
 
 - `TestGitCommitAIGeneratesOnlySelectedChanges` 使用本机模拟 AI 服务验证配置的服务地址、模型、认证和请求头；只发送勾选文件从 HEAD 到磁盘的完整改动，不包含未选文件、其他编辑器内容或工作目录绝对路径。生成语言跟随界面，结果可编辑并通过 Ctrl+Z／Ctrl+Y 撤销重做，HEAD 和索引保持不变。
 - `TestGitCommitAIFailurePreservesDraft`、`TestGitCommitAICancelsInFlightRequests` 验证失败、主动取消、切换勾选、关闭 Git 面板和切换仓库，保留原说明并取消正在进行的请求。
-- `TestGitCommitAIProfileSelection` 验证无服务配置时进入 AI 设置，以及多个已保存服务的选择；`TestGitCommitAIWaitsForStatusRefresh` 验证刷新中的旧分支结果不会填入提交说明。
+- `TestGitCommitAIProfileSelection` 验证无服务配置时进入 AI 设置、返回后保留 Git 侧栏状态，以及多个已保存服务的选择；`TestGitCommitAIWaitsForStatusRefresh` 验证刷新中的旧分支结果不会填入提交说明。
 - `TestGitCommitAIContextSelectedWorkingChanges`、`TestGitCommitAIContextInitialAndLimits`、`TestGitCommitAIContextBoundsDeletedBlob` 覆盖初始仓库、已暂存且继续修改、新增、删除、中文及特殊路径、重命名，以及文件数量、单文件和上下文上限。
 - `TestGitCommitAIContextRejectsDirectoryPathspec`、`TestGitCommitAIContextRejectsForcedBinaryDiff` 验证拒绝目录替代文件、符号链接及被强制视为文本的二进制差异，避免读取未勾选的子文件或发送无效内容。
 - 上述请求均使用本机模拟服务，不调用用户配置的真实模型账户。截图和专项日志位于 `.dev/git-ai-qa`。
@@ -351,3 +353,71 @@ $env:VIVA_PREVIEW_DIR = Join-Path $PWD '.dev/workflow-qa'
 - `TestProjectGitContextScopes` 从项目树右键操作临时仓库，验证指定目录的勾选计数、暂存、文件取消暂存、差异及提交记录，其他文件的暂存内容保持原样。
 - `.\tools\native-smoke.ps1 -PublicRelease -TestName TestNativeGitLogWindow` 验证提交记录有独立的 Windows 窗口边框，窗口可移动缩放，同一范围重复打开会复用窗口，关闭历史窗口后主窗口仍然在。
 - `TestPasswordVaultThroughUI` 验证条目弹框内取消新建分组可以返回原草稿，保存新分组后自动选中并保留名称和密码。
+
+## Git 提交检查与 AI 设置返回
+
+| 场景 | 预期 |
+| --- | --- |
+| 只打开仓库里的单个文件，再添加项目或移除项目 | Git 只从已添加项目选仓库。终端仍可从单文件目录打开 |
+| 勾选修改上次提交并等待说明读取 | 加载提示在提交说明框内，原有说明和选择可继续使用 |
+| 勾选并提交一个有未保存修改的打开文件，或在监听刷新前改写磁盘文件 | 提交暂停并标出文件。比对或重新读取后可重新提交 |
+| 远端新增提交，但本地跟踪引用仍是旧值 | 从真实远端探测发现领先。返回不提交，确认仅提交到本地后远端保持原来的提交 |
+| 暂存后继续编辑，选择仅提交暂存区 | 进入提交的是既有暂存版本 |
+| 无 AI 服务时点击生成，进入设置后点「返回 Git 提交」 | 原仓库、勾选和提交说明草稿恢复 |
+
+## 保存冲突回归
+
+| 场景 | 预期 |
+| --- | --- |
+| 普通文本同时保有草稿和外部磁盘改动 | 横幅、标签图标和状态栏可见。点击保存进入冲突弹框 |
+| 选择取消或比对磁盘内容 | 磁盘字节与缓冲不变。比对显示磁盘和草稿两侧，关闭后可继续编辑 |
+| 弹框出现后再次从外部改写文件，再点覆盖 | 拒绝本次覆盖并重新提示。确认覆盖新检测的版本后写入草稿 |
+| 选择重新读取，或在读取期间继续输入 | 确认重读后显示磁盘版本。任务期间有新改动或读取失败时保留草稿 |
+| 完整编辑文件和可保存 Office 文件遇冲突 | 两者可覆盖和重读。完整编辑可在大小限制内比对只读快照，保留文件原编码与行尾 |
+| 关闭文件监听后制造冲突，或在全部保存、退出保存中制造冲突 | 手动比对和重读可用。批量流程停止，剩余草稿保留 |
+
+## 打开方式、便携数据与项目栏回归
+
+| 场景 | 预期 |
+| --- | --- |
+| 在测试 Windows 用户中用设置或脚本登记，包含空格和中文路径 | 「打开方式」识别 EditorX，经典右键可打开无后缀文件。已有默认应用继续生效。移动 EXE 后重新登记可使用新位置 |
+| 将 EXE 放在普通空目录和名为 EditorX 的目录启动 | 前者创建 `EditorX/data`，后者直接使用 `data` |
+| 仅同级旧 data 存在，内含真实会话、草稿及组件 | 首次启动发布新目录并恢复草稿，旧目录留作回退，缓存不复制 |
+| 目标已有新数据、旧目录属于其他程序、迁移失败或显式配置数据目录 | 新数据优先，不合并；无识别条目的目录保持原样；失败使用旧目录；显式设置优先 |
+| 在另一台测试电脑复制数据副本 | 模板和草稿可读取；项目与历史按绝对路径关联；AI 密钥重新输入；密码本使用主密码或迁移备份解锁 |
+| 先添加内层项目再添加外层项目，点击展开、收起和准星 | 两个项目都展开到可读子目录，全部收起只显示根，准星重新展开并定位当前文件 |
+
+首行登记和跨电脑迁移是手工验收项。自动化登记用例在私有 Windows 注册表键验证命令路径、扩展名和默认值保留。跨目录数据恢复用例使用本机临时目录。Windows 原生试用包另行验证真实启动迁移。
+
+## 配置、版本历史与多仓库项目回归
+
+- `TestSettingsJSONExportImport` 覆盖 JSON 导出、导入确认、无效备份版本，以及恢复默认配置的取消、确认和草稿保留。 `TestEditorDebugLogLimitAndClose` 覆盖默认关闭、1 MiB 上限、错误内容过滤及窗口关闭清理。
+- `TestUpdateSettingsAndDiagnosticsControls` 覆盖展开更新说明、打开对应的 GitHub Release、复制／导出／清空日志。 `TestEditorReleaseHistoryPagination` 校验分页和草稿过滤。 `TestEditorCNBMirrorVerificationAndFallback` 校验镜像优先以及错误文件回退。
+- `TestDBXDebugLogFormat` 覆盖剪贴板日志、打开扩展名不同的日志和真正的 Markdown。
+- `TestMultipleProjectsThroughUIAndSession` 覆盖移除确认、取消保存、保存后关闭本项目标签和会话恢复。 `TestWorkspaceGitRepositoriesAndFileScope` 覆盖同一项目内的仓库发现、下拉切换和文件级暂存隔离。
+
+## 当前开发版复测与证据
+
+在源码目录用 PowerShell 7 执行。普通测试用例使用临时仓库和模拟服务。打开方式的自动化验证使用临时注册表项。
+
+```powershell
+. .\tools\dev-env.ps1
+$editorxGo = Initialize-VivaDevEnvironment $PWD
+& $editorxGo test -mod=vendor -tags editorx_public -count=1 -run 'Test(GitPanelUsesOpenedProjects|GitCommitChecks|GitCommitAIProfileSelection|ProjectGitShelveAndAmend|.*SaveConflict|WorkflowExternalChanges|DataLocation|LegacyDefault|DefaultDataLocation|EditorOpenWith|ProjectTreeToolbar)' ./internal/editor
+.\dev.ps1 -Action build -PublicRelease -OutputDirectory '.dev/portable-project-qa/public'
+$env:VIVA_EDITOR_TEST_EXE = Join-Path $PWD '.dev/portable-project-qa/public/EditorX.exe'
+.\tools\native-smoke.ps1 -PublicRelease -TestName TestNativeEditorBackground
+```
+
+2026-11-27 当前工作树已完成各批专项及最新 EXE 的隔离运行。发布轮与本地开发轮分别保存在以下目录。
+
+| 版本或批次 | 测试记录 |
+| --- | --- |
+| GitHub v0.41.0 | `.dev/release-0.41.0` 中的公开版、本地版、独立历史窗口、Office、打包 EXE 回归和 `published.json` |
+| 项目限定 Git 和提交检查 | `.dev/git-freshness-qa/final-git-flow.log`、`native.log`。`targeted.log` 记录初次运行，其中项目选择用例在修正后已通过最终复测 |
+| 保存冲突 | `.dev/save-conflict-qa/public-targeted.log`、`save-disk-conflict.png` |
+| 打开方式、数据路径和项目栏 | `.dev/portable-project-qa/final.log`、`project-toolbar-expanded.png`。Windows 原生结果见 `.dev/portable-project-qa/native.log`，含实际启动迁移旧数据 |
+
+交接复测记录位于 `.dev/portable-project-qa/handoff-targeted.log`。首次 Git 重读后提交用例超出原有 12 秒测试等待。随后按提交说明清空或任务结束判断完成，等待上限调整为 30 秒，单独复跑通过。复跑日志位于 `.dev/portable-project-qa/handoff-git-retry.log`。
+
+最新本地试用版已覆盖专项与 Windows 原生启动迁移。下一次正式发布时，对最终候选重新运行公开版、本地版全量和相应原生检查，保存当次日志与发布校验清单。

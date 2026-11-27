@@ -210,6 +210,61 @@ func (store *sessionStore) attach(m *editorApp) {
 	store.windows = append(store.windows, m)
 }
 
+func (m *editorApp) mergeRestoredWindow(restored *editorApp, conversations *aiWindowSession) *editorTab {
+	groups := make(map[*tabGroup]bool)
+	var active *editorTab
+	for index, tab := range restored.tabs {
+		if existing := m.tabAtPath(tab.doc.path); existing != nil {
+			sameContent := tab.source.text.CommittedString() == existing.source.text.CommittedString()
+			if tab.readOnlyPreview() && !tab.modified() || (sameContent && !tab.modified() && !tab.hasResultDraft()) {
+				tab.largeText.close()
+				if tab == restored.active {
+					active = existing
+				}
+				restored.tabs[index] = existing
+				continue
+			}
+			// 同一路径已有标签时，保留恢复的版本为可另存的副本。
+			tab.name = tab.title()
+			tab.displayName = tab.tabTitle() + "（备份）"
+			if state := tab.largeText; state != nil && state.editSession != nil && state.editSession.BasePath == "" {
+				state.editSession.BasePath = tab.doc.path
+			}
+			tab.doc.path = ""
+		}
+		if tab.group != nil && !groups[tab.group] {
+			m.nextGroupID++
+			tab.group.ID = m.nextGroupID
+			groups[tab.group] = true
+		}
+		m.nextID++
+		tab.id = m.nextID
+		tab.source.light, tab.result.light, tab.comparison.light = m.light, m.light, m.light
+		if !m.editorPrefs.equal(restored.editorPrefs) {
+			tab.applyEditorPreferences(m.editorPrefs)
+		}
+		tab.bindSearchWindow(m)
+		m.tabs = append(m.tabs, tab)
+		if tab == restored.active {
+			active = tab
+		}
+	}
+	if m.workspace == nil {
+		m.workspace = restored.workspace
+	} else if restored.workspace != nil {
+		m.workspace.mergeProjects(restored.workspace)
+	}
+	if conversations != nil {
+		for _, record := range conversations.History {
+			m.ai.history = append(m.ai.history, record.restore(restored.tabs))
+		}
+		if current := conversations.Current.restore(restored.tabs); current.hasContent() {
+			m.ai.history = append(m.ai.history, current)
+		}
+	}
+	return active
+}
+
 func snapshotPane(p *editorPane) paneSession {
 	scroll := gfx.Point{X: p.view.Code.ScrollX(), Y: p.view.Code.ScrollY()}
 	if p.restoreScroll != nil {
@@ -227,19 +282,13 @@ func (m *editorApp) snapshotSession() windowSession {
 	if slices.ContainsFunc(tabs, (*editorTab).isTemporaryLink) {
 		tabs = slices.DeleteFunc(slices.Clone(tabs), (*editorTab).isTemporaryLink)
 	}
-	return m.snapshotWorkspace(tabs, true)
-}
-
-func (m *editorApp) snapshotWorkspace(tabs []*editorTab, includeAI bool) windowSession {
 	state := windowSession{Active: slices.Index(tabs, m.active), Light: m.light, ShowFiles: m.showFiles, ShowOutline: m.showOutline,
 		FilesWidth: m.filesSplit.Pos, OutlineRatio: 1 - m.outlineSplit.Ratio,
 		AIEditorRatio: m.aiEditorSplit.Ratio, AIPromptRatio: m.aiPromptSplit.Ratio, Frame: m.windowFrame, Maximized: m.maximized}
 	if m.sidebarPrefs.Position == "left" {
 		state.AIEditorRatio = 1 - state.AIEditorRatio
 	}
-	if includeAI {
-		state.AI = m.snapshotAI(tabs)
-	}
+	state.AI = m.snapshotAI(tabs)
 	if m.workspace != nil {
 		for _, root := range m.workspace.roots {
 			state.Projects = append(state.Projects, projectSession{Path: root.path, ExpandedFolders: expandedProjectFolders(root)})
@@ -554,7 +603,7 @@ func (m *editorApp) restoreProjects(state windowSession) int {
 				root.expanded = true
 			}
 		}
-		tree.queueDirectory(root, project.ExpandedFolders, "")
+		tree.queueDirectory(root, project.ExpandedFolders, "", false)
 	}
 	if len(tree.roots) > 0 {
 		tree.flatten()

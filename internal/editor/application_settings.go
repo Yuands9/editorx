@@ -25,6 +25,8 @@ type applicationPreferences struct {
 	SkipExitSaveConfirmation bool                    `json:"skipExitSaveConfirmation,omitempty"`
 	TranslationEnabled       bool                    `json:"translationEnabled,omitempty"`
 	DisableAutoUpdate        bool                    `json:"disableAutoUpdate,omitempty"`
+	UpdateSource             string                  `json:"updateSource,omitempty"`
+	CNBRepository            string                  `json:"cnbRepository,omitempty"`
 	Theme                    string                  `json:"theme,omitempty"`
 	MenuLanguage             menuLanguage            `json:"menuLanguage,omitempty"`
 	Editor                   editorPreferences       `json:"editor"`
@@ -34,8 +36,12 @@ type applicationPreferences struct {
 	LocalHistory             localHistoryPreferences `json:"localHistory,omitzero"`
 }
 
+func defaultApplicationPreferences() applicationPreferences {
+	return applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, MenuLanguage: menuChinese, Editor: defaultEditorPreferences(), Sidebar: sidebarPreferences{Position: "right"}}
+}
+
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
-	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, MenuLanguage: menuChinese, Editor: defaultEditorPreferences(), Sidebar: sidebarPreferences{Position: "right"}}
+	defaults := defaultApplicationPreferences()
 	data, err := os.ReadFile(filepath.Join(directory, applicationSettingsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return defaults, nil
@@ -43,6 +49,11 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 	if err != nil {
 		return defaults, err
 	}
+	return decodeApplicationPreferences(data)
+}
+
+func decodeApplicationPreferences(data []byte) (applicationPreferences, error) {
+	defaults := defaultApplicationPreferences()
 	preferences := defaults
 	// 缺少新字段时，让旧版折行选项参与迁移。
 	preferences.Editor.WrapFileTypes = nil
@@ -55,6 +66,11 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 	if preferences.MenuLanguage != menuEnglish {
 		preferences.MenuLanguage = menuChinese
 	}
+	repository, err := normalizeCNBRepository(preferences.CNBRepository)
+	if err != nil {
+		return defaults, err
+	}
+	preferences.CNBRepository = repository
 	preferences.Editor = preferences.Editor.normalized()
 	preferences.Sidebar = preferences.Sidebar.normalized()
 	return preferences, nil
@@ -143,6 +159,7 @@ func (m *editorApp) saveApplicationSettings() {
 func (m *editorApp) persistApplicationSettings(preferences applicationPreferences) bool {
 	settings := &m.appSettings
 	if err := preferences.save(m.dataDirectory); err != nil {
+		m.debug.record("settings.save", err)
 		settings.problem = uiText("无法保存设置：") + err.Error()
 		settings.draft = settings.original
 		return false

@@ -109,26 +109,67 @@ func TestMultipleProjectsThroughUIAndSession(t *testing.T) {
 	check(s.Frame())
 	check(s.RightClickLabel("服务端"))
 	check(s.ClickLabel("移除项目"))
-	if len(tree.roots) != 1 || tree.roots[0] != second || m.active != tab || len(m.tabs) != 1 ||
-		!tab.modified() || tab.source.text.String() != draft || m.confirm {
-		t.Fatal("removing a project did not preserve the open draft")
+	if !s.HasText("移除项目？") || len(tree.roots) != 2 || m.confirm {
+		t.Fatal("removal must ask for confirmation before any tabs close")
 	}
-	original, err := os.ReadFile(file)
+	check(s.ClickLabel("button:取消"))
+	if len(tree.roots) != 2 || len(m.tabs) != 1 || m.active != tab {
+		t.Fatal("canceling project removal changed the workspace")
+	}
+
+	cleanPath := filepath.Join(serverChild, "新增配置.txt")
+	otherPath := filepath.Join(web, "构建.txt")
+	m.load(cleanPath)
+	m.load(otherPath)
+	check(s.Frame())
+	other := m.tabAtPath(otherPath)
+	if other == nil || m.tabAtPath(cleanPath) == nil {
+		t.Fatal("test tabs did not open")
+	}
+
+	check(s.ClickLabel("项目操作 " + server))
+	check(s.ClickLabel("移除项目"))
+	check(s.ClickLabel("确认移除"))
+	if !m.confirm || m.confirmTab != tab || len(m.tabs) != 3 {
+		t.Fatal("the standard save confirmation did not open")
+	}
+	check(s.ClickLabel("button:取消"))
+	if m.confirm || len(tree.roots) != 2 || len(m.tabs) != 3 || tab.source.text.String() != draft {
+		t.Fatal("canceling the save prompt did not retain all tabs and the project")
+	}
+
+	check(s.ClickLabel("项目操作 " + server))
+	check(s.ClickLabel("移除项目"))
+	check(s.ClickLabel("确认移除"))
+	check(s.ClickLabel("保存并继续"))
+	if len(tree.roots) != 1 || tree.roots[0] != second || m.active != other || len(m.tabs) != 1 {
+		t.Fatal("removal did not close both project tabs and preserve the other project")
+	}
+	saved, err := os.ReadFile(file)
 	check(err)
-	if string(original) != source {
-		t.Fatal("removing a project wrote to disk")
+	if string(saved) != draft {
+		t.Fatal("removing a project did not save the selected edits")
 	}
 	check(store.save())
 	restored, err = openSessionStore(store.directory)
 	check(err)
 	again = restored.windows[0]
-	if len(again.workspace.roots) != 1 || again.workspace.roots[0].path != web || again.active.source.text.String() != draft {
-		t.Fatal("removed project resurrected or draft was lost")
+	if len(again.workspace.roots) != 1 || again.workspace.roots[0].path != web || again.active.doc.path != otherPath {
+		t.Fatal("removed project or its tabs resurrected")
 	}
+	other.source.replace("放弃本次修改")
+	check(s.Frame())
 	check(s.ClickLabel("项目操作 " + web))
 	check(s.ClickLabel("移除项目"))
-	if m.workspace != nil || m.active != tab {
-		t.Fatal("removing the last project affected the editor")
+	check(s.ClickLabel("确认移除"))
+	check(s.ClickLabel("放弃修改"))
+	if m.workspace != nil || m.active != nil || len(m.tabs) != 0 {
+		t.Fatal("removing the last project left its tabs open")
+	}
+	data, err := os.ReadFile(otherPath)
+	check(err)
+	if string(data) != "构建站点" {
+		t.Fatal("discarding the changes wrote the draft to disk")
 	}
 	_, err = os.Stat(webChild)
 	check(err)
@@ -522,5 +563,46 @@ func TestProjectDeleteConfirmation(t *testing.T) {
 	check(err)
 	if len(stash) != 0 {
 		t.Fatal("project deletion created EditorX recovery folders")
+	}
+}
+
+func TestProjectTreeToolbarExpandsCollapsesAndReveals(t *testing.T) {
+	m := newEditorApp()
+	first := t.TempDir()
+	second := filepath.Join(first, "nested-project")
+	firstFile := filepath.Join(first, "src", "nested", "main.txt")
+	secondFile := filepath.Join(second, "docs", "notes.txt")
+	putDataLocationFixture(t, first, "src/nested/main.txt", "first")
+	putDataLocationFixture(t, first, "src/sibling/other.txt", "sibling")
+	putDataLocationFixture(t, second, "docs/notes.txt", "second")
+	m.addProjects(second, first)
+	m.load(firstFile)
+	s := openTestSession(t, m)
+
+	hasRow := func(path string) bool {
+		for _, row := range m.workspace.rows {
+			if row.node.path == path {
+				return true
+			}
+		}
+		return false
+	}
+	click := func(label string) {
+		t.Helper()
+		workflowCheck(t, s.ClickLabel("button:"+label))
+		waitProjectLoads(t, m, s)
+	}
+	click("全部展开")
+	if !m.workspace.project(second).expanded || !hasRow(firstFile) || !hasRow(secondFile) {
+		t.Fatal("expand all did not load nested directories from both projects")
+	}
+	workflowScreenshot(t, s, "project-toolbar-expanded")
+	click("全部收起")
+	if len(m.workspace.rows) != 2 || hasRow(firstFile) || hasRow(secondFile) {
+		t.Fatal("collapse all did not return to the two project roots")
+	}
+	click("定位当前文件")
+	if !hasRow(firstFile) || hasRow(secondFile) || m.active.doc.path != firstFile {
+		t.Fatal("reveal did not reopen only the active file's path")
 	}
 }

@@ -118,6 +118,9 @@ func TestUpdateAutomaticChecksShareWorkAndRespectOptOut(t *testing.T) {
 	var requests atomic.Int32
 	previous := editorUpdateHTTP
 	editorUpdateHTTP = &http.Client{Transport: updateTestTransport(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/repos/Yuands9/editorx/releases" {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[]"))}, nil
+		}
 		requests.Add(1)
 		started <- struct{}{}
 		select {
@@ -162,7 +165,7 @@ func TestUpdateAutomaticChecksShareWorkAndRespectOptOut(t *testing.T) {
 		t.Fatal("checking more than once per interval")
 	}
 
-	second.showSettings(settingsAbout)
+	second.showSettings(settingsUpdate)
 	if err := session.Frame(); err != nil {
 		t.Fatal(err)
 	}

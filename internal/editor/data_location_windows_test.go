@@ -15,7 +15,7 @@ func TestDataLocationSettingsAndMigration(t *testing.T) {
 	folder := t.TempDir()
 	path := filepath.Join(folder, editorDataLocationFile)
 	location, err := readEditorDataLocation(path)
-	if err != nil || location.Directory != filepath.Join(folder, "data") {
+	if err != nil || location.Directory != filepath.Join(folder, applicationName, "data") {
 		t.Fatalf("default data location = %+v, %v", location, err)
 	}
 	store, err := openSessionStore(location.Directory)
@@ -214,5 +214,97 @@ func putDataLocationFixture(t *testing.T, directory, name, contents string) {
 	}
 	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLegacyDefaultDataMigration(t *testing.T) {
+	folder := t.TempDir()
+	settings := filepath.Join(folder, editorDataLocationFile)
+	old := filepath.Join(folder, "data")
+	target := filepath.Join(folder, applicationName, "data")
+
+	store, err := openSessionStore(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := newEditorApp()
+	store.attach(window)
+	window.newDocument()
+	window.active.source.replace("只存在于旧数据目录的草稿")
+	if err := store.save(); err != nil {
+		t.Fatal(err)
+	}
+	putDataLocationFixture(t, old, "WebView2/cache", "temporary")
+	putDataLocationFixture(t, old, offlineTranslationDirectory+"/model.bin", "model")
+	location, err := readEditorDataLocation(settings)
+	if err != nil || location.Directory != old || location.legacyTarget != target {
+		t.Fatalf("could not detect legacy data: %+v, %v", location, err)
+	}
+
+	moved, release, status, err := claimEditorDataLocation(location, nil)
+	if err != nil || release == nil || moved.Directory != target || moved.legacyTarget != "" || status == "" {
+		t.Fatalf("legacy migration failed: %+v, %q, %v", moved, status, err)
+	}
+	defer release()
+	if unlock, err := lockSessionDirectory(target); !errors.Is(err, errSessionDirectoryInUse) {
+		if unlock != nil {
+			unlock()
+		}
+		t.Fatalf("migrated directory is not locked: %v", err)
+	}
+	for _, directory := range []string{old, target} {
+		restored, err := openSessionStore(directory)
+		if err != nil || len(restored.windows) != 1 || restored.windows[0].active.source.text.String() != "只存在于旧数据目录的草稿" {
+			t.Fatalf("missing draft at %q: %v", directory, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(target, "WebView2")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("migration copied a cache: %v", err)
+	}
+	if _, err := os.Stat(settings); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("migration wrote a nonportable location override: %v", err)
+	}
+	if latest, err := readEditorDataLocation(settings); err != nil || latest != moved {
+		t.Fatalf("relaunch did not choose the migrated data: %+v, %v", latest, err)
+	}
+}
+
+func TestDefaultDataLocationPortableFolderAndExistingCopies(t *testing.T) {
+	folder := t.TempDir()
+	settings := filepath.Join(folder, editorDataLocationFile)
+	target := filepath.Join(folder, applicationName, "data")
+	putDataLocationFixture(t, filepath.Join(folder, "data"), "unrelated.txt", "another program")
+	if location, err := readEditorDataLocation(settings); err != nil || location.Directory != target || location.legacyTarget != "" {
+		t.Fatalf("an unrelated data folder was mistaken for EditorX data: %+v, %v", location, err)
+	}
+	putDataLocationFixture(t, filepath.Join(folder, "data"), templateLibraryFile, "older")
+	putDataLocationFixture(t, target, templateLibraryFile, "copied")
+	settingsInAppFolder := filepath.Join(folder, applicationName, editorDataLocationFile)
+	for _, settingsPath := range []string{settings, settingsInAppFolder} {
+		if location, err := readEditorDataLocation(settingsPath); err != nil || location.Directory != target || location.legacyTarget != "" {
+			t.Fatalf("existing portable data was ignored: %+v, %v", location, err)
+		}
+	}
+}
+
+func TestLegacyDefaultMigrationFailureKeepsActiveDirectory(t *testing.T) {
+	folder := t.TempDir()
+	settings := filepath.Join(folder, editorDataLocationFile)
+	old := filepath.Join(folder, "data")
+	putDataLocationFixture(t, old, templateLibraryFile, "source templates")
+	if err := os.WriteFile(filepath.Join(folder, applicationName), []byte("filesystem conflict"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	location, err := readEditorDataLocation(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, release, status, err := claimEditorDataLocation(location, nil)
+	if err != nil || release == nil || active.Directory != old || !strings.Contains(status, "已继续使用原目录") {
+		t.Fatalf("failed migration did not keep the old directory: %+v, %q, %v", active, status, err)
+	}
+	defer release()
+	if got, err := os.ReadFile(filepath.Join(old, templateLibraryFile)); err != nil || string(got) != "source templates" {
+		t.Fatalf("legacy data changed after failed migration: %q, %v", got, err)
 	}
 }

@@ -37,7 +37,8 @@ type githubReleaseAsset struct {
 }
 
 type githubEditorRelease struct {
-	Tag        string `json:"tag_name"`
+	Tag        string    `json:"tag_name"`
+	Published  time.Time `json:"published_at"`
 	Body       string
 	Draft      bool
 	Prerelease bool
@@ -262,12 +263,14 @@ func editorReleaseNotes(body string) string {
 }
 
 func downloadEditorUpdate(ctx context.Context, client *http.Client, release editorRelease, target string, progress io.Writer) error {
-	complete := false
-	defer func() {
-		if !complete {
-			os.Remove(target)
-		}
-	}()
+	err := receiveEditorUpdate(ctx, client, release, target, progress)
+	if err != nil {
+		os.Remove(target)
+	}
+	return err
+}
+
+func receiveEditorUpdate(ctx context.Context, client *http.Client, release editorRelease, target string, progress io.Writer) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, release.Download, nil)
 	if err != nil {
 		return err
@@ -311,7 +314,6 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	complete = true
 	return nil
 }
 

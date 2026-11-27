@@ -19,7 +19,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 		}
 		if tab.doc.path != "" {
 			m.projectPathActions(c, menu, tab.doc.path)
-			if m.shortcutMenu(menu.Item(m.menuText("在项目中定位")).Icon(searchIcon).Disabled(m.projectRoot(tab.doc.path) == ""), shortcutRevealProjectFile).Clicked() {
+			if m.shortcutMenu(menu.Item(m.menuText("在项目中定位")).Icon(revealFileIcon).Disabled(m.projectRoot(tab.doc.path) == ""), shortcutRevealProjectFile).Clicked() {
 				c.After(func() { m.revealProjectFile(tab.doc.path) })
 			}
 			menu.Separator()

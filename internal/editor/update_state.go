@@ -221,9 +221,10 @@ func (m *editorApp) downloadEditorRelease() {
 	progress := &dictionaryProgress{invalidate: m.notifyEditorUpdate}
 	state.staged, state.problem, state.download, state.progress = path, "", job, progress
 	release := state.cache.Release
+	preferences, _ := m.applicationPreferences()
 	go func() {
 		defer cancel()
-		err := downloadEditorUpdate(ctx, editorUpdateHTTP, release, path, progress)
+		err := downloadPreferredEditorUpdate(ctx, editorUpdateHTTP, editorCNBHTTP, preferences.updateRepository(), release, path, progress)
 		job.result <- err
 		m.notifyEditorUpdate()
 	}()
@@ -237,6 +238,7 @@ func (m *editorApp) updateProgress() {
 	if state.check != nil {
 		select {
 		case result := <-state.check.result:
+			m.debug.record("update.check", result.err)
 			state.check = nil
 			state.cache.CheckedAt = time.Now()
 			state.cache.APIRetryAfter = result.apiRetryAfter
@@ -255,6 +257,7 @@ func (m *editorApp) updateProgress() {
 	if state.download != nil {
 		select {
 		case err := <-state.download.result:
+			m.debug.record("update.download", err)
 			state.download, state.progress = nil, nil
 			if err != nil {
 				state.staged = ""

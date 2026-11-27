@@ -13,7 +13,7 @@ const editorCommandHome = "EDITORX_HOME"
 const editorCommandRegistration = "EDITORX_REGISTER_COMMAND"
 const editorCommandHomeReference = "%" + editorCommandHome + "%"
 
-var setUserEnvironmentValue = syscall.NewLazyDLL("advapi32.dll").NewProc("RegSetValueExW")
+var setRegistryValue = syscall.NewLazyDLL("advapi32.dll").NewProc("RegSetValueExW")
 
 func registerEditorCommand(executable string) error {
 	if os.Getenv(editorCommandRegistration) == "0" || !strings.EqualFold(filepath.Base(executable), updateExecutable) {
@@ -43,7 +43,7 @@ func registerEditorCommand(executable string) error {
 		return errors.New(uiText("Windows 用户 PATH 已达到长度上限"))
 	}
 	if !strings.EqualFold(directory, oldHome) {
-		if err := writeUserEnvironmentValue(registry, editorCommandHome, directory, syscall.REG_SZ); err != nil {
+		if err := writeRegistryString(registry, editorCommandHome, directory, syscall.REG_SZ); err != nil {
 			return err
 		}
 	}
@@ -51,7 +51,7 @@ func registerEditorCommand(executable string) error {
 		if expandable {
 			pathKind = syscall.REG_EXPAND_SZ
 		}
-		if err := writeUserEnvironmentValue(registry, "Path", updated, pathKind); err != nil {
+		if err := writeRegistryString(registry, "Path", updated, pathKind); err != nil {
 			return err
 		}
 	}
@@ -108,13 +108,13 @@ func readUserEnvironmentValue(registry syscall.Handle, name string) (string, uin
 	return syscall.UTF16ToString(value), kind, nil
 }
 
-func writeUserEnvironmentValue(registry syscall.Handle, name, value string, kind uint32) error {
+func writeRegistryString(registry syscall.Handle, name, value string, kind uint32) error {
 	key, _ := syscall.UTF16PtrFromString(name)
 	encoded, err := syscall.UTF16FromString(value)
 	if err != nil {
 		return err
 	}
-	if result, _, _ := setUserEnvironmentValue.Call(uintptr(registry), uintptr(unsafe.Pointer(key)), 0, uintptr(kind), uintptr(unsafe.Pointer(&encoded[0])), uintptr(len(encoded)*2)); result != 0 {
+	if result, _, _ := setRegistryValue.Call(uintptr(registry), uintptr(unsafe.Pointer(key)), 0, uintptr(kind), uintptr(unsafe.Pointer(&encoded[0])), uintptr(len(encoded)*2)); result != 0 {
 		return syscall.Errno(result)
 	}
 	return nil

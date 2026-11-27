@@ -192,6 +192,7 @@ func (t *editorTab) modified() bool {
 }
 
 type editorApp struct {
+	debug           editorDebugLog
 	projectWatches  map[string]*projectWatchState
 	lastPreviewPath string
 	lastPreviewAt   time.Time
@@ -211,6 +212,7 @@ type editorApp struct {
 	editorSplit     *editorSplitState
 	navigation      editorNavigation
 	savingAll       bool
+	saveConflict    *saveConflictState
 	passwordVault   *passwordVaultView
 	linkedFile      linkedFileState
 	imageOCR        *imageOCRDialog
@@ -252,6 +254,7 @@ type editorApp struct {
 	projectFolder   *projectFolderDialog
 	projectRename   *projectRenameDialog
 	projectDelete   *projectDeleteDialog
+	projectRemoval  *fileNode
 
 	templatePanel      *templateDialogState
 	sidebarPrefs       sidebarPreferences
@@ -272,7 +275,6 @@ type editorApp struct {
 	localHistory       *localHistoryStore
 	historyCompare     *historyCompareState
 	gitLogWindow       *gitReviewState
-	backup             editorBackupState
 	update             editorUpdateState
 	editorPrefs        editorPreferences
 	keyBindings        shortcutOverrides
@@ -421,7 +423,10 @@ func (m *editorApp) focusActiveSource() {
 	}
 }
 
-func (m *editorApp) fail(err error) { m.errorText, m.showError = err.Error(), true }
+func (m *editorApp) fail(err error) {
+	m.debug.record("editor.error", err)
+	m.errorText, m.showError = err.Error(), true
+}
 
 func (m *editorApp) requestTab(t *editorTab, action func()) {
 	if !t.modified() {
@@ -490,8 +495,12 @@ func (m *editorApp) closeTab(t *editorTab) {
 	m.closeTabs([]*editorTab{t}, false)
 }
 
-// tabs is a copy of the selected range, so removing a tab does not move the remaining targets.
 func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
+	m.reviewTabClosures(tabs, keepPinned, m.removeTab, nil)
+}
+
+// tabs is a snapshot, so closing a tab does not move the remaining targets.
+func (m *editorApp) reviewTabClosures(tabs []*editorTab, keepPinned bool, closeTab func(*editorTab), complete func()) {
 	for index, tab := range tabs {
 		if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
 			continue
@@ -502,19 +511,21 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 		}
 		waitingForOffice := tab.office != nil && tab.office.view != nil && tab.office.ready
 		if !waitingForOffice && !tab.modified() {
-			m.removeTab(tab)
+			if closeTab != nil {
+				closeTab(tab)
+			}
 			continue
 		}
 		proceed := func() {
-			if !keepPinned || !tab.isPinned() {
-				m.removeTab(tab)
+			if closeTab != nil && (!keepPinned || !tab.isPinned()) {
+				closeTab(tab)
 			}
-			m.closeTabs(tabs[index+1:], keepPinned)
+			m.reviewTabClosures(tabs[index+1:], keepPinned, closeTab, complete)
 		}
 		if waitingForOffice {
 			tab.office.flush(func(err error) {
 				if (keepPinned && tab.isPinned()) || !slices.Contains(m.tabs, tab) {
-					m.closeTabs(tabs[index+1:], keepPinned)
+					m.reviewTabClosures(tabs[index+1:], keepPinned, closeTab, complete)
 					return
 				}
 				if err != nil {
@@ -527,6 +538,9 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 			m.requestTab(tab, proceed)
 		}
 		return
+	}
+	if complete != nil {
+		complete()
 	}
 }
 
@@ -724,6 +738,7 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 		m.rememberPath(path, false)
 	}
 	m.status = uiText("已打开 ") + tab.title()
+	m.debug.record("document.open", nil)
 	return tab
 }
 
@@ -1083,10 +1098,10 @@ func (m *editorApp) interactionBlocked() bool {
 }
 
 func (m *editorApp) otherInteractionsBlocked() bool {
-	return m.comparePicker != nil || m.workflow != nil || m.directorySearch != nil && m.directorySearch.open || m.palette != nil || m.savingAll || m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
-		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
-		m.tools.git.review != nil || m.tools.git.branches.creating || m.tools.git.branches.switching || m.tools.git.stashConfirm ||
-		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
+	return m.comparePicker != nil || m.workflow != nil || m.directorySearch != nil && m.directorySearch.open || m.palette != nil || m.savingAll || m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.saveConflict != nil || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
+		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || m.projectRemoval != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
+		m.tools.git.review != nil || m.tools.git.commitAttempt != nil && m.tools.git.commitAttempt.open || m.tools.git.branches.creating || m.tools.git.branches.switching || m.tools.git.stashConfirm ||
+		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending ||
 		(m.desktop != nil && m.desktop.exiting)
 }
 
@@ -1141,10 +1156,13 @@ func (m *editorApp) releaseWindowState() {
 	state := m.snapshotSession()
 	m.closedSession = &state
 	m.windowClosed = true
+	m.debug = editorDebugLog{}
 	m.closeFileWatches()
 	m.closeProjectWatches()
 	m.tools.git.watch.close()
 	m.tools.git = gitPanelState{}
+	m.tools.repositories = projectGitRepositories{}
+	m.projectRemoval = nil
 	m.stopMacroRecording()
 	if m.workflow != nil && m.workflow.cancel != nil {
 		m.workflow.cancel()
@@ -1174,7 +1192,7 @@ func (m *editorApp) releaseWindowState() {
 	if m.desktop == nil {
 		m.update.close()
 	}
-	m.update, m.backup = editorUpdateState{}, editorBackupState{}
+	m.update = editorUpdateState{}
 	m.linkedFile = linkedFileState{}
 	m.imageOCR, m.imageAI = nil, nil
 	m.tabDrag = ui.DragState{}

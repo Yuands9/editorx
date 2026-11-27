@@ -19,9 +19,10 @@ const (
 // The location record stays next to the executable so it is available before
 // opening or locking a data directory. An environment override has no record.
 type editorDataLocation struct {
-	Directory string `json:"directory"`
-	Pending   string `json:"pending,omitempty"`
-	path      string
+	Directory    string `json:"directory"`
+	Pending      string `json:"pending,omitempty"`
+	path         string
+	legacyTarget string
 }
 
 func editorDataDirectory() (string, error) {
@@ -42,11 +43,11 @@ func currentEditorDataLocation() (editorDataLocation, error) {
 }
 
 func readEditorDataLocation(path string) (editorDataLocation, error) {
-	location := editorDataLocation{path: path, Directory: filepath.Join(filepath.Dir(path), "data")}
 	data, err := readTextAsset(path, 64<<10)
 	if errors.Is(err, os.ErrNotExist) {
-		return location, nil
+		return defaultEditorDataLocation(path)
 	}
+	location := editorDataLocation{path: path}
 	if err == nil {
 		err = json.Unmarshal(data, &location)
 	}
@@ -64,6 +65,45 @@ func readEditorDataLocation(path string) (editorDataLocation, error) {
 		return editorDataLocation{}, fmt.Errorf(uiText("无法读取数据目录设置 %s：%w"), path, err)
 	}
 	location.Directory = filepath.Clean(location.Directory)
+	return location, nil
+}
+
+func defaultEditorDataLocation(path string) (editorDataLocation, error) {
+	parent := filepath.Dir(path)
+	legacy := filepath.Join(parent, "data")
+	location := editorDataLocation{path: path, Directory: legacy}
+	if strings.EqualFold(filepath.Base(parent), applicationName) {
+		return location, nil
+	}
+	location.Directory = filepath.Join(parent, applicationName, "data")
+	info, err := os.Stat(location.Directory)
+	if err == nil && info.IsDir() || err != nil && !errors.Is(err, os.ErrNotExist) {
+		return location, err
+	}
+	info, err = os.Stat(legacy)
+	if errors.Is(err, os.ErrNotExist) || err == nil && !info.IsDir() {
+		return location, nil
+	}
+	if err != nil {
+		return location, fmt.Errorf(uiText("无法检查旧数据目录 %s：%w"), legacy, err)
+	}
+	entries, err := os.ReadDir(legacy)
+	if errors.Is(err, os.ErrNotExist) {
+		return location, nil
+	}
+	if err != nil {
+		return location, fmt.Errorf(uiText("无法检查旧数据目录 %s：%w"), legacy, err)
+	}
+	for _, entry := range entries {
+		// The executable may be in Downloads alongside another app's data folder.
+		switch strings.ToLower(entry.Name()) {
+		case "session.json", "session.json.bak", applicationSettingsFile, templateLibraryFile, workflowSettingsFile,
+			"ai-settings.json", passwordVaultName, passwordVaultArchives, translationLibraryFile, localHistoryDirectory,
+			offlineTranslationDirectory, dictionaryDirectory:
+			location.Directory, location.legacyTarget = legacy, location.Directory
+			return location, nil
+		}
+	}
 	return location, nil
 }
 
@@ -94,6 +134,14 @@ func claimEditorDataLocation(location editorDataLocation, paths []string) (edito
 			continue
 		}
 		location = latest
+		if location.legacyTarget != "" {
+			migrated, releaseTarget, err := location.migrateLegacyDefault()
+			if err != nil {
+				return location, release, uiText("无法迁移数据，已继续使用原目录：") + err.Error(), nil
+			}
+			release()
+			return migrated, releaseTarget, uiText("数据已迁移至 ") + migrated.Directory, nil
+		}
 		if location.Pending == "" {
 			return location, release, "", nil
 		}
@@ -153,18 +201,55 @@ func (location editorDataLocation) migrate() (editorDataLocation, func(), error)
 	return migrated, release, nil
 }
 
-func copyEditorData(source string, destination editorDataLocation) error {
+func (location editorDataLocation) migrateLegacyDefault() (editorDataLocation, func(), error) {
+	target := location.legacyTarget
+	release, err := lockSessionDirectory(target)
+	if err != nil {
+		return location, nil, err
+	}
+	if err := publishLegacyEditorData(location.Directory, target); err != nil {
+		release()
+		return location, nil, err
+	}
+	location.Directory, location.legacyTarget = target, ""
+	return location, release, nil
+}
+
+func publishLegacyEditorData(source, target string) error {
+	parent := filepath.Dir(target)
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		return err
+	}
+	sourcePath, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return err
+	}
+	targetParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return err
+	}
+	if gitPathWithin(sourcePath, targetParent) {
+		return errors.New(uiText("请选择与当前数据目录互不包含的文件夹"))
+	}
+	staged, err := os.MkdirTemp(parent, ".editorx-migration-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staged)
+	if err := stageEditorData(source, staged); err != nil {
+		return err
+	}
+	// Publish only after copying so another launch never opens partial data.
+	return syscall.Rename(staged, target)
+}
+
+func stageEditorData(source, staged string) error {
 	root, err := os.OpenRoot(source)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
-	staged, err := os.MkdirTemp(destination.Directory, ".editorx-migration-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(staged)
-	if err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, err error) error {
+	return fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil || name == "." {
 			return err
 		}
@@ -188,10 +273,18 @@ func copyEditorData(source string, destination editorDataLocation) error {
 		}
 		defer file.Close()
 		return writeFileFrom(filepath.Join(staged, filepath.FromSlash(name)), file, info.Size())
-	}); err != nil {
+	})
+}
+
+func copyEditorData(source string, destination editorDataLocation) error {
+	staged, err := os.MkdirTemp(destination.Directory, ".editorx-migration-")
+	if err != nil {
 		return err
 	}
-
+	defer os.RemoveAll(staged)
+	if err := stageEditorData(source, staged); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(staged)
 	if err != nil {
 		return err

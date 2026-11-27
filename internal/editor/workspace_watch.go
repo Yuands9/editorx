@@ -97,7 +97,7 @@ func (m *editorApp) updateProjectWatches(c ui.C) {
 		}
 		if state.ready && !loading {
 			state.dirty, state.ready = false, false
-			m.workspace.queueDirectory(root, expandedProjectFolders(root), "")
+			m.workspace.queueDirectory(root, expandedProjectFolders(root), "", false)
 		}
 	}
 }

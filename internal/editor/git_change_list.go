@@ -273,7 +273,7 @@ func (m *editorApp) gitChangesView(c ui.C, busy bool) {
 					if !strings.Contains(node.change.status, "D") && menu.Item(uiText("打开文件")).Icon(fileIcon).Clicked() {
 						place.After(func() { m.load(filepath.Join(git.snapshot.root, node.change.path)) })
 					}
-					if menu.Item(uiText("在项目中定位")).Icon(searchIcon).Clicked() {
+					if menu.Item(uiText("在项目中定位")).Icon(revealFileIcon).Clicked() {
 						place.After(func() { m.revealProjectFile(filepath.Join(git.snapshot.root, node.change.path)) })
 					}
 				})
