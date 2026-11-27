@@ -53,7 +53,7 @@ func (state *imageOCRDialog) refresh() {
 	if installation == nil && err == nil {
 		_, err = os.Lstat(offlineComponentPath(state.directory, imageOCRComponent))
 		if err == nil {
-			err = errors.New("OCR 组件不完整，请移除后重新下载")
+			err = errors.New(uiText("OCR 组件不完整，请移除后重新下载"))
 		} else if errors.Is(err, os.ErrNotExist) {
 			err = nil
 		}
@@ -77,7 +77,7 @@ func (m *editorApp) startImageOCR(action imageOCRAction) {
 	state.action, state.progress, state.problem = action, progress, ""
 	state.task = ui.NewEffect[string, int](func(ctx context.Context) (string, error) {
 		if !imageOCRComponentLock.TryLock() {
-			return "", errors.New("另一个窗口正在使用 OCR，请稍后重试")
+			return "", errors.New(uiText("另一个窗口正在使用 OCR，请稍后重试"))
 		}
 		defer imageOCRComponentLock.Unlock()
 		if action == imageOCRRemove {
@@ -88,13 +88,13 @@ func (m *editorApp) startImageOCR(action imageOCRAction) {
 			client.Timeout = 15 * time.Minute
 			client.CheckRedirect = func(request *http.Request, previous []*http.Request) error {
 				if request.URL.Scheme != "https" || len(previous) >= 6 {
-					return errors.New("OCR 组件下载跳转无效")
+					return errors.New(uiText("OCR 组件下载跳转无效"))
 				}
 				switch request.URL.Hostname() {
 				case "www.python.org", "files.pythonhosted.org", "raw.githubusercontent.com":
 					return nil
 				default:
-					return errors.New("OCR 组件下载跳转到了未知地址")
+					return errors.New(uiText("OCR 组件下载跳转到了未知地址"))
 				}
 			}
 			if _, err := installOfflineComponent(ctx, &client, directory, imageOCRComponent, progress); err != nil {
@@ -131,14 +131,14 @@ func (m *editorApp) imageOCRView(c ui.C) {
 		return
 	}
 	busy := state.task != nil
-	dismissed := ui.ModalWith(c, &state.open, "识别图片文字", ui.ModalSpec{Width: 620}, func() {
+	dismissed := ui.ModalWith(c, &state.open, uiText("识别图片文字"), ui.ModalSpec{Width: 620}, func() {
 		if busy {
 			label := "正在识别图片…"
 			if state.action == imageOCRRemove {
 				label = "正在移除 OCR 组件…"
 			}
 			if progress := state.progress; progress != nil && progress.received.Load() < imageOCRComponent.downloadBytes() {
-				ui.Text(c, "正在下载 OCR 组件…").Muted()
+				ui.Text(c, uiText("正在下载 OCR 组件…")).Muted()
 				fraction := float32(progress.received.Load()) / float32(imageOCRComponent.downloadBytes())
 				ui.Progress(c.Part("download"), fraction).FillWidth().Height(5)
 			} else {
@@ -151,21 +151,21 @@ func (m *editorApp) imageOCRView(c ui.C) {
 			ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger)
 		}
 		if state.recognized && state.output.Text() != "" {
-			ui.TextArea(c.Part("text"), &state.output, "识别结果", "").FillWidth().Height(240)
+			ui.TextArea(c.Part("text"), &state.output, uiText("识别结果"), "").FillWidth().Height(240)
 		} else if state.recognized {
-			ui.Text(c, "未识别到文字").Muted()
+			ui.Text(c, uiText("未识别到文字")).Muted()
 		} else if !state.installed && !state.damaged {
-			ui.Text(c, "下载后可离线识别简体中文和英文。").Muted()
+			ui.Text(c, uiText("下载后可离线识别简体中文和英文。")).Muted()
 		}
 	}, func() {
 		if busy {
-			if ui.Button(c, "取消").Ghost().Clicked() {
+			if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 				m.imageOCR = nil
 			}
 			return
 		}
 		if state.installed || state.damaged {
-			if ui.Button(c, "移除 OCR 组件").Ghost().Clicked() {
+			if ui.Button(c, uiText("移除 OCR 组件")).Ghost().Clicked() {
 				c.After(func() { m.startImageOCR(imageOCRRemove) })
 			}
 			ui.Slot(c).Grow(1)
@@ -179,16 +179,16 @@ func (m *editorApp) imageOCRView(c ui.C) {
 				c.After(func() { m.startImageOCR(imageOCRRecognize) })
 			}
 		} else if !state.damaged {
-			label := fmt.Sprintf("下载并识别 · %.1f MiB", float64(imageOCRComponent.downloadBytes())/(1<<20))
+			label := fmt.Sprintf(uiText("下载并识别 · %.1f MiB"), float64(imageOCRComponent.downloadBytes())/(1<<20))
 			if ui.Button(c, label).Clicked() {
 				c.After(func() { m.startImageOCR(imageOCRDownload) })
 			}
 		}
 		if state.recognized && strings.TrimSpace(state.output.Text()) != "" {
-			if ui.Button(c, "复制全文").Icon(copyIcon).Clicked() {
+			if ui.Button(c, uiText("复制全文")).Icon(copyIcon).Clicked() {
 				c.After(func() {
 					if err := app.SetClipboardText(state.output.Text()); err != nil {
-						state.problem = "复制失败：" + err.Error()
+						state.problem = uiText("复制失败：") + err.Error()
 						return
 					}
 					state.problem = ""

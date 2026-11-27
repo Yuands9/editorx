@@ -92,7 +92,7 @@ func (s *localHistoryStore) setPolicy(policy localHistoryPreferences) {
 func (s *localHistoryStore) noteProblem(err error) {
 	problem := ""
 	if err != nil {
-		problem = "本地历史记录失败：" + err.Error()
+		problem = uiText("本地历史记录失败：") + err.Error()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -136,7 +136,7 @@ func (s *localHistoryStore) openRoot() (*os.Root, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
-		return nil, errors.New("本地历史目录不是普通文件夹")
+		return nil, errors.New(uiText("本地历史目录不是普通文件夹"))
 	}
 	return os.OpenRoot(s.directory)
 }
@@ -301,7 +301,7 @@ func historyFilePath(root *os.Root, id string) (string, error) {
 	}
 	path := string(data)
 	if len(data) > localHistoryPathLimit || !filepath.IsAbs(path) || localHistoryFileID(path) != id {
-		return "", errors.New("本地历史的文件路径无效")
+		return "", errors.New(uiText("本地历史的文件路径无效"))
 	}
 	return path, nil
 }
@@ -329,7 +329,7 @@ func (s *localHistoryStore) catalog() (localHistoryCatalog, error) {
 		}
 		versions, err := historyVersions(root, id)
 		if err != nil {
-			catalog.problem = "部分历史记录无法读取：" + err.Error()
+			catalog.problem = uiText("部分历史记录无法读取：") + err.Error()
 			continue
 		}
 		if len(versions) == 0 {
@@ -337,7 +337,7 @@ func (s *localHistoryStore) catalog() (localHistoryCatalog, error) {
 		}
 		path, err := historyFilePath(root, id)
 		if err != nil {
-			catalog.problem = "部分历史记录的文件路径无法读取：" + err.Error()
+			catalog.problem = uiText("部分历史记录的文件路径无法读取：") + err.Error()
 		}
 		file := localHistoryFile{id: id, source: path, versions: versions}
 		for _, version := range versions {
@@ -476,7 +476,7 @@ func (s *localHistoryStore) copyVersion(ctx context.Context, version localHistor
 	var actual [sha256.Size]byte
 	copy(actual[:], digest.Sum(nil))
 	if actual != version.digest {
-		return fmt.Errorf("历史版本校验失败：%s", version.at.Local().Format(time.DateTime))
+		return fmt.Errorf(uiText("历史版本校验失败：%s"), version.at.Local().Format(time.DateTime))
 	}
 	return nil
 }

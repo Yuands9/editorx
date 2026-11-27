@@ -19,7 +19,7 @@ type projectRenameDialog struct {
 }
 
 func (m *editorApp) projectRenameAction(c ui.C, menu *ui.MenuItems, path string, directory bool) {
-	if menu.Item("重命名").Icon(modelEditIcon).Disabled(filepath.Dir(path) == path).Clicked() {
+	if menu.Item(m.menuText("重命名")).Icon(modelEditIcon).Disabled(filepath.Dir(path) == path).Clicked() {
 		c.After(func() {
 			state := &projectRenameDialog{open: true, path: path, directory: directory}
 			name := filepath.Base(path)
@@ -48,23 +48,23 @@ func (m *editorApp) showProjectRenameDialog(c ui.C) {
 		m.focusActiveSource()
 	}
 	submitted := false
-	dismissed := ui.ModalWith(c, &state.open, "重命名"+kind, ui.ModalSpec{Width: 460}, func() {
+	dismissed := ui.ModalWith(c, &state.open, uiText("重命名")+kind, ui.ModalSpec{Width: 460}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Wrap(c, filepath.Dir(state.path)).FillWidth().FontSize(12).Muted()
-			field := ui.TextField(c.Part("name"), &state.name, kind+"名称", "输入新名称").FillWidth().Height(36).AutoFocus()
+			field := ui.TextField(c.Part("name"), &state.name, kind+uiText("名称"), uiText("输入新名称")).FillWidth().Height(36).AutoFocus()
 			submitted = field.Submitted()
 			if state.problem != "" {
 				ui.Wrap(c, state.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 			}
 		})
 	}, func() {
-		if ui.Button(c, "取消").Ghost().Clicked() {
+		if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 			c.After(closeDialog)
 		}
 		name := strings.TrimSpace(state.name.Text())
 		_, composing := state.name.GetEditor().Composition()
 		ready := name != "" && !composing
-		if ui.Button(c, "重命名").Disabled(!ready).Clicked() || ready && submitted {
+		if ui.Button(c, uiText("重命名")).Disabled(!ready).Clicked() || ready && submitted {
 			c.After(func() {
 				if err := m.renameProjectEntry(state.path, name); err != nil {
 					state.problem = err.Error()
@@ -82,24 +82,24 @@ func (m *editorApp) showProjectRenameDialog(c ui.C) {
 func (m *editorApp) renameProjectEntry(path, name string) error {
 	parent := filepath.Dir(path)
 	if m.projectRoot(path) == "" || parent == path {
-		return errors.New("请选择项目中的文件或文件夹")
+		return errors.New(uiText("请选择项目中的文件或文件夹"))
 	}
 	if !validWindowsEntryName(name) {
-		return errors.New("请输入有效的 Windows 文件或文件夹名称")
+		return errors.New(uiText("请输入有效的 Windows 文件或文件夹名称"))
 	}
 	if name == filepath.Base(path) {
 		return nil
 	}
 	resolvedParent, err := filepath.EvalSymlinks(parent)
 	if err != nil {
-		return fmt.Errorf("无法访问所在文件夹：%w", err)
+		return fmt.Errorf(uiText("无法访问所在文件夹：%w"), err)
 	}
 	resolved := filepath.Join(resolvedParent, filepath.Base(path))
 	if gitPathWithin(path, m.dataDirectory) {
-		return errors.New("这个目录包含 EditorX 正在使用的数据")
+		return errors.New(uiText("这个目录包含 EditorX 正在使用的数据"))
 	}
 	if data, err := filepath.EvalSymlinks(m.dataDirectory); m.dataDirectory != "" && err == nil && gitPathWithin(resolved, data) {
-		return errors.New("这个目录包含 EditorX 正在使用的数据")
+		return errors.New(uiText("这个目录包含 EditorX 正在使用的数据"))
 	}
 
 	windows := []*editorApp{m}
@@ -110,7 +110,7 @@ func (m *editorApp) renameProjectEntry(path, name string) error {
 		for _, tab := range window.tabs {
 			if state := tab.largeText; state != nil && state.saving != nil &&
 				(gitPathWithin(path, tab.doc.path) || gitPathWithin(path, state.savePath)) {
-				return errors.New("请等待大文件保存完成")
+				return errors.New(uiText("请等待大文件保存完成"))
 			}
 			if tab.preview != nil && tab.preview.pdf != nil && gitPathWithin(path, tab.doc.path) {
 				tab.preview.close()
@@ -123,10 +123,10 @@ func (m *editorApp) renameProjectEntry(path, name string) error {
 	// syscall.Rename uses MoveFileW, which refuses to overwrite an existing entry.
 	err = syscall.Rename(resolved, filepath.Join(resolvedParent, name))
 	if errors.Is(err, os.ErrExist) {
-		return errors.New("目录中已有同名文件或文件夹，请换一个名称")
+		return errors.New(uiText("目录中已有同名文件或文件夹，请换一个名称"))
 	}
 	if err != nil {
-		return fmt.Errorf("无法重命名 %s：%w", filepath.Base(path), err)
+		return fmt.Errorf(uiText("无法重命名 %s：%w"), filepath.Base(path), err)
 	}
 
 	destination := filepath.Join(parent, name)
@@ -146,7 +146,7 @@ func (m *editorApp) renameProjectEntry(path, name string) error {
 	for _, window := range windows {
 		window.applyProjectRename(path, destination, renamePath)
 	}
-	m.status = "已重命名为 " + name
+	m.status = uiText("已重命名为 ") + name
 	return nil
 }
 

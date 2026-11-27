@@ -40,6 +40,7 @@ const (
 	shortcutNextBookmark
 	shortcutPreviousBookmark
 	shortcutDuplicateLine
+	shortcutDuplicateLineAbove
 	shortcutSelectNext
 	shortcutSelectAllMatches
 	shortcutSplitSelection
@@ -69,53 +70,54 @@ var editorShortcutSpecs = [editorShortcutCount]struct {
 	id, label string
 	chord     keymap.Chord
 }{
-	shortcutComplete:          {"complete", "补全文档词 / 关键字", keymap.Chord{Modifiers: ui.Alt, Char: '/'}},
-	shortcutFoldAll:           {"foldAll", "折叠全部", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: '['}},
-	shortcutUnfoldAll:         {"unfoldAll", "展开全部", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: ']'}},
-	shortcutNavigateBack:      {"navigateBack", "返回上一个位置", keymap.Chord{Modifiers: ui.Alt, Key: gfx.KeyLeft}},
-	shortcutNavigateForward:   {"navigateForward", "前进到下一个位置", keymap.Chord{Modifiers: ui.Alt, Key: gfx.KeyRight}},
-	shortcutOrdinarySplit:     {"ordinarySplit", "打开 / 关闭普通分屏", keymap.Chord{Modifiers: ui.Ctrl, Char: '\\'}},
-	shortcutNewFile:           {"newFile", "新建文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'n'}},
-	shortcutNewWindow:         {"newWindow", "新建窗口", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'n'}},
-	shortcutOpenFile:          {"openFile", "打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'o'}},
-	shortcutOpenLink:          {"openLink", "打开链接文件", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'l'}},
-	shortcutOpenProject:       {"openProject", "添加项目", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'o'}},
-	shortcutSave:              {"save", "保存", keymap.Chord{Modifiers: ui.Ctrl, Char: 's'}},
-	shortcutSaveAs:            {"saveAs", "另存为", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 's'}},
-	shortcutCloseTab:          {"closeTab", "关闭当前标签", keymap.Chord{Modifiers: ui.Ctrl, Char: 'w'}},
-	shortcutNextTab:           {"nextTab", "下一个标签", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyTab}},
-	shortcutPreviousTab:       {"previousTab", "上一个标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Key: gfx.KeyTab}},
-	shortcutQuickOpen:         {"quickOpen", "快速打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'p'}},
-	shortcutCommandPalette:    {"commandPalette", "命令面板", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'p'}},
-	shortcutReopenTab:         {"reopenTab", "恢复关闭标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 't'}},
-	shortcutSaveAll:           {"saveAll", "全部保存", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 's'}},
-	shortcutRecentFiles:       {"recentFiles", "最近打开", keymap.Chord{}},
-	shortcutDirectorySearch:   {"directorySearch", "在目录中查找", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'f'}},
-	shortcutDirectoryReplace:  {"directoryReplace", "在目录中替换", keymap.Chord{}},
-	shortcutSelectNext:        {"selectNext", "选择下一个相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 'd'}},
-	shortcutSelectAllMatches:  {"selectAllMatches", "选择全部相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'd'}},
-	shortcutSplitSelection:    {"splitSelection", "拆分为多行选区", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'l'}},
-	shortcutCaretAbove:        {"caretAbove", "向上添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyUp}},
-	shortcutCaretBelow:        {"caretBelow", "向下添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyDown}},
-	shortcutFind:              {"find", "查找", keymap.Chord{Modifiers: ui.Ctrl, Char: 'f'}},
-	shortcutReplace:           {"replace", "替换", keymap.Chord{Modifiers: ui.Ctrl, Char: 'r'}},
-	shortcutFindNext:          {"findNext", "下一个匹配", keymap.Chord{Key: gfx.KeyF3}},
-	shortcutFindPrevious:      {"findPrevious", "上一个匹配", keymap.Chord{Modifiers: ui.Shift, Key: gfx.KeyF3}},
-	shortcutSearchNewline:     {"searchNewline", "查找框内输入换行", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyEnter}},
-	shortcutWrap:              {"wrap", "自动折行", keymap.Chord{Modifiers: ui.Alt, Char: 'z'}},
-	shortcutGotoLine:          {"gotoLine", "转到行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'g'}},
-	shortcutToggleBookmark:    {"toggleBookmark", "切换行书签", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyF2}},
-	shortcutNextBookmark:      {"nextBookmark", "下一个书签", keymap.Chord{Key: gfx.KeyF2}},
-	shortcutPreviousBookmark:  {"previousBookmark", "上一个书签", keymap.Chord{Modifiers: ui.Shift, Key: gfx.KeyF2}},
-	shortcutDuplicateLine:     {"duplicateLine", "复制当前行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'd'}},
-	shortcutDeleteLine:        {"deleteLine", "删除选中行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'l'}},
-	shortcutFiles:             {"files", "文件栏", keymap.Chord{Modifiers: ui.Ctrl, Char: 'b'}},
-	shortcutRevealProjectFile: {"revealProjectFile", "在项目中定位当前文件", keymap.Chord{}},
-	shortcutOutline:           {"outline", "Markdown 大纲", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 'b'}},
-	shortcutGit:               {"git", "Git", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'g'}},
-	shortcutGitCommit:         {"gitCommit", "打开 Git 提交面板", keymap.Chord{}},
-	shortcutTerminal:          {"terminal", "终端", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 't'}},
-	shortcutOpenSettings:      {"settings", "设置", keymap.Chord{Modifiers: ui.Ctrl, Char: ','}},
+	shortcutComplete:           {"complete", "补全文档词 / 关键字", keymap.Chord{Modifiers: ui.Alt, Char: '/'}},
+	shortcutFoldAll:            {"foldAll", "折叠全部", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: '['}},
+	shortcutUnfoldAll:          {"unfoldAll", "展开全部", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: ']'}},
+	shortcutNavigateBack:       {"navigateBack", "返回上一个位置", keymap.Chord{Modifiers: ui.Alt, Key: gfx.KeyLeft}},
+	shortcutNavigateForward:    {"navigateForward", "前进到下一个位置", keymap.Chord{Modifiers: ui.Alt, Key: gfx.KeyRight}},
+	shortcutOrdinarySplit:      {"ordinarySplit", "打开 / 关闭普通分屏", keymap.Chord{Modifiers: ui.Ctrl, Char: '\\'}},
+	shortcutNewFile:            {"newFile", "新建文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'n'}},
+	shortcutNewWindow:          {"newWindow", "新建窗口", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'n'}},
+	shortcutOpenFile:           {"openFile", "打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'o'}},
+	shortcutOpenLink:           {"openLink", "打开链接文件", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'l'}},
+	shortcutOpenProject:        {"openProject", "添加项目", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'o'}},
+	shortcutSave:               {"save", "保存", keymap.Chord{Modifiers: ui.Ctrl, Char: 's'}},
+	shortcutSaveAs:             {"saveAs", "另存为", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 's'}},
+	shortcutCloseTab:           {"closeTab", "关闭当前标签", keymap.Chord{Modifiers: ui.Ctrl, Char: 'w'}},
+	shortcutNextTab:            {"nextTab", "下一个标签", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyTab}},
+	shortcutPreviousTab:        {"previousTab", "上一个标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Key: gfx.KeyTab}},
+	shortcutQuickOpen:          {"quickOpen", "快速打开文件", keymap.Chord{Modifiers: ui.Ctrl, Char: 'p'}},
+	shortcutCommandPalette:     {"commandPalette", "命令面板", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'p'}},
+	shortcutReopenTab:          {"reopenTab", "恢复关闭标签", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 't'}},
+	shortcutSaveAll:            {"saveAll", "全部保存", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 's'}},
+	shortcutRecentFiles:        {"recentFiles", "最近打开", keymap.Chord{Modifiers: ui.Ctrl, Char: 'e'}},
+	shortcutDirectorySearch:    {"directorySearch", "在目录中查找", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'f'}},
+	shortcutDirectoryReplace:   {"directoryReplace", "在目录中替换", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'h'}},
+	shortcutSelectNext:         {"selectNext", "选择下一个相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 'd'}},
+	shortcutSelectAllMatches:   {"selectAllMatches", "选择全部相同内容", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'd'}},
+	shortcutSplitSelection:     {"splitSelection", "拆分为多行选区", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt | ui.Shift, Char: 'l'}},
+	shortcutCaretAbove:         {"caretAbove", "向上添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyUp}},
+	shortcutCaretBelow:         {"caretBelow", "向下添加光标", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Key: gfx.KeyDown}},
+	shortcutFind:               {"find", "查找", keymap.Chord{Modifiers: ui.Ctrl, Char: 'f'}},
+	shortcutReplace:            {"replace", "替换", keymap.Chord{Modifiers: ui.Ctrl, Char: 'r'}},
+	shortcutFindNext:           {"findNext", "下一个匹配", keymap.Chord{Key: gfx.KeyF3}},
+	shortcutFindPrevious:       {"findPrevious", "上一个匹配", keymap.Chord{Modifiers: ui.Shift, Key: gfx.KeyF3}},
+	shortcutSearchNewline:      {"searchNewline", "查找框内输入换行", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyEnter}},
+	shortcutWrap:               {"wrap", "自动折行", keymap.Chord{Modifiers: ui.Alt, Char: 'z'}},
+	shortcutGotoLine:           {"gotoLine", "转到行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'g'}},
+	shortcutToggleBookmark:     {"toggleBookmark", "切换行书签", keymap.Chord{Modifiers: ui.Ctrl, Key: gfx.KeyF2}},
+	shortcutNextBookmark:       {"nextBookmark", "下一个书签", keymap.Chord{Key: gfx.KeyF2}},
+	shortcutPreviousBookmark:   {"previousBookmark", "上一个书签", keymap.Chord{Modifiers: ui.Shift, Key: gfx.KeyF2}},
+	shortcutDuplicateLine:      {"duplicateLine", "复制当前行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'd'}},
+	shortcutDuplicateLineAbove: {"duplicateLineAbove", "向上复制行", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'd'}},
+	shortcutDeleteLine:         {"deleteLine", "删除选中行", keymap.Chord{Modifiers: ui.Ctrl, Char: 'l'}},
+	shortcutFiles:              {"files", "文件栏", keymap.Chord{Modifiers: ui.Ctrl, Char: 'b'}},
+	shortcutRevealProjectFile:  {"revealProjectFile", "在项目中定位当前文件", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'e'}},
+	shortcutOutline:            {"outline", "Markdown 大纲", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 'b'}},
+	shortcutGit:                {"git", "Git", keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'g'}},
+	shortcutGitCommit:          {"gitCommit", "打开 Git 提交面板", keymap.Chord{Modifiers: ui.Ctrl, Char: 'k'}},
+	shortcutTerminal:           {"terminal", "终端", keymap.Chord{Modifiers: ui.Ctrl | ui.Alt, Char: 't'}},
+	shortcutOpenSettings:       {"settings", "设置", keymap.Chord{Modifiers: ui.Ctrl, Char: ','}},
 }
 
 // An absent action uses its default. A zero override explicitly removes its binding.
@@ -184,7 +186,16 @@ func (m *editorApp) shortcutPressed(c ui.C, action editorShortcut) bool {
 	return chord.Valid() && ui.Shortcut(c.Part(editorShortcutSpecs[action].id), chord.Modifiers, chord.Name())
 }
 
+func (m *editorApp) applyShortcutBindings(bindings shortcutOverrides, preset string) {
+	m.keyBindings = bindings
+	m.keyPreset = preset
+	for _, shell := range m.tools.terminals {
+		shell.setToggleShortcut(bindings.chord(shortcutTerminal))
+	}
+}
+
 func (m *editorApp) shortcutHint(label string, action editorShortcut) string {
+	label = m.menuText(label)
 	if binding := m.keyBindings.chord(action).Label(); binding != "" {
 		return label + " · " + binding
 	}
@@ -238,24 +249,13 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 	if m.appSettings.open {
 		return false
 	}
-	if m.vaultActive() {
-		switch action {
-		case shortcutCloseTab:
-			m.closePasswordVault()
-			return true
-		case shortcutFind:
-			m.passwordVault.focusSearch = m.passwordVault.store != nil
-			return true
-		case shortcutNextTab, shortcutPreviousTab:
-			if m.active == nil {
-				return false
-			}
-			m.activate(m.active)
-			return true
-		case shortcutNewFile, shortcutNewWindow, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutGit, shortcutGitCommit, shortcutTerminal, shortcutQuickOpen, shortcutCommandPalette, shortcutReopenTab, shortcutSaveAll, shortcutRecentFiles:
-		default:
-			return false
-		}
+	if m.vaultActive() && m.active == nil && action == shortcutCloseTab {
+		m.closePasswordVault()
+		return true
+	}
+	if v := m.passwordVault; m.vaultActive() && v.store != nil && action == shortcutFind && m.active == nil {
+		v.detailOpen, v.focusSearch = false, true
+		return true
 	}
 	switch action {
 	case shortcutDirectorySearch, shortcutDirectoryReplace:
@@ -300,11 +300,12 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 	case shortcutGit:
 		m.useTool("Git")
 	case shortcutGitCommit:
-		if m.tools.active != "Git" {
+		if !m.tools.gitOpen {
 			m.useTool("Git")
 		} else {
 			m.leavePasswordVault()
 		}
+		m.tools.git.stashPage = ""
 		m.tools.git.focusCommit = true
 	case shortcutTerminal:
 		m.useTool("终端")
@@ -379,11 +380,14 @@ func (m *editorApp) runEditorShortcut(action editorShortcut) bool {
 			m.toggleTextBookmark(tab)
 		case shortcutNextBookmark, shortcutPreviousBookmark:
 			m.stepTextBookmark(tab, action == shortcutNextBookmark)
-		case shortcutDuplicateLine, shortcutDeleteLine:
+		case shortcutDuplicateLine, shortcutDuplicateLineAbove, shortcutDeleteLine:
 			if m.editorSplit == nil && !editableTextSource(tab) && (tab.largeText == nil || tab.largeText.editing == nil) {
 				return false
 			}
 			command := components.CodeEditorDuplicateLinesDown
+			if action == shortcutDuplicateLineAbove {
+				command = components.CodeEditorDuplicateLinesUp
+			}
 			if action == shortcutDeleteLine {
 				command = components.CodeEditorDeleteLines
 			}

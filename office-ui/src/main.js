@@ -1,10 +1,12 @@
 import "./style.css";
 import { bindDocumentOutline, groupHeadings } from "./document-outline.js";
+import { setText, text } from "./i18n.js";
 let editor, workbook, api, univer, ready = false, revision = 0, exportedRevision = 0, composing = false, disposed = false, snapshotQueued = false, timer, exporting = Promise.resolve();
 let refreshWordOutline;
 const requests = new AbortController();
 const state = document.querySelector("#state"), notice = document.querySelector("#notice");
 const page = document.documentElement;
+setText(document.querySelector("#name"), "正在打开…", "Opening…");
 function setTheme(light) {
   page.classList.toggle("light", light);
   if (api && api.isDarkMode() === light) {
@@ -24,7 +26,7 @@ function changed() {
   }
   revision++;
   refreshWordOutline?.();
-  state.textContent = "未保存";
+  setText(state, "未保存", "Unsaved");
   send({ kind: "dirty", revision });
   clearTimeout(timer);
   timer = setTimeout(() => snapshot(0), 900);
@@ -35,7 +37,7 @@ async function snapshot(request) {
   }
   if (composing) {
     if (request) {
-      failure(new Error("请先完成中文选词，再保存或关闭文档"), request);
+      failure(new Error(text("请先完成中文选词，再保存或关闭文档", "Finish composing text before saving or closing the document")), request);
     }
     return;
   }
@@ -53,7 +55,7 @@ async function snapshot(request) {
     }
     try {
       if (composing) {
-        throw new Error("请先完成中文选词，再保存或关闭文档");
+        throw new Error(text("请先完成中文选词，再保存或关闭文档", "Finish composing text before saving or closing the document"));
       }
       if (request) {
         document.querySelector("#busy").hidden = false;
@@ -93,7 +95,7 @@ window.office = { setTheme, flush: snapshot, release() {
   document.querySelector("#busy").hidden = true;
 }, ack(savedRevision) {
   if (revision === savedRevision) {
-    state.textContent = "已保存";
+    setText(state, "已保存", "Saved");
   }
   notice.hidden = true;
 }, get ready() {
@@ -155,10 +157,12 @@ try {
   ]);
   revision = exportedRevision = info.revision || 0;
   const name = document.querySelector("#name");
-  name.textContent = name.title = document.title = info.name;
+  name.title = document.title = info.name;
+  setText(name, info.name);
   document.querySelector("#editor").dataset.kind = info.kind;
   if (info.kind === "xlsx") {
-    const { createUniver, LocaleType, CommandType, ICommandService, sheets, locale } = engine;
+    const { createUniver, LocaleType, CommandType, ICommandService, sheets, locale, englishLocale } = engine;
+    const currentLocale = () => page.lang === "en" ? LocaleType.EN_US : LocaleType.ZH_CN;
     const { UniverSheetsCorePreset } = sheets;
     const unsupported = /^sheet\.command\.(insert-(row|col|multi|range|sheet|defined)|remove-(row|col|sheet|defined)|delete-(row|col|sheet|range)|move-|copy-sheet|duplicate-sheet|append-row|set-(worksheet-name|sheet-name|worksheet-order|worksheet-hide|worksheet-show|defined-name|protection|frozen|tab-color)|add-.*protection|delete-.*protection|cancel-frozen)/;
     const menu = {};
@@ -169,18 +173,20 @@ try {
     }
     const { univer: instance, univerAPI } = createUniver({
       darkMode: !page.classList.contains("light"),
-      locale: LocaleType.ZH_CN,
-      locales: { [LocaleType.ZH_CN]: locale },
+      locale: currentLocale(),
+      locales: { [LocaleType.ZH_CN]: locale, [LocaleType.EN_US]: englishLocale },
       presets: [UniverSheetsCorePreset({ container: "editor", menu })],
     });
     univer = instance;
     api = univerAPI;
     workbook = api.createWorkbook(documentData);
-    const commands = univer.__getInjector().get(ICommandService);
+    const injector = univer.__getInjector();
+    const commands = injector.get(ICommandService);
+    document.addEventListener("editorx-language", () => api.setLocale(currentLocale()));
     commands.beforeCommandExecuted((command) => {
       if (unsupported.test(command.id)) {
-        failure(new Error("当前版本暂不支持此工作表结构操作"));
-        throw new Error("当前版本支持单元格、公式和格式编辑；暂不支持增删或移动工作表、行列。");
+        failure(new Error(text("当前版本暂不支持此工作表结构操作", "This workbook structure operation is unavailable")));
+        throw new Error(text("当前版本支持单元格、公式和格式编辑；暂不支持增删或移动工作表、行列。", "You can edit cells, formulas, and formatting. Sheet, row, and column structure changes are unavailable."));
       }
     });
     commands.onCommandExecuted((command, options) => {
@@ -226,7 +232,36 @@ try {
       },
     });
     page.classList.add(officeTheme);
-    editor = new SuperDoc({ selector: "#editor", document: new File([documentData], info.name, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), contained: true, telemetry: { enabled: false }, uiDisplayFallbackFont: "Segoe UI, Microsoft YaHei, sans-serif", ui: { toolbar: { container: "#toolbar", responsiveTo: "container", strings: { bold: "粗体", "font-family": "字体", "font-size": "字号", italic: "斜体", underline: "下划线", strikethrough: "删除线", "text-color": "文字颜色", "highlight-color": "高亮", search: "查找", link: "链接", image: "插入图片", table: "插入表格", "table-actions": "表格操作", "insert-row-before": "上方插入行", "insert-row-after": "下方插入行", "insert-column-before": "左侧插入列", "insert-column-after": "右侧插入列", "delete-row": "删除行", "delete-column": "删除列", "delete-table": "删除表格", "merge-cells": "合并单元格", "split-cell": "拆分单元格", "text-align": "对齐", "bullet-list": "项目符号", "numbered-list": "编号", "indent-decrease": "减少缩进", "indent-increase": "增加缩进", zoom: "缩放", undo: "撤销", redo: "重做", "clear-formatting": "清除格式", "copy-format": "格式刷", "line-height": "行距", "linked-style-label": "段落格式", "linked-style": "段落样式", ruler: "标尺", "measurement-unit": "度量单位", "document-mode-editing": "编辑", "document-mode-viewing": "查看", "document-mode-suggesting": "修订" } }, comments: false }, onZoomChange: ({ zoom }) => renderZoom(zoom), onReady() {
+    const toolbarLabels = {
+      bold: ["粗体", "Bold"], "font-family": ["字体", "Font"], "font-size": ["字号", "Font Size"],
+      italic: ["斜体", "Italic"], underline: ["下划线", "Underline"], strikethrough: ["删除线", "Strikethrough"],
+      "text-color": ["文字颜色", "Text Color"], "highlight-color": ["高亮", "Highlight Color"],
+      search: ["查找", "Find"], link: ["链接", "Link"], image: ["插入图片", "Insert Image"],
+      table: ["插入表格", "Insert Table"], "table-actions": ["表格操作", "Table Actions"],
+      "insert-row-before": ["上方插入行", "Insert Row Above"], "insert-row-after": ["下方插入行", "Insert Row Below"],
+      "insert-column-before": ["左侧插入列", "Insert Column Left"], "insert-column-after": ["右侧插入列", "Insert Column Right"],
+      "delete-row": ["删除行", "Delete Row"], "delete-column": ["删除列", "Delete Column"], "delete-table": ["删除表格", "Delete Table"],
+      "merge-cells": ["合并单元格", "Merge Cells"], "split-cell": ["拆分单元格", "Split Cell"], "text-align": ["对齐", "Align"],
+      "bullet-list": ["项目符号", "Bulleted List"], "numbered-list": ["编号", "Numbered List"],
+      "indent-decrease": ["减少缩进", "Decrease Indent"], "indent-increase": ["增加缩进", "Increase Indent"],
+      zoom: ["缩放", "Zoom"], undo: ["撤销", "Undo"], redo: ["重做", "Redo"],
+      "clear-formatting": ["清除格式", "Clear Formatting"], "copy-format": ["格式刷", "Format Painter"], "line-height": ["行距", "Line Spacing"],
+      "linked-style-label": ["段落格式", "Paragraph Format"], "linked-style": ["段落样式", "Paragraph Style"],
+      ruler: ["标尺", "Ruler"], "measurement-unit": ["度量单位", "Measurement Unit"],
+      "document-mode-editing": ["编辑", "Editing"], "document-mode-viewing": ["查看", "Viewing"], "document-mode-suggesting": ["修订", "Suggesting"],
+    };
+    const strings = Object.fromEntries(Object.entries(toolbarLabels).map(([key, label]) => [key, text(...label)]));
+    document.addEventListener("editorx-language", () => {
+      for (const [key, labels] of Object.entries(toolbarLabels)) {
+        const translated = text(...labels);
+        strings[key] = translated;
+        const item = editor?.toolbar?.getToolbarItemByName?.(key);
+        for (const ref of [item?.defaultLabel, item?.label, item?.tooltip]) {
+          if (labels.includes(ref?.value)) ref.value = translated;
+        }
+      }
+    });
+    editor = new SuperDoc({ selector: "#editor", document: new File([documentData], info.name, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), contained: true, telemetry: { enabled: false }, uiDisplayFallbackFont: "Segoe UI, Microsoft YaHei, sans-serif", ui: { toolbar: { container: "#toolbar", responsiveTo: "container", strings }, comments: false }, onZoomChange: ({ zoom }) => renderZoom(zoom), onReady() {
       ready = true;
       renderZoom(editor?.getZoom() ?? 100);
       zoom.hidden = false;
@@ -245,8 +280,9 @@ try {
           behavior: "instant",
         });
         return result.success;
-      }, "暂无标题。为段落应用标题样式后，标题会显示在这里。");
-      state.textContent = info.dirty ? "未保存" : "就绪";
+      }, () => text("暂无标题。为段落应用标题样式后，标题会显示在这里。", "Apply heading styles to show paragraphs in the outline."));
+      if (info.dirty) setText(state, "未保存", "Unsaved");
+      else setText(state, "就绪", "Ready");
       send({ kind: "ready" });
     }, onEditorUpdate: changed, onContentError: ({ error }) => failure(error), onException: (event) => {
       if (event.error) {
@@ -255,7 +291,8 @@ try {
     } });
   }
   if (ready) {
-    state.textContent = info.dirty ? "未保存" : "就绪";
+    if (info.dirty) setText(state, "未保存", "Unsaved");
+    else setText(state, "就绪", "Ready");
     send({ kind: "ready" });
   }
 } catch (error) {

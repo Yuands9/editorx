@@ -24,15 +24,17 @@ const (
 
 type editorUpdateCache struct {
 	CheckedAt      time.Time     `json:"checkedAt"`
+	APIRetryAfter  time.Time     `json:"apiRetryAfter,omitzero"`
 	ETag           string        `json:"etag,omitempty"`
 	SkippedVersion string        `json:"skippedVersion,omitempty"`
 	Release        editorRelease `json:"release"`
 }
 
 type editorUpdateCheckResult struct {
-	release editorRelease
-	etag    string
-	err     error
+	release       editorRelease
+	etag          string
+	apiRetryAfter time.Time
+	err           error
 }
 
 type editorUpdateCheck struct {
@@ -95,10 +97,13 @@ func readEditorUpdateCache(directory, current string) (editorUpdateCache, error)
 	}
 	tag, valid := strings.CutPrefix(release.Page, editorRepositoryURL+"/releases/tag/")
 	if !valid || strings.TrimPrefix(tag, "v") != release.Version {
-		return editorUpdateCache{}, errors.New("更新缓存的版本地址无效")
+		return editorUpdateCache{}, errors.New(uiText("更新缓存的版本地址无效"))
 	}
-	if release.comparison > 0 && (release.Download != editorRepositoryURL+"/releases/download/"+tag+"/"+updateExecutable || release.Size <= 0 || release.Size > maxUpdateBytes || release.Checksum == [sha256.Size]byte{}) {
-		return editorUpdateCache{}, errors.New("更新缓存的下载信息无效")
+	if release.PageOnly {
+		cache.ETag = ""
+		release.Download, release.Size, release.Checksum = "", 0, [sha256.Size]byte{}
+	} else if release.comparison > 0 && (release.Download != editorRepositoryURL+"/releases/download/"+tag+"/"+updateExecutable || release.Size <= 0 || release.Size > maxUpdateBytes || release.Checksum == [sha256.Size]byte{}) {
+		return editorUpdateCache{}, errors.New(uiText("更新缓存的下载信息无效"))
 	}
 	return cache, nil
 }
@@ -172,8 +177,8 @@ func (m *editorApp) startEditorUpdateCheck(manual bool) {
 	cache := state.cache
 	go func() {
 		defer cancel()
-		release, err := fetchEditorRelease(ctx, editorUpdateHTTP, latestReleaseAPI, version.Number, &cache)
-		job.result <- editorUpdateCheckResult{release, cache.ETag, err}
+		release, err := checkEditorRelease(ctx, editorUpdateHTTP, latestReleaseAPI, latestReleasePage, version.Number, &cache)
+		job.result <- editorUpdateCheckResult{release: release, etag: cache.ETag, apiRetryAfter: cache.APIRetryAfter, err: err}
 		m.notifyEditorUpdate()
 	}()
 }
@@ -192,23 +197,23 @@ func (d *editorDesktop) checkEditorUpdates(now time.Time) {
 
 func (m *editorApp) downloadEditorRelease() {
 	state := m.editorUpdates()
-	if state.download != nil || state.staged != "" || state.cache.Release.comparison <= 0 || hasWordEditor {
+	if state.download != nil || state.staged != "" || state.cache.Release.comparison <= 0 || state.cache.Release.PageOnly || hasWordEditor {
 		return
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		state.problem = "无法定位当前程序：" + err.Error()
+		state.problem = uiText("无法定位当前程序：") + err.Error()
 		return
 	}
 	file, err := os.CreateTemp(filepath.Dir(executable), ".editorx-update-*.exe")
 	if err != nil {
-		state.problem = "无法在程序目录创建更新文件：" + err.Error()
+		state.problem = uiText("无法在程序目录创建更新文件：") + err.Error()
 		return
 	}
 	path := file.Name()
 	if err := file.Close(); err != nil {
 		os.Remove(path)
-		state.problem = "无法准备下载文件：" + err.Error()
+		state.problem = uiText("无法准备下载文件：") + err.Error()
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -234,14 +239,15 @@ func (m *editorApp) updateProgress() {
 		case result := <-state.check.result:
 			state.check = nil
 			state.cache.CheckedAt = time.Now()
+			state.cache.APIRetryAfter = result.apiRetryAfter
 			state.nextCheck = state.cache.CheckedAt.Add(editorUpdateInterval)
 			if result.err == nil {
 				state.cache.Release, state.cache.ETag = result.release, result.etag
 			} else if state.manual {
-				state.problem = "检查更新失败：" + result.err.Error()
+				state.problem = uiText("检查更新失败：") + result.err.Error()
 			}
 			if err := state.save(m.dataDirectory); err != nil && state.manual {
-				state.problem = "无法保存更新检查记录：" + err.Error()
+				state.problem = uiText("无法保存更新检查记录：") + err.Error()
 			}
 		default:
 		}
@@ -252,7 +258,7 @@ func (m *editorApp) updateProgress() {
 			state.download, state.progress = nil, nil
 			if err != nil {
 				state.staged = ""
-				state.problem = "下载更新失败：" + err.Error()
+				state.problem = uiText("下载更新失败：") + err.Error()
 			}
 		default:
 		}
@@ -279,7 +285,7 @@ func (m *editorApp) skipEditorUpdate() {
 	state.cache.SkippedVersion = state.cache.Release.Version
 	if err := state.save(m.dataDirectory); err != nil {
 		state.cache.SkippedVersion = previous
-		state.problem = fmt.Sprintf("无法保存跳过记录：%v", err)
+		state.problem = fmt.Sprintf(uiText("无法保存跳过记录：%v"), err)
 		return
 	}
 	m.cancelEditorDownload()

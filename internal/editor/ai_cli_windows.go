@@ -39,10 +39,10 @@ func (settings aiSettings) cliExecutable() (string, error) {
 		extension := strings.ToLower(filepath.Ext(path))
 		canUseScript := len(otherCLIPrograms[settings.Provider]) != 0
 		if !filepath.IsAbs(path) || extension != ".exe" && !(canUseScript && (extension == ".js" || extension == ".mjs")) {
-			return "", errors.New("请填写 CLI 的完整可执行文件路径")
+			return "", errors.New(uiText("请填写 CLI 的完整可执行文件路径"))
 		}
 		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-			return "", errors.New("找不到指定的 CLI 可执行文件")
+			return "", errors.New(uiText("找不到指定的 CLI 可执行文件"))
 		}
 		return path, nil
 	}
@@ -68,7 +68,7 @@ func (settings aiSettings) cliExecutable() (string, error) {
 	if path, err := exec.LookPath(name + ".exe"); err == nil {
 		return path, nil
 	}
-	return "", fmt.Errorf("未找到 %s，请安装后填写可执行文件路径", aiProviderLabel(settings.Provider))
+	return "", fmt.Errorf(uiText("未找到 %s，请安装后填写可执行文件路径"), aiProviderLabel(settings.Provider))
 }
 
 func (settings aiSettings) cliArguments(replyFile string, effort aiReasoning) []string {
@@ -168,19 +168,19 @@ func (settings aiSettings) runCLI(ctx context.Context, system string, messages [
 		detail := strings.ToLower(stderr.String() + " " + stdout.String())
 		if strings.Contains(detail, "not logged in") || strings.Contains(detail, "unauthorized") ||
 			strings.Contains(detail, "authentication required") {
-			return aiCompletion{}, fmt.Errorf("请先在终端登录 %s", aiProviderLabel(settings.Provider))
+			return aiCompletion{}, fmt.Errorf(uiText("请先在终端登录 %s"), aiProviderLabel(settings.Provider))
 		}
 		if strings.Contains(detail, "unexpected argument") || strings.Contains(detail, "unknown option") {
-			return aiCompletion{}, fmt.Errorf("当前 %s 版本不支持所需的命令选项，请更新 CLI", aiProviderLabel(settings.Provider))
+			return aiCompletion{}, fmt.Errorf(uiText("当前 %s 版本不支持所需的命令选项，请更新 CLI"), aiProviderLabel(settings.Provider))
 		}
-		return aiCompletion{}, fmt.Errorf("%s 执行失败（%w），请检查登录状态和模型 ID", aiProviderLabel(settings.Provider), err)
+		return aiCompletion{}, fmt.Errorf(uiText("%s 执行失败（%w），请检查登录状态和模型 ID"), aiProviderLabel(settings.Provider), err)
 	}
 
 	reply := aiCompletion{Model: settings.modelLabel(settings.Model)}
 	if settings.Provider == aiCodexCLI {
 		file, err := os.Open(output)
 		if errors.Is(err, os.ErrNotExist) {
-			return aiCompletion{}, errors.New("Codex CLI 没有生成回复")
+			return aiCompletion{}, errors.New(uiText("Codex CLI 没有生成回复"))
 		}
 		if err != nil {
 			return aiCompletion{}, err
@@ -202,7 +202,7 @@ func (settings aiSettings) runCLI(ctx context.Context, system string, messages [
 		IsError bool   `json:"is_error"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result.IsError {
-		return aiCompletion{}, errors.New("Claude Code CLI 未返回有效回复，请检查登录状态和模型 ID")
+		return aiCompletion{}, errors.New(uiText("Claude Code CLI 未返回有效回复，请检查登录状态和模型 ID"))
 	}
 	reply.Text = result.Result
 	return reply, nil

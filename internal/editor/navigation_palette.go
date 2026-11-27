@@ -46,15 +46,17 @@ func (m *editorApp) openNavigationPalette(commands bool) {
 	m.fileMenu = false
 	if commands {
 		for _, action := range workflowActions {
-			state.items = append(state.items, navigationItem{label: action.label, search: strings.ToLower(action.label + " " + action.id), workflow: action.id, disabled: !m.workflowEnabled(action.id)})
+			label := m.menuText(action.label)
+			state.items = append(state.items, navigationItem{label: label, search: strings.ToLower(label + " " + action.label + " " + action.id), workflow: action.id, disabled: !m.workflowEnabled(action.id)})
 		}
 		for action := shortcutNewFile; action < editorShortcutCount; action++ {
 			if action == shortcutSearchNewline {
 				continue
 			}
 			spec := editorShortcutSpecs[action]
-			state.items = append(state.items, navigationItem{label: spec.label, detail: m.keyBindings.chord(action).Label(),
-				search: strings.ToLower(spec.label + " " + spec.id), action: action, disabled: !m.navigationCommandEnabled(action)})
+			label := m.menuText(spec.label)
+			state.items = append(state.items, navigationItem{label: label, detail: m.keyBindings.chord(action).Label(),
+				search: strings.ToLower(label + " " + spec.label + " " + spec.id), action: action, disabled: !m.navigationCommandEnabled(action)})
 		}
 		return
 	}
@@ -99,7 +101,7 @@ func (m *editorApp) navigationCommandEnabled(action editorShortcut) bool {
 		shortcutFiles, shortcutGit, shortcutGitCommit, shortcutTerminal, shortcutOpenSettings:
 		return true
 	}
-	if tab == nil || m.vaultActive() {
+	if tab == nil {
 		return false
 	}
 	switch action {
@@ -111,7 +113,7 @@ func (m *editorApp) navigationCommandEnabled(action editorShortcut) bool {
 		return !tab.readOnlyPreview()
 	case shortcutSelectNext, shortcutSelectAllMatches, shortcutSplitSelection, shortcutCaretAbove, shortcutCaretBelow:
 		return editableTextSource(tab) && tab.largeText == nil
-	case shortcutDuplicateLine, shortcutDeleteLine:
+	case shortcutDuplicateLine, shortcutDuplicateLineAbove, shortcutDeleteLine:
 		return m.editorSplit != nil || editableTextSource(tab) || tab.largeText != nil && tab.largeText.editing != nil
 	case shortcutComplete:
 		return m.editorSplit != nil || editableTextSource(tab)
@@ -275,12 +277,12 @@ func (m *editorApp) navigationPaletteDialog(c ui.C) {
 		}
 	}
 	state.filter()
-	title, placeholder := "快速打开文件", "输入文件名或路径片段"
+	title, placeholder := uiText("快速打开文件"), uiText("输入文件名或路径片段")
 	if state.commands {
-		title, placeholder = "命令面板", "搜索命令，例如：保存、替换、settings"
+		title, placeholder = uiText("命令面板"), uiText("搜索命令，例如：保存、替换、settings")
 	}
-	dismissed := ui.ModalWith(c, &state.open, title, ui.ModalSpec{Width: min(640, c.Bounds().Width-32)}, func() {
-		input := ui.TextField(c.Part("query"), &state.query, title+"搜索", placeholder).FillWidth().Height(34).OnKey(func(event gfx.KeyEvent) gfx.EventResult {
+	dismissed := ui.ModalWith(c, &state.open, m.menuText(title), ui.ModalSpec{Width: min(640, c.Bounds().Width-32)}, func() {
+		input := ui.TextField(c.Part("query"), &state.query, m.menuText(title+"搜索"), m.menuText(placeholder)).FillWidth().Height(34).OnKey(func(event gfx.KeyEvent) gfx.EventResult {
 			if event.Release || event.Modifiers != 0 {
 				return gfx.EventResult{}
 			}
@@ -330,7 +332,7 @@ func (m *editorApp) navigationPaletteDialog(c ui.C) {
 					ui.Text(row.C, item.detail).FontSize(11).Muted().FillWidth().Ellipsis()
 				})
 				if item.disabled {
-					ui.Text(row.C, "当前不可用").FontSize(11).Muted()
+					ui.Text(row.C, m.menuText("当前不可用")).FontSize(11).Muted()
 				}
 			})
 			if box.Clicked() {
@@ -340,15 +342,15 @@ func (m *editorApp) navigationPaletteDialog(c ui.C) {
 		if index, submitted := state.list.Submitted(); submitted {
 			c.After(func() { m.chooseNavigationItem(index) })
 		}
-		hint := fmt.Sprintf("%d 项 · ↑↓ 选择 · Enter 打开 · Esc 返回", len(state.matches))
+		hint := fmt.Sprintf(uiText("%d 项 · ↑↓ 选择 · Enter 打开 · Esc 返回"), len(state.matches))
 		if len(state.matches) == 0 {
-			hint = "没有匹配项"
+			hint = uiText("没有匹配项")
 		}
 		if state.scan != nil {
-			hint += " · 正在扫描项目…"
+			hint += uiText(" · 正在扫描项目…")
 		}
 		if state.partial {
-			hint += " · 部分项目未列出，可用打开文件选择"
+			hint += uiText(" · 部分项目未列出，可用打开文件选择")
 		}
 		ui.Wrap(c, hint).FillWidth().Muted().FontSize(11)
 	}, nil)

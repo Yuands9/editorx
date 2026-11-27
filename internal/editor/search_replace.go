@@ -110,7 +110,7 @@ func (s *documentSearch) replaceCurrent() {
 			s.target.view.Snapshot.CurrentMark = text.Span{}
 		}
 	}
-	s.message = "已替换 1 处"
+	s.message = uiText("已替换 1 处")
 }
 
 func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
@@ -147,7 +147,7 @@ func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
 		}
 		editor := tab.source.text
 		if _, composing := editor.Composition(); composing {
-			s.message = "请先完成中文输入，再替换"
+			s.message = uiText("请先完成中文输入，再替换")
 			return
 		}
 		source := editor.String()
@@ -160,7 +160,7 @@ func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
 			continue
 		}
 		if err := editor.ValidateReplaceRanges(edits, text.ReplaceRangesOptions{}); err != nil {
-			m.fail(fmt.Errorf("无法替换 %s：%w", tab.title(), err))
+			m.fail(fmt.Errorf(uiText("无法替换 %s：%w"), tab.title(), err))
 			return
 		}
 		files = append(files, fileReplacement{editor: editor, edits: edits})
@@ -174,11 +174,11 @@ func (m *editorApp) replaceAll(t *editorTab, allOpen bool) {
 		}
 	}
 	if count == 0 {
-		s.message = "没有需要替换的内容"
+		s.message = uiText("没有需要替换的内容")
 		return
 	}
 	s.refresh()
-	s.message = fmt.Sprintf("已替换 %d 处 · %d 个文件", count, len(files))
+	s.message = fmt.Sprintf(uiText("已替换 %d 处 · %d 个文件"), count, len(files))
 }
 
 func searchReplacementRanges(editor *text.Editor, matches []find.Edit) []text.Replacement {

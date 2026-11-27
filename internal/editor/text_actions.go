@@ -34,7 +34,7 @@ func (m *editorApp) gotoLineDialog(c ui.C) {
 	if !state.open || tab == nil {
 		return
 	}
-	total, hint := 0, "正在读取行号…"
+	total, hint := 0, uiText("正在读取行号…")
 	if large := tab.largeText; large == nil {
 		total = text.LineCount(tab.source.text.String())
 	} else if large.editing != nil {
@@ -45,12 +45,12 @@ func (m *editorApp) gotoLineDialog(c ui.C) {
 		hint = large.indexError
 	}
 	if total > 0 {
-		hint = fmt.Sprintf("共 %d 行", total)
+		hint = fmt.Sprintf(uiText("共 %d 行"), total)
 	}
 	submitted := false
-	ui.ModalWith(c, &state.open, "转到行", ui.ModalSpec{Width: 340}, func() {
+	ui.ModalWith(c, &state.open, uiText("转到行"), ui.ModalSpec{Width: 340}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			field := ui.TextField(c, &state.field, "行号", "输入行号").FillWidth().AutoFocus()
+			field := ui.TextField(c, &state.field, uiText("行号"), uiText("输入行号")).FillWidth().AutoFocus()
 			submitted = field.Submitted()
 			ui.Text(c, hint).Muted().FontSize(12)
 			if state.problem != "" {
@@ -58,16 +58,16 @@ func (m *editorApp) gotoLineDialog(c ui.C) {
 			}
 		})
 	}, func() {
-		if ui.Button(c, "取消").Ghost().Clicked() {
+		if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 			state.open = false
 		}
-		button := ui.Button(c, "跳转").Disabled(total == 0)
+		button := ui.Button(c, uiText("跳转")).Disabled(total == 0)
 		if total == 0 || !(button.Clicked() || submitted) {
 			return
 		}
 		line, err := strconv.Atoi(strings.TrimSpace(state.field.Text()))
 		if err != nil || line < 1 || line > total {
-			state.problem = "请输入文件范围内的行号"
+			state.problem = uiText("请输入文件范围内的行号")
 			return
 		}
 		c.After(func() {
@@ -86,13 +86,13 @@ func (m *editorApp) revealTextLine(tab *editorTab, line int) error {
 	if state := tab.largeText; state != nil {
 		if edit := state.editing; edit != nil {
 			if state.busyEditing() {
-				return fmt.Errorf("请等待当前大文件操作完成")
+				return fmt.Errorf("%s", uiText("请等待当前大文件操作完成"))
 			}
 			if _, composing := pane.text.Composition(); composing {
-				return fmt.Errorf("请先完成中文选词")
+				return fmt.Errorf("%s", uiText("请先完成中文选词"))
 			}
 			if line < 1 || line > edit.revision.breaks+1 {
-				return fmt.Errorf("行号超出文件范围")
+				return fmt.Errorf("%s", uiText("行号超出文件范围"))
 			}
 			caret, err := edit.revision.lineStart(line - 1)
 			if err != nil {
@@ -101,7 +101,7 @@ func (m *editorApp) revealTextLine(tab *editorTab, line int) error {
 			state.found, state.search, state.selectedResult = -1, nil, -1
 			tab.moveLargeEditCaret(caret, false)
 			pane.focus = true
-			m.status = fmt.Sprintf("已跳到第 %d 行", line)
+			m.status = fmt.Sprintf(uiText("已跳到第 %d 行"), line)
 			return nil
 		}
 		page, position, err := state.lines.goToLine(tab.doc.path, tab.doc.encoding, line)
@@ -114,7 +114,7 @@ func (m *editorApp) revealTextLine(tab *editorTab, line int) error {
 	} else {
 		value := pane.text.String()
 		if line < 1 || line > text.LineCount(value) {
-			return fmt.Errorf("行号超出文件范围")
+			return fmt.Errorf("%s", uiText("行号超出文件范围"))
 		}
 		offset = text.OffsetAt(value, text.Position{Line: line - 1})
 		if tab.format() == "Markdown" && tab.markdownMode == "预览" {
@@ -127,7 +127,7 @@ func (m *editorApp) revealTextLine(tab *editorTab, line int) error {
 	pane.text.MoveTo(pane.text.RuneIndex(offset), false)
 	pane.view.Code.Reveal(offset)
 	pane.focus = true
-	m.status = fmt.Sprintf("已跳到第 %d 行", line)
+	m.status = fmt.Sprintf(uiText("已跳到第 %d 行"), line)
 	return nil
 }
 
@@ -201,24 +201,24 @@ func rewriteTextSelection(tab *editorTab, action textRewrite) bool {
 }
 
 func (m *editorApp) textActions(c ui.C, menu *ui.MenuItems, tab *editorTab) {
-	if m.shortcutMenu(menu.Item("转到行…").Disabled(!tab.canFind()), shortcutGotoLine).Clicked() {
+	if m.shortcutMenu(menu.Item(m.menuText("转到行…")).Disabled(!tab.canFind()), shortcutGotoLine).Clicked() {
 		c.After(m.openGotoLine)
 	}
-	menu.Sub("行书签", func(items *ui.MenuItems) {
+	menu.Sub(m.menuText("行书签"), func(items *ui.MenuItems) {
 		for _, entry := range []struct {
 			label    string
 			shortcut editorShortcut
 		}{{"切换当前行书签", shortcutToggleBookmark}, {"下一个书签", shortcutNextBookmark}, {"上一个书签", shortcutPreviousBookmark}} {
-			if m.shortcutMenu(items.Item(entry.label), entry.shortcut).Disabled(!tab.canFind()).Clicked() {
+			if m.shortcutMenu(items.Item(m.menuText(entry.label)), entry.shortcut).Disabled(!tab.canFind()).Clicked() {
 				c.After(func() { m.runEditorShortcut(entry.shortcut) })
 			}
 		}
 	})
 	current := &tab.source.view.Snapshot
-	if menu.Item("显示空白字符").Checked(current.ShowWhitespace).Disabled(!tab.canFind()).Clicked() {
+	if menu.Item(m.menuText("显示空白字符")).Checked(current.ShowWhitespace).Disabled(!tab.canFind()).Clicked() {
 		current.ShowWhitespace = !current.ShowWhitespace
 	}
-	if menu.Item("显示换行符").Checked(current.ShowEOL).Disabled(!tab.canFind()).Clicked() {
+	if menu.Item(m.menuText("显示换行符")).Checked(current.ShowEOL).Disabled(!tab.canFind()).Clicked() {
 		current.ShowEOL = !current.ShowEOL
 	}
 	menu.Separator()
@@ -234,7 +234,7 @@ func (m *editorApp) textActions(c ui.C, menu *ui.MenuItems, tab *editorTab) {
 		{"删除选中行", components.CodeEditorDeleteLines, shortcutDeleteLine},
 	} {
 		largeEditable := tab.largeText != nil && tab.largeText.editing != nil && !tab.largeText.busyEditing()
-		if m.shortcutMenu(menu.Item(item.label).Disabled(!editable && !largeEditable), item.shortcut).Clicked() {
+		if m.shortcutMenu(menu.Item(m.menuText(item.label)).Disabled(!editable && !largeEditable), item.shortcut).Clicked() {
 			c.After(func() {
 				if largeEditable {
 					tab.largeEditCodeCommand(item.command)
@@ -255,7 +255,7 @@ func (m *editorApp) textActions(c ui.C, menu *ui.MenuItems, tab *editorTab) {
 	} {
 		selection := tab.source.text.Selection()
 		disabled := !editable || item.action <= textLowercase && selection.Start == selection.End
-		if menu.Item(item.label).Disabled(disabled).Clicked() {
+		if menu.Item(m.menuText(item.label)).Disabled(disabled).Clicked() {
 			c.After(func() { rewriteTextSelection(tab, item.action) })
 		}
 	}

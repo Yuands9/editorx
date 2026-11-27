@@ -39,26 +39,42 @@ var shellIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.
 }}
 
 type projectTools struct {
-	active    string
-	split     ui.SplitterState
-	git       gitPanelState
-	terminal  *localShell
-	terminals []*localShell
+	gitOpen, terminalOpen bool
+	split, gitSplit       ui.SplitterState
+	git                   gitPanelState
+	terminal              *localShell
+	terminals             []*localShell
 }
 
 type gitPanelState struct {
-	directory, remote, message, issue string
-	snapshot                          gitStatus
-	request                           *ui.EffectState[gitResult, int]
-	commit, address                   ui.Field
-	focusCommit                       bool
-	list                              ui.ListState
-	branches                          gitBranchDialogs
-	fileHashes                        map[string][32]byte
-	indexList                         ui.ListState
-	review                            *gitReviewState
-	watch                             gitWatchState
-	conflict                          *editorTab
+	directory, remote, message, issue                                              string
+	snapshot                                                                       gitStatus
+	request                                                                        *ui.EffectState[gitResult, int]
+	commit, address                                                                ui.Field
+	commitAI                                                                       gitCommitAIState
+	focusCommit                                                                    bool
+	tree                                                                           ui.TreeState
+	branches                                                                       gitBranchDialogs
+	fileHashes                                                                     map[string][32]byte
+	review                                                                         *gitReviewState
+	watch                                                                          gitWatchState
+	conflict                                                                       *editorTab
+	rows                                                                           []gitChangeRow
+	rowsEnglish                                                                    bool
+	collapsed                                                                      map[string]bool
+	selectedFile                                                                   string
+	commitSelection                                                                map[string]bool
+	moreCommitMenu                                                                 bool
+	requestAction                                                                  gitAction
+	projectScope                                                                   projectGitScope
+	flatChanges, groupRepository, groupModule, showIgnored, collapseAll, groupMenu bool
+	ignored, commitMessages, stashes                                               []string
+	amend, messageMenu, stashConfirm                                               bool
+	stashPage                                                                      string
+	stashList                                                                      ui.ListState
+	stashMessage                                                                   ui.Field
+	pushAfterCommit, pushBranch                                                    string
+	pushingCommit                                                                  bool
 }
 
 func (m *editorApp) toolDirectories() []string {
@@ -97,20 +113,26 @@ func (m *editorApp) toolDirectory() string {
 
 func (m *editorApp) useTool(name string) {
 	returningFromVault := m.leavePasswordVault()
-	if m.tools.active == name && !returningFromVault {
-		m.tools.active = ""
-		m.focusActiveSource()
-		return
-	}
-	m.tools.active = name
-	if name == "Git" && m.tools.git.request == nil {
+	if name == "Git" {
+		if m.tools.gitOpen && !returningFromVault {
+			m.tools.gitOpen = false
+			m.focusActiveSource()
+			return
+		}
 		dir := m.tools.git.directory
 		if dir == "" {
 			dir = m.toolDirectory()
 		}
 		m.openProjectGit(dir)
+		return
 	}
 	if name == "终端" {
+		if m.tools.terminalOpen && !returningFromVault {
+			m.tools.terminalOpen = false
+			m.focusActiveSource()
+			return
+		}
+		m.tools.terminalOpen = true
 		if m.tools.terminal == nil {
 			m.openLocalShell(m.toolDirectory())
 		} else {
@@ -119,9 +141,23 @@ func (m *editorApp) useTool(name string) {
 	}
 }
 
+func (m *editorApp) showProjectGitPanel() {
+	m.leavePasswordVault()
+	if m.ai.open {
+		m.toggleAIPanel()
+	}
+	m.translation, m.templatePanel = nil, nil
+	if !m.tools.gitOpen {
+		m.tools.gitOpen = true
+		if m.tools.gitSplit.Ratio == 0 {
+			m.tools.gitSplit = m.newAssetSplit()
+		}
+	}
+}
+
 func (m *editorApp) openProjectGit(path string) {
 	git := &m.tools.git
-	m.tools.active = "Git"
+	m.showProjectGitPanel()
 	if git.request != nil {
 		return
 	}
@@ -139,6 +175,9 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 	if git.request != nil || git.directory == "" || git.review != nil && git.review.apply != nil {
 		return
 	}
+	if action != gitRefresh {
+		git.commitAI.request, git.commitAI.paths, git.commitAI.original = nil, nil, ""
+	}
 	directory := git.directory
 	var openFiles []string
 	if action.updatesOpenFiles() {
@@ -150,7 +189,11 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 			}
 		}
 	}
-	git.issue, git.message = "", "正在"+string(action)+"…"
+	git.issue, git.message = "", fmt.Sprintf(uiText("正在执行 %s…"), uiText(string(action)))
+	git.requestAction = action
+	if action == gitRefresh {
+		git.message = ""
+	}
 	git.request = ui.NewEffect[gitResult, int](func(ctx context.Context) (gitResult, error) {
 		return runProjectGit(ctx, directory, action, input, paths, openFiles), nil
 	})
@@ -158,6 +201,7 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 
 func (m *editorApp) updateProjectGit(c ui.C) {
 	git := &m.tools.git
+	m.updateGitCommitAI(c.Part("git-commit-ai"))
 	m.updateGitWatch(c.Part("git-watch"))
 	if git.request == nil {
 		return
@@ -168,19 +212,57 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 		return
 	}
 	git.request = nil
+	scope := git.projectScope
+	git.projectScope = projectGitScope{}
 	fileHashes := git.fileHashes
 	git.fileHashes = nil
 	if err != nil {
 		git.issue = err.Error()
 		return
 	}
+	if scope.path != "" && result.statusValid && result.status.root == "" {
+		git.issue = uiText("此目录还没有 Git 仓库")
+		return
+	}
+	if scope.path != "" && result.statusValid && result.status.root != "" && !strings.EqualFold(git.snapshot.root, result.status.root) {
+		git.watch.close()
+		*git = gitPanelState{directory: result.status.root}
+	}
 	git.issue, git.message = result.fail, ""
+	switch result.action {
+	case gitListIgnored:
+		git.ignored, git.rows = result.items, nil
+		return
+	case gitListMessages:
+		git.commitMessages = result.items
+		if git.amend && strings.TrimSpace(git.commit.Text()) == "" && len(git.commitMessages) > 0 {
+			git.commit.SetText(strings.TrimSpace(git.commitMessages[0]))
+		}
+		return
+	case gitListStashes:
+		git.stashes = result.items
+		git.stashList = ui.ListState{}
+		return
+	}
 	if result.action == gitListBranches {
 		git.branches.available = result.branches
 		git.branches.list = ui.ListState{}
 		return
 	}
-	git.snapshot = result.status
+	if result.statusValid {
+		git.snapshot, git.rows = result.status, nil
+	}
+	if result.statusValid && len(git.commitSelection) > 0 {
+		present := make(map[string]bool, len(git.snapshot.changes))
+		for _, change := range git.snapshot.changes {
+			present[change.path] = true
+		}
+		for path := range git.commitSelection {
+			if !present[path] {
+				delete(git.commitSelection, path)
+			}
+		}
+	}
 	m.invalidator.Invalidate()
 	if !slices.Contains(git.snapshot.remotes, git.remote) {
 		git.remote = ""
@@ -191,57 +273,81 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 			git.remote = "origin"
 		}
 	}
+	if result.action == gitPush && git.pushingCommit {
+		git.pushingCommit = false
+		if result.fail != "" {
+			git.issue = uiText("已提交，但推送失败：") + result.fail
+		}
+	}
 	if result.fail != "" {
+		if result.action == gitCommit || result.action == gitAmend || result.action == gitCommitSelected || result.action == gitAmendSelected {
+			git.pushAfterCommit, git.pushBranch = "", ""
+			if result.committed {
+				git.commit.SetText("")
+				git.amend, git.commitMessages = false, nil
+			}
+		}
 		return
 	}
-	if result.action == gitCommit {
+	if result.action == gitCommit || result.action == gitAmend || result.action == gitCommitSelected || result.action == gitAmendSelected {
 		git.commit.SetText("")
+		git.amend, git.commitMessages = false, nil
+		remote, branch := git.pushAfterCommit, git.pushBranch
+		git.pushAfterCommit, git.pushBranch = "", ""
+		if remote != "" {
+			if branch == result.status.branch && slices.Contains(result.status.remotes, remote) {
+				git.pushingCommit = true
+				m.startGit(gitPush, remote, nil)
+				return
+			}
+			git.issue = uiText("已提交。分支或远程仓库已更改，请确认后手动推送。")
+		}
+	}
+	if scope.path != "" {
+		m.applyProjectGitScope(scope)
+		return
 	}
 	if result.action == gitAddRemote {
 		git.address.SetText("")
 	}
 	if result.action == gitCreateBranch {
+		git.commitSelection = nil
 		git.branches.creating = false
 	}
 	if result.action == gitSwitchBranch {
+		git.commitSelection = nil
 		git.branches.switching = false
 	}
 	if result.action.updatesOpenFiles() {
 		m.refreshGitFiles(result, fileHashes)
 	}
 	if result.action != gitRefresh {
-		git.message = string(result.action) + "完成"
+		git.message = fmt.Sprintf(uiText("%s已完成"), uiText(string(result.action)))
+	}
+	if git.stashPage != "" && (result.action == gitStashSave || result.action == gitStashApply || result.action == gitStashPop) {
+		git.stashMessage.SetText("")
+		m.startGit(gitListStashes, "", nil)
+	} else if git.showIgnored && (result.action == gitRefresh || result.action == gitStage || result.action == gitStageAll || result.action == gitUnstage) {
+		m.startGit(gitListIgnored, "", nil)
 	}
 }
 
-func (m *editorApp) projectToolsPanel(c ui.C, blocked bool) {
+func (m *editorApp) terminalPanel(c ui.C, blocked bool) {
 	ui.Column(c).FillWidth().Grow(1).MinHeight(0).MarginX(workspaceInset).MarginBottom(workspaceInset).
 		Background(m.theme.Background).Radius(12).Clip().Children(func() {
 		ui.Row(c).FillWidth().Height(34).PadX(8).Gap(4).Items(ui.Center).Children(func() {
-			for _, mode := range []string{"Git", "终端"} {
-				button := ui.Button(c.Key(mode), mode).Ghost().Height(28).FontSize(12).Disabled(blocked)
-				if m.tools.active == mode {
-					button.Secondary()
-				}
-				if button.Clicked() && m.tools.active != mode {
-					c.After(func() { m.useTool(mode) })
-				}
-			}
-			if m.tools.active == "终端" && m.tools.terminal != nil {
+			ui.Text(c, uiText("终端")).Bold().FontSize(12)
+			if m.tools.terminal != nil {
 				m.shellActions(c.Part("shell-controls"), blocked)
 			} else {
 				ui.Slot(c).Grow(1)
 			}
-			if ui.Button(c, "收起底部面板").Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
-				c.After(func() { m.tools.active = ""; m.focusActiveSource() })
+			if ui.Button(c, uiText("收起底部面板")).Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
+				c.After(func() { m.tools.terminalOpen = false; m.focusActiveSource() })
 			}
 		})
 		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
-		if m.tools.active == "Git" {
-			m.gitPanel(c.Part("git"), blocked)
-		} else {
-			m.shellPanel(c.Part("terminal"), blocked)
-		}
+		m.shellPanel(c.Part("terminal"), blocked)
 	})
 }
 
@@ -295,30 +401,30 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			paths = append(paths, git.directory)
 		}
 		if git.directory == "" {
-			if len(paths) != 0 && !busy {
+			if len(paths) != 0 && !busy && git.issue == "" {
 				c.After(func() { m.openProjectGit(m.toolDirectory()) })
 			}
 			ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-				ui.Text(c, "添加项目后可查看 Git 状态").Muted().FontSize(12)
-				if ui.Button(c, "添加项目").Outline().Height(28).Disabled(busy).Clicked() {
+				label := uiText("添加项目后可查看 Git 状态")
+				if git.issue != "" {
+					label = git.issue
+				}
+				ui.Text(c, label).Muted().FontSize(12)
+				if ui.Button(c, uiText("添加项目")).Outline().Height(28).Disabled(busy).Clicked() {
 					c.After(m.openFolder)
 				}
 			})
 			return
 		}
-		ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Items(ui.Center).Gap(5).Children(func() {
 			selected := git.directory
-			if ui.Select(c, &selected, paths, filepath.Base).Label("Git 项目").Width(175).Height(28).Disabled(busy).Changed() {
+			if ui.Select(c, &selected, paths, filepath.Base).Label(uiText("Git 项目")).Grow(1).MinWidth(0).Height(28).Disabled(busy).Changed() {
 				c.After(func() { m.openProjectGit(selected) })
 			}
-			if snapshot.root != "" {
-				m.gitBranchControls(c.Part("branches"), busy)
-			}
-			ui.Text(c, snapshot.tracking).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
-			if ui.Button(c, "刷新 Git 状态").Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Disabled(busy).Clicked() {
+			if ui.Button(c, uiText("刷新 Git 状态")).Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Disabled(busy).Clicked() {
 				c.After(func() { m.startGit(gitRefresh, "", nil) })
 			}
-			if ui.Button(c, "提交历史").Icon(historyCompareIcon).IconOnly().Ghost().Size(28, 28).Tooltip("提交历史").Disabled(busy || snapshot.root == "").Clicked() {
+			if ui.Button(c, uiText("提交记录")).Icon(historyCompareIcon).Ghost().Height(28).PadX(6).FontSize(12).Tooltip(uiText("浏览 Git 提交记录")).Disabled(busy || snapshot.root == "").Clicked() {
 				c.After(m.openGitLog)
 			}
 		})
@@ -333,50 +439,31 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			}
 			if git.request == nil && git.issue == "" {
 				ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
-					ui.Text(c, "此项目尚未初始化 Git").Muted().FontSize(12)
-					if ui.Button(c, "初始化仓库").Outline().Height(28).Disabled(busy).Clicked() {
+					ui.Text(c, uiText("此项目尚未初始化 Git")).Muted().FontSize(12)
+					if ui.Button(c, uiText("初始化仓库")).Outline().Height(28).Disabled(busy).Clicked() {
 						c.After(func() { m.startGit(gitInit, "", nil) })
 					}
 				})
 			}
 			return
 		}
-		m.gitToolbar(c.Part("commands"), busy)
+		m.gitRemoteControls(c.Part("remotes"), busy)
 		m.gitConflictToolbar(c.Part("conflicts"), busy)
-		if len(snapshot.changes) == 0 {
-			ui.Text(c, "工作区无变更").Muted().FontSize(12).PadY(7)
+		m.gitCommitTools(c.Part("changes-toolbar"), busy)
+		if git.stashPage != "" {
+			m.gitStashesView(c.Part("stashes"), busy)
 			return
 		}
-		ui.Row(c.Part("change-groups")).FillWidth().Grow(1).MinHeight(0).Gap(8).Children(func() {
-			m.gitChangeList(c.Part("working"), false, busy)
-			m.gitChangeList(c.Part("index"), true, busy)
-		})
+		m.gitChangesView(c.Part("changes"), blocked || git.projectScope.path != "" || git.request != nil && git.requestAction != gitRefresh)
+		m.gitCommitComposer(c.Part("commit"), busy)
 	})
 }
 
-func (m *editorApp) gitToolbar(c ui.C, busy bool) {
+func (m *editorApp) gitRemoteControls(c ui.C, busy bool) {
 	git := &m.tools.git
 	status := git.snapshot
 	ui.Row(c).FillWidth().Gap(5).Items(ui.Center).Children(func() {
-		if ui.Button(c, "全部暂存").Icon(plusIcon).IconOnly().Ghost().Size(30, 29).Shrink(0).
-			Tooltip("全部暂存").Disabled(busy || len(status.changes) == 0).Clicked() {
-			c.After(func() { m.startGit(gitStageAll, "", nil) })
-		}
-		message := ui.TextArea(c, &git.commit, "提交说明", "提交说明（可换行）").Height(48).Grow(1).MinWidth(85).Disabled(busy)
-		if git.focusCommit && !busy {
-			message.AutoFocus()
-			git.focusCommit = false
-		}
-		canCommit := !busy && status.hasStaged() && strings.TrimSpace(git.commit.Text()) != ""
-		submit := ui.Button(c, "提交").Icon(gitCommitIcon).IconOnly().Size(30, 29).Shrink(0).
-			Tooltip("提交已暂存的变更").Disabled(!canCommit)
-		if canCommit && submit.Clicked() {
-			c.After(func() { m.startGit(gitCommit, git.commit.Text(), nil) })
-		}
-		ui.Text(c, fmt.Sprintf("%d 个变更", len(status.changes))).Muted().FontSize(11)
-		if len(status.remotes) > 1 {
-			ui.Select(c, &git.remote, status.remotes, func(s string) string { return s }).Label("Git 远程").Width(106).Height(29).Disabled(busy)
-		}
+		m.gitBranchControls(c.Part("branches"), busy)
 		for _, command := range []struct {
 			action   gitAction
 			icon     gfx.Icon
@@ -388,17 +475,20 @@ func (m *editorApp) gitToolbar(c ui.C, busy bool) {
 			{gitPush, exportIcon, "推送当前分支", git.remote == "" || status.branch == "" || strings.HasPrefix(status.branch, "HEAD ")},
 		} {
 			label := string(command.action)
-			if ui.Button(c.Key(label), label).Icon(command.icon).IconOnly().Ghost().Size(30, 29).Shrink(0).
-				Tooltip(command.hint).Disabled(busy || command.disabled).Clicked() {
+			if ui.Button(c.Key(label), uiText(label)).Icon(command.icon).IconOnly().Ghost().Size(26, 29).Shrink(0).
+				Tooltip(uiText(command.hint)).Disabled(busy || command.disabled).Clicked() {
 				c.After(func() { m.startGit(command.action, git.remote, nil) })
 			}
 		}
 	})
+	if len(status.remotes) > 1 {
+		ui.Select(c.Part("remote"), &git.remote, status.remotes, func(s string) string { return s }).Label(uiText("Git 远程")).FillWidth().Height(29).Disabled(busy)
+	}
 	if len(status.remotes) == 0 {
 		ui.Row(c.Part("add-remote")).FillWidth().Gap(7).Items(ui.Center).Children(func() {
-			link := ui.TextField(c, &git.address, "远程仓库地址", "远程仓库地址").Height(27).Grow(1).MinWidth(70).Disabled(busy)
+			link := ui.TextField(c, &git.address, uiText("远程仓库地址"), uiText("远程仓库地址")).Height(27).Grow(1).MinWidth(70).Disabled(busy)
 			canAdd := !busy && strings.TrimSpace(git.address.Text()) != ""
-			button := ui.Button(c, "添加远程").Outline().Height(27).FontSize(12).Disabled(!canAdd)
+			button := ui.Button(c, uiText("添加远程")).Outline().Height(27).FontSize(12).Disabled(!canAdd)
 			if canAdd && (button.Clicked() || link.Submitted()) {
 				c.After(func() { m.startGit(gitAddRemote, git.address.Text(), nil) })
 			}

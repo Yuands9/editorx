@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -88,7 +89,7 @@ func restoreOffice(state officeSession, name string) (*officeDocument, error) {
 	office := &officeDocument{state: state}
 	if state.Kind == "xlsx" {
 		if _, err := zip.NewReader(bytes.NewReader(state.Original), int64(len(state.Original))); err != nil {
-			return nil, fmt.Errorf("无法读取 XLSX 工作簿：%w", err)
+			return nil, fmt.Errorf(uiText("无法读取 XLSX 工作簿：%w"), err)
 		}
 		office.workbook = sync.OnceValues(func() (*officeWorkbook, error) {
 			return readWorkbook(state.Original, name)
@@ -163,7 +164,7 @@ func (office *officeDocument) serve(name string) error {
 				var book officeWorkbook
 				e = json.Unmarshal(body, &book)
 				if e == nil && (len(book.Sheets) == 0 || len(book.Order) == 0) {
-					e = errors.New("工作簿内容为空")
+					e = errors.New(uiText("工作簿内容为空"))
 				}
 			}
 			if e != nil {
@@ -251,10 +252,11 @@ func (m *editorApp) openOffice(t *editorTab) {
 		}
 	}
 	office.post, office.invalidate = m.post, m.invalidator.Invalidate
-	address := office.url
+	options := url.Values{"lang": {string(currentUILanguage())}}
 	if m.light {
-		address += "?theme=light"
+		options.Set("theme", "light")
 	}
+	address := office.url + "?" + options.Encode()
 	view, err := m.webHost.Open(app.WebViewConfig{URL: address, Ephemeral: true, TopCornerRadius: 12, BridgeMainFrameOnly: true,
 		LetterShortcut: m.openLinkWebShortcut,
 		Navigate:       func(n app.WebNavigation) bool { return strings.HasPrefix(n.URL, office.url) },
@@ -272,8 +274,9 @@ func (m *editorApp) openOffice(t *editorTab) {
 			case "ready":
 				office.ready = true
 				office.setLightMode(m.light)
+				office.view.Eval(previewLanguageJS(currentUILanguage()))
 				office.errorText = ""
-				m.status = "Office 编辑器已就绪"
+				m.status = uiText("Office 编辑器已就绪")
 			case "dirty":
 				office.state.Dirty = true
 				office.revision = message.Revision
@@ -310,7 +313,7 @@ func (m *editorApp) openOffice(t *editorTab) {
 		},
 	})
 	if err != nil {
-		office.errorText = fmt.Sprintf("无法启动 Office 编辑器，请检查 WebView2：%v", err)
+		office.errorText = fmt.Sprintf(uiText("无法启动 Office 编辑器，请检查 WebView2：%v"), err)
 		return
 	}
 	office.view = view
@@ -348,7 +351,7 @@ func (office *officeDocument) finishFlush(request int, err error) {
 }
 func (office *officeDocument) flush(done func(error)) {
 	if office.pending != nil {
-		done(errors.New("正在处理文档，请稍后再试"))
+		done(errors.New(uiText("正在处理文档，请稍后再试")))
 		return
 	}
 	if office.view == nil || !office.ready {
@@ -365,7 +368,7 @@ func (office *officeDocument) flush(done func(error)) {
 				if office.request != request || office.pending == nil {
 					return
 				}
-				office.finishFlush(request, errors.New("文档导出超时，原文件未修改，请重试"))
+				office.finishFlush(request, errors.New(uiText("文档导出超时，原文件未修改，请重试")))
 				office.invalidate()
 			})
 		})
@@ -375,7 +378,7 @@ func (office *officeDocument) flush(done func(error)) {
 func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 	office := t.office
 	if office.view != nil && !office.ready {
-		m.fail(errors.New("文档尚未加载完成，请稍后再保存"))
+		m.fail(errors.New(uiText("文档尚未加载完成，请稍后再保存")))
 		if done != nil {
 			done(false)
 		}
@@ -392,7 +395,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 		}
 		path := t.doc.path
 		if saveAs || path == "" {
-			path, err = app.SaveFile(app.SaveFileOptions{Title: "保存 " + t.title(), SuggestedName: t.title(), Filters: []app.FileFilter{{Name: strings.ToUpper(office.state.Kind) + " 文档", Pattern: "*." + office.state.Kind}}})
+			path, err = app.SaveFile(app.SaveFileOptions{Title: uiText("保存 ") + t.title(), SuggestedName: t.title(), Filters: []app.FileFilter{{Name: strings.ToUpper(office.state.Kind) + uiText(" 文档"), Pattern: "*." + office.state.Kind}}})
 			if errors.Is(err, app.ErrCanceled) {
 				return
 			}
@@ -405,7 +408,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 			}
 		}
 		if officeKind(path) != office.state.Kind {
-			m.fail(fmt.Errorf("请保存为 .%s 文件", office.state.Kind))
+			m.fail(fmt.Errorf(uiText("请保存为 .%s 文件"), office.state.Kind))
 			return
 		}
 		path, err = filepath.Abs(path)
@@ -414,7 +417,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 			return
 		}
 		if m.savePathInUse(t, path) {
-			m.fail(errors.New("该文件已在另一个标签中打开，请使用其他文件名"))
+			m.fail(errors.New(uiText("该文件已在另一个标签中打开，请使用其他文件名")))
 			return
 		}
 		if err = saveOfficeFile(&t.doc, office, path, m.documentHistory()); err != nil {
@@ -422,7 +425,7 @@ func (m *editorApp) saveOfficeTab(t *editorTab, saveAs bool, done func(bool)) {
 			return
 		}
 		m.rememberPath(path, false)
-		m.status = "已保存 " + filepath.Base(path)
+		m.status = uiText("已保存 ") + filepath.Base(path)
 		office.errorText = ""
 		if office.view != nil {
 			office.view.Eval(fmt.Sprintf("window.office.ack(%d)", office.revision))
@@ -474,8 +477,8 @@ func (office *officeDocument) close() {
 func (m *editorApp) officeView(c ui.C, t *editorTab, blocked bool) {
 	office := t.office
 	if !hasWordEditor && office.state.Kind == "docx" {
-		ui.Text(c, "Word 文档请用系统关联的办公软件打开。").FillWidth().Pad(24).Muted()
-		if ui.Button(c, "在系统中打开").MarginX(24).Disabled(blocked || t.doc.path == "").Clicked() {
+		ui.Text(c, uiText("Word 文档请用系统关联的办公软件打开。")).FillWidth().Pad(24).Muted()
+		if ui.Button(c, uiText("在系统中打开")).MarginX(24).Disabled(blocked || t.doc.path == "").Clicked() {
 			c.After(func() {
 				if err := app.OpenPath(t.doc.path); err != nil {
 					m.fail(err)
@@ -499,7 +502,7 @@ func (m *editorApp) officeView(c ui.C, t *editorTab, blocked bool) {
 		message = "请完成当前操作"
 	}
 	ui.Text(c, message).FillWidth().Pad(24).Muted()
-	if office.view == nil && office.errorText != "" && ui.Button(c, "重试打开文档").MarginX(24).Clicked() {
+	if office.view == nil && office.errorText != "" && ui.Button(c, uiText("重试打开文档")).MarginX(24).Clicked() {
 		c.After(func() { office.errorText = ""; m.openOffice(t) })
 	}
 }
@@ -510,7 +513,7 @@ func (m *editorApp) flushOfficeTabs(index int, done func(error)) {
 		if tab.office != nil && tab.office.view != nil {
 			tab.office.flush(func(err error) {
 				if err != nil {
-					done(fmt.Errorf("无法保存 %s 的会话：%w", tab.title(), err))
+					done(fmt.Errorf(uiText("无法保存 %s 的会话：%w"), tab.title(), err))
 					return
 				}
 				m.flushOfficeTabs(index, done)

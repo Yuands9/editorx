@@ -271,10 +271,13 @@ type editorApp struct {
 	appSettings        settingsPageState
 	localHistory       *localHistoryStore
 	historyCompare     *historyCompareState
+	gitLogWindow       *gitReviewState
 	backup             editorBackupState
 	update             editorUpdateState
 	editorPrefs        editorPreferences
 	keyBindings        shortcutOverrides
+	keyPreset          string
+	menuLanguage       menuLanguage
 	store              *sessionStore
 	dataDirectory      string
 	showHistory        bool
@@ -292,7 +295,7 @@ type editorApp struct {
 
 func newEditorApp() *editorApp {
 	return &editorApp{
-		theme: editorTheme(), status: "就绪", showFiles: true, showOutline: true, editorPrefs: defaultEditorPreferences(),
+		theme: editorTheme(), status: uiText("就绪"), showFiles: true, showOutline: true, editorPrefs: defaultEditorPreferences(),
 		filesSplit:    ui.SplitterState{Pos: 252},
 		outlineSplit:  ui.SplitterState{Ratio: 0.20},
 		aiEditorSplit: ui.SplitterState{Ratio: 0.66},
@@ -311,7 +314,7 @@ func (m *editorApp) addTab(doc document, name string) *editorTab {
 	}
 	t.source.light, t.result.light, t.comparison.light = m.light, m.light, m.light
 	t.applyEditorPreferences(m.editorPrefs)
-	t.result.view.Snapshot.Placeholder = "在此粘贴 JSON 或编辑结果"
+	t.result.placeholder = "在此粘贴 JSON 或编辑结果"
 	formatPaste := func(value string) string {
 		if t.format() == "JSON" || t.doc.path == "" && filepath.Ext(t.name) == "" &&
 			t.languageOverride == "" && strings.TrimSpace(t.source.text.CommittedString()) == "" {
@@ -335,7 +338,7 @@ func (m *editorApp) addTab(doc document, name string) *editorTab {
 
 func (m *editorApp) newDocument() {
 	m.addTab(document{eol: "CRLF"}, m.untitledName(""))
-	m.status = "新文档"
+	m.status = uiText("新文档")
 }
 
 func (m *editorApp) untitledName(extension string) string {
@@ -352,7 +355,7 @@ func (m *editorApp) untitledName(extension string) string {
 
 func nextUntitledName(usedNames map[string]bool) string {
 	for number := 1; ; number++ {
-		name := fmt.Sprintf("未命名-%d", number)
+		name := fmt.Sprintf(uiText("未命名-%d"), number)
 		if !usedNames[name] {
 			return name
 		}
@@ -475,7 +478,7 @@ func (m *editorApp) finishSaveConfirmation() {
 	m.clearSaveConfirmation()
 	if dontAsk {
 		if err := m.rememberSkippingSaveConfirmation(); err != nil {
-			m.fail(fmt.Errorf("无法保存询问设置：%w", err))
+			m.fail(fmt.Errorf(uiText("无法保存询问设置：%w"), err))
 		}
 	}
 	if proceed != nil {
@@ -494,7 +497,7 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 			continue
 		}
 		if tab.savingText != nil || tab.largeText != nil && tab.largeText.saving != nil {
-			m.status = "请等待大文件保存完成"
+			m.status = uiText("请等待大文件保存完成")
 			return
 		}
 		waitingForOffice := tab.office != nil && tab.office.view != nil && tab.office.ready
@@ -558,14 +561,14 @@ func (m *editorApp) removeTab(t *editorTab) {
 	}
 	if len(m.tabs) == 0 {
 		m.results = searchResults{}
-		m.status = "就绪"
+		m.status = uiText("就绪")
 	}
 	m.releaseClosedTabText(t)
 }
 
 func (m *editorApp) requestClose(allow func()) {
 	if s := m.directorySearch; s != nil && (s.replacing || s.replaceJob != nil) {
-		m.status = "请等待目录替换完成，或先停止替换"
+		m.status = uiText("请等待目录替换完成，或先停止替换")
 		return
 	}
 	if m.savingAll || m.largeEditOperationPending() {
@@ -583,7 +586,7 @@ func (m *editorApp) requestClose(allow func()) {
 func (m *editorApp) finishClose(allow func()) {
 	if m.store != nil {
 		if err := m.store.save(); err != nil {
-			m.fail(fmt.Errorf("无法保存本次会话，窗口保持打开：%w", err))
+			m.fail(fmt.Errorf(uiText("无法保存本次会话，窗口保持打开：%w"), err))
 			return
 		}
 		state := m.snapshotSession()
@@ -622,13 +625,13 @@ func (m *editorApp) finishClose(allow func()) {
 func (m *editorApp) open() { m.openWithEncoding("") }
 
 func (m *editorApp) openWithEncoding(enc textEncoding) {
-	title := "打开文件"
+	title := uiText("打开文件")
 	if enc != "" {
-		title = "按 " + string(enc) + " 打开文本"
+		title = uiText("按 ") + string(enc) + uiText(" 打开文本")
 	}
 	paths, err := app.OpenFiles(app.OpenFileOptions{
 		Title: title, AllowMultiple: true,
-		Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}, {Name: "代码与配置", Pattern: "*.xml;*.json;*.md;*.yaml;*.yml;*.properties;*.toml;*.ini;*.env;.env.*;*.go;*.java;*.txt;*.html;*.htm;*.css;*.js;*.svg"}, {Name: "Office 文档", Pattern: "*.xlsx;*.docx"}, {Name: "PDF 与思维导图", Pattern: "*.pdf;*.xmind"}, {Name: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.tif;*.tiff"}},
+		Filters: []app.FileFilter{{Name: uiText("所有文件"), Pattern: "*.*"}, {Name: uiText("代码与配置"), Pattern: "*.xml;*.json;*.md;*.yaml;*.yml;*.properties;*.toml;*.ini;*.env;.env.*;*.go;*.java;*.txt;*.html;*.htm;*.css;*.js;*.svg"}, {Name: uiText("Office 文档"), Pattern: "*.xlsx;*.docx"}, {Name: uiText("PDF 与思维导图"), Pattern: "*.pdf;*.xmind"}, {Name: uiText("图片"), Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.tif;*.tiff"}},
 	})
 	m.focusActiveSource()
 	if errors.Is(err, app.ErrCanceled) {
@@ -720,7 +723,7 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 	if path != "" {
 		m.rememberPath(path, false)
 	}
-	m.status = "已打开 " + tab.title()
+	m.status = uiText("已打开 ") + tab.title()
 	return tab
 }
 
@@ -739,13 +742,13 @@ func (m *editorApp) saveTab(t *editorTab, saveAs bool) bool {
 	}
 	if t.format() == "JSON" && !t.jsonCompare {
 		if t.jsonComposing() {
-			m.fail(errors.New("请先完成中文选词，再保存文件"))
+			m.fail(errors.New(uiText("请先完成中文选词，再保存文件")))
 			return false
 		}
 		t.updateResult()
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		m.fail(errors.New("请先完成中文选词，再保存文件"))
+		m.fail(errors.New(uiText("请先完成中文选词，再保存文件")))
 		return false
 	}
 	return m.saveTextTab(t, saveAs)
@@ -760,8 +763,8 @@ func (m *editorApp) textSavePath(t *editorTab, saveAs bool) (string, bool) {
 			suggested += ".html"
 		}
 		path, err = app.SaveFile(app.SaveFileOptions{
-			Title: "保存 " + t.title(), SuggestedName: suggested,
-			Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}},
+			Title: uiText("保存 ") + t.title(), SuggestedName: suggested,
+			Filters: []app.FileFilter{{Name: uiText("所有文件"), Pattern: "*.*"}},
 		})
 		if errors.Is(err, app.ErrCanceled) {
 			return "", false
@@ -777,7 +780,7 @@ func (m *editorApp) textSavePath(t *editorTab, saveAs bool) (string, bool) {
 		return "", false
 	}
 	if m.savePathInUse(t, path) {
-		m.fail(errors.New("该文件已在另一个标签中打开，请切换到该标签或使用其他文件名"))
+		m.fail(errors.New(uiText("该文件已在另一个标签中打开，请切换到该标签或使用其他文件名")))
 		return "", false
 	}
 	return path, true
@@ -804,7 +807,7 @@ func (m *editorApp) saveTextTab(t *editorTab, saveAs bool) bool {
 }
 
 func (m *editorApp) openFolder() {
-	paths, err := app.OpenDirectories(app.OpenDirectoryOptions{Title: "选择项目文件夹"})
+	paths, err := app.OpenDirectories(app.OpenDirectoryOptions{Title: uiText("选择项目文件夹")})
 	m.focusActiveSource()
 	if errors.Is(err, app.ErrCanceled) {
 		return
@@ -840,6 +843,8 @@ func (m *editorApp) editorWindowConfig(application *app.Application) app.Config 
 		next.setLightMode(m.light)
 		next.editorPrefs = m.editorPrefs
 		next.keyBindings = m.keyBindings
+		next.keyPreset = m.keyPreset
+		next.menuLanguage = m.menuLanguage
 		next.applySidebarPreferences(m.sidebarPrefs)
 		next.translationEnabled = m.translationEnabled
 		next.store, next.dataDirectory = m.store, m.dataDirectory
@@ -925,7 +930,7 @@ func Run(paths []string) {
 				err = startEditorExecutable(executable)
 			}
 			if err != nil {
-				err = fmt.Errorf("无法重新启动 EditorX：%w", err)
+				err = fmt.Errorf(uiText("无法重新启动 EditorX：%w"), err)
 			}
 		}
 	}
@@ -959,8 +964,9 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 	desktop.update.initialize(directory, time.Now())
 	defer desktop.update.close()
 	desktop.preferences, err = readApplicationPreferences(directory)
+	setUILanguage(desktop.preferences.MenuLanguage)
 	if err != nil {
-		store.windows[0].status = "无法读取应用设置，已使用默认值：" + err.Error()
+		store.windows[0].status = uiText("无法读取应用设置，已使用默认值：") + err.Error()
 	}
 	desktop.history = &localHistoryStore{
 		directory: filepath.Join(directory, localHistoryDirectory),
@@ -971,6 +977,8 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 	for _, window := range store.windows {
 		window.applyEditorPreferences(desktop.preferences.Editor)
 		window.keyBindings = desktop.preferences.Shortcuts
+		window.keyPreset = desktop.preferences.ShortcutPreset
+		window.menuLanguage = desktop.preferences.MenuLanguage
 		window.applySidebarPreferences(desktop.preferences.Sidebar)
 		window.translationEnabled = desktop.preferences.TranslationEnabled
 	}
@@ -1015,10 +1023,21 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 			}
 		}
 		if err := desktop.syncTray(); err != nil {
-			store.windows[0].status = "无法显示系统托盘图标：" + err.Error()
+			store.windows[0].status = uiText("无法显示系统托盘图标：") + err.Error()
 		}
 		if executable, err := os.Executable(); err == nil {
-			go cleanupPreviousEditorExecutable(executable)
+			firstWindow := store.windows[0]
+			go func() {
+				cleanupPreviousEditorExecutable(executable)
+				if err := registerEditorCommand(executable); err != nil {
+					application.Post(func() {
+						if !firstWindow.windowClosed {
+							firstWindow.status = uiText("无法注册 EditorX 命令：") + err.Error()
+							firstWindow.invalidator.Invalidate()
+						}
+					})
+				}
+			}()
 		}
 		go func() {
 			ticker := time.NewTicker(5 * time.Second)
@@ -1044,7 +1063,7 @@ func runEditor(paths []string) (installedEditorUpdate, bool, error) {
 								if err != nil {
 									for _, window := range store.windows {
 										if !window.windowClosed {
-											window.status = "会话自动保存失败：" + err.Error()
+											window.status = uiText("会话自动保存失败：") + err.Error()
 										}
 									}
 								}
@@ -1066,7 +1085,7 @@ func (m *editorApp) interactionBlocked() bool {
 func (m *editorApp) otherInteractionsBlocked() bool {
 	return m.comparePicker != nil || m.workflow != nil || m.directorySearch != nil && m.directorySearch.open || m.palette != nil || m.savingAll || m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
 		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
-		m.tools.git.review != nil || m.tools.git.branches.creating || m.tools.git.branches.switching ||
+		m.tools.git.review != nil || m.tools.git.branches.creating || m.tools.git.branches.switching || m.tools.git.stashConfirm ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
 }
@@ -1135,6 +1154,7 @@ func (m *editorApp) releaseWindowState() {
 	m.editorSplit, m.navigation = nil, editorNavigation{}
 	m.directorySearch, m.textOpens = nil, nil
 	m.closeHistoryComparison()
+	m.closeGitLog()
 	m.droppedPaths = nil
 	for len(m.tools.terminals) > 0 {
 		m.closeLocalShell(m.tools.terminals[len(m.tools.terminals)-1])

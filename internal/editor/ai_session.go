@@ -164,7 +164,7 @@ func (saved aiConversationSession) restore(tabs []*editorTab) aiConversation {
 				}
 			}
 			if fileID == aiClosedTabSuggestion {
-				problem = "原标签已关闭，请重新生成修改建议"
+				problem = uiText("原标签已关闭，请重新生成修改建议")
 			}
 			turn.changes = append(turn.changes, aiChange{target: aiTarget{
 				file: aiFileContext{ID: fileID, Name: change.Name, Format: change.Format, Scope: change.Scope, Text: change.Original},

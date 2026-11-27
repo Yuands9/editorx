@@ -29,15 +29,15 @@ func (m *editorApp) aiPanel(c ui.C, blocked bool) {
 	m.workspacePanel(c).Grow(1).MarginRight(workspaceInset).Pad(10).Gap(8).Children(func() {
 		ui.Row(c).FillWidth().Height(37).Items(ui.Center).Gap(5).Children(func() {
 			m.aiAssistantMark(c, 29)
-			ui.Text(c, "AI 助手").Bold().FontSize(15).Grow(1).MinWidth(0).Ellipsis()
-			if ui.Button(c, "模型设置").Ghost().Height(28).FontSize(12).Disabled(blocked || a.responding()).Clicked() {
+			ui.Text(c, uiText("AI 助手")).Bold().FontSize(15).Grow(1).MinWidth(0).Ellipsis()
+			if ui.Button(c, uiText("模型设置")).Ghost().Height(28).FontSize(12).Disabled(blocked || a.responding()).Clicked() {
 				c.After(m.openAISettings)
 			}
-			if ui.Button(c, "新对话").Icon(plusIcon).IconOnly().Ghost().Size(28, 28).Tooltip("新对话").Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("新对话")).Icon(plusIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("新对话")).Disabled(blocked).Clicked() {
 				c.After(a.newConversation)
 			}
 			m.aiConversationPicker(c.Part("conversations"), blocked)
-			if ui.Button(c, "收起 AI 助手").Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("收起 AI 助手")).Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
 				c.After(m.toggleAIPanel)
 			}
 		})
@@ -54,7 +54,7 @@ func (m *editorApp) aiPanel(c ui.C, blocked bool) {
 				m.aiTranscript(c.Part("transcript"), blocked)
 			})
 			ui.Splitter(c, &m.aiPromptSplit).Mins(124, composerMin).SplitterThickness(12).
-				Label("调整 AI 输入框高度").DrawOver(func(d *ui.DrawContext) {
+				Label(uiText("调整 AI 输入框高度")).DrawOver(func(d *ui.DrawContext) {
 				m.drawAIResizeGrip(d, &m.aiPromptSplit, false)
 			})
 			m.aiComposer(c.Part("composer"), blocked)
@@ -84,7 +84,7 @@ func (m *editorApp) aiTranscript(c ui.C, blocked bool) {
 	if len(a.turns) == 0 {
 		ui.Column(c).FillWidth().Grow(1).MinHeight(0).Center().Gap(10).Children(func() {
 			m.aiAssistantMark(c, 58)
-			ui.Text(c, "问一问，或开始写作").FontSize(15).Bold()
+			ui.Text(c, uiText("问一问，或开始写作")).FontSize(15).Bold()
 
 		})
 		return
@@ -126,7 +126,7 @@ func (m *editorApp) aiTurnView(c ui.C, turn *aiTurn, blocked bool) {
 				}
 			})
 			if turn.request != nil && turn.partial == "" {
-				ui.Text(c, "正在生成…").Muted().FontSize(12)
+				ui.Text(c, uiText("正在生成…")).Muted().FontSize(12)
 			}
 			if turn.notice != "" {
 				color := m.theme.MutedForeground
@@ -170,7 +170,7 @@ func (m *editorApp) copyAIText(label, value string) {
 		m.ai.message = err.Error()
 		return
 	}
-	m.ai.message = "已" + label
+	m.ai.message = uiText("已") + label
 }
 
 func (m *editorApp) aiComposer(c ui.C, blocked bool) {
@@ -183,15 +183,15 @@ func (m *editorApp) aiComposer(c ui.C, blocked bool) {
 			status.HitWith(ui.ID(c), a.message, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true}).Tooltip(a.message)
 			status.Children(func() { ui.Text(c, a.message).FillWidth().FontSize(12).Muted().Ellipsis() })
 		}
-		hint := "输入你想问的问题"
+		hint := uiText("输入你想问的问题")
 		switch a.mode {
 		case aiEdit:
-			hint = "说明要怎么修改选区或附件"
+			hint = uiText("说明要怎么修改选区或附件")
 		case aiDraft:
-			hint = "描述你想起草的内容"
+			hint = uiText("描述你想起草的内容")
 		}
 		a.prompt.Hint = "Enter 发送，Shift+Enter 换行"
-		input := ui.TextArea(c, &a.prompt, "AI 指令", hint).
+		input := ui.TextArea(c, &a.prompt, uiText("AI 指令"), hint).
 			FillWidth().Grow(1).Basis(0).MinHeight(48).FontSize(float32(a.profiles.chatFontSize())).
 			Background(m.theme.Background).Focus(ui.Look{}.Background(m.theme.Muted)).Disabled(blocked)
 		if a.focusPrompt && !blocked {
@@ -206,10 +206,10 @@ func (m *editorApp) aiComposer(c ui.C, blocked bool) {
 			ui.Row(c.Part("right-controls")).Items(ui.Center).Gap(5).MinWidth(0).Children(func() {
 				m.aiProfilePicker(c.Part("profile"), blocked || busy)
 				if busy {
-					if ui.Button(c, "停止请求").Icon(aiStopIcon).IconOnly().Outline().Size(36, 36).Shrink(0).Radius(18).Tooltip("停止请求").Disabled(blocked).Clicked() {
+					if ui.Button(c, uiText("停止请求")).Icon(aiStopIcon).IconOnly().Outline().Size(36, 36).Shrink(0).Radius(18).Tooltip(uiText("停止请求")).Disabled(blocked).Clicked() {
 						c.After(a.stopRequest)
 					}
-				} else if ui.Button(c, "发送给模型").Icon(aiSendIcon).IconOnly().Size(36, 36).Shrink(0).Radius(18).Tooltip("Enter 发送 · Shift+Enter 换行").
+				} else if ui.Button(c, uiText("发送给模型")).Icon(aiSendIcon).IconOnly().Size(36, 36).Shrink(0).Radius(18).Tooltip(uiText("Enter 发送 · Shift+Enter 换行")).
 					ButtonRecipe(m.aiSendRecipe).
 					Disabled(blocked || strings.TrimSpace(a.prompt.Text()) == "").Clicked() {
 					c.After(m.startAI)
@@ -239,7 +239,7 @@ func (m *editorApp) aiReviewDialog(c ui.C) {
 	if tab != nil && target.file.Format == "HTML" && tab.htmlMode != "编辑" {
 		apply = "应用并刷新预览"
 	}
-	dismissed := ui.ModalWith(c, &a.reviewOpen, "AI 修改预览", ui.ModalSpec{
+	dismissed := ui.ModalWith(c, &a.reviewOpen, uiText("AI 修改预览"), ui.ModalSpec{
 		Width: min(940, c.Bounds().Width-40), Height: min(650, c.Bounds().Height-42),
 	}, func() {
 		ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
@@ -252,10 +252,10 @@ func (m *editorApp) aiReviewDialog(c ui.C) {
 		}
 		codeeditor.DiffView(c, "原文和建议差异", &a.diff).FillWidth().Grow(1).MinHeight(0)
 	}, func() {
-		if ui.Button(c, "稍后审阅").Outline().Clicked() {
+		if ui.Button(c, uiText("稍后审阅")).Outline().Clicked() {
 			a.closeReview()
 		}
-		if ui.Button(c, "丢弃建议").Outline().Clicked() {
+		if ui.Button(c, uiText("丢弃建议")).Outline().Clicked() {
 			c.After(func() { a.finishReview(i) })
 		}
 		if ui.Button(c, apply).Disabled(change.error != "").Clicked() {
@@ -279,7 +279,7 @@ func (a *aiAssistant) finishReview(index int) {
 	turn := a.reviewTurn
 	turn.changes = slices.Delete(turn.changes, index, index+1)
 	if len(turn.changes) == 0 {
-		turn.notice = "建议已审阅"
+		turn.notice = uiText("建议已审阅")
 	}
 	a.closeReview()
 }

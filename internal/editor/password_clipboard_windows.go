@@ -44,7 +44,7 @@ func setPasswordClipboard(value string, native bool) (func() bool, error) {
 	defer runtime.UnlockOSThread()
 	encoded, err := syscall.UTF16FromString(value)
 	if err != nil {
-		return nil, errors.New("内容含有剪贴板不支持的字符")
+		return nil, errors.New(uiText("内容含有剪贴板不支持的字符"))
 	}
 	defer clear(encoded)
 	excludeName, _ := syscall.UTF16PtrFromString("ExcludeClipboardContentFromMonitorProcessing")
@@ -53,23 +53,23 @@ func setPasswordClipboard(value string, native bool) (func() bool, error) {
 	format, _, _ := passwordRegisterClipboardFormat.Call(uintptr(unsafe.Pointer(tokenName)))
 	owner, _, _ := editorUser.NewProc("GetActiveWindow").Call()
 	if exclude == 0 || format == 0 || owner == 0 {
-		return nil, errors.New("无法打开受保护的 Windows 剪贴板")
+		return nil, errors.New(uiText("无法打开受保护的 Windows 剪贴板"))
 	}
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return nil, err
 	}
 	if opened, _, _ := passwordOpenClipboard.Call(owner); opened == 0 {
-		return nil, errors.New("剪贴板正被占用，请重试")
+		return nil, errors.New(uiText("剪贴板正被占用，请重试"))
 	}
 	defer passwordCloseClipboard.Call()
 	if emptied, _, _ := passwordEmptyClipboard.Call(); emptied == 0 {
-		return nil, errors.New("无法准备剪贴板")
+		return nil, errors.New(uiText("无法准备剪贴板"))
 	}
 	if !passwordSetClipboardBlock(exclude, []byte{1}) || !passwordSetClipboardBlock(format, token[:]) ||
 		!passwordSetClipboardBlock(13, unsafe.Slice((*byte)(unsafe.Pointer(&encoded[0])), len(encoded)*2)) { // CF_UNICODETEXT
 		passwordEmptyClipboard.Call()
-		return nil, errors.New("无法写入受保护的 Windows 剪贴板")
+		return nil, errors.New(uiText("无法写入受保护的 Windows 剪贴板"))
 	}
 	return func() bool { return clearPasswordClipboard(format, token) }, nil
 }

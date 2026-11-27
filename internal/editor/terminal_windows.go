@@ -46,7 +46,7 @@ type terminalProcess struct {
 
 func startTerminalProcess(directory string, size terminalSize) (*terminalProcess, error) {
 	if err := createPseudoConsole.Find(); err != nil {
-		return nil, fmt.Errorf("本地终端需要 Windows 10 1809 或更新版本：%w", err)
+		return nil, fmt.Errorf(uiText("本地终端需要 Windows 10 1809 或更新版本：%w"), err)
 	}
 	inReader, inWriter, err := os.Pipe()
 	if err != nil {
@@ -66,7 +66,7 @@ func startTerminalProcess(directory string, size terminalSize) (*terminalProcess
 	if int32(res) < 0 {
 		inWriter.Close()
 		outReader.Close()
-		return nil, fmt.Errorf("创建本地终端失败（0x%08X）", uint32(res))
+		return nil, fmt.Errorf(uiText("创建本地终端失败（0x%08X）"), uint32(res))
 	}
 
 	exe := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
@@ -99,7 +99,7 @@ func startInPseudoConsole(exe, directory string, console uintptr) (syscall.Handl
 	var bytesNeeded uintptr
 	initializeTerminalAttributes.Call(0, 1, 0, uintptr(unsafe.Pointer(&bytesNeeded)))
 	if bytesNeeded == 0 {
-		return 0, fmt.Errorf("无法为 PowerShell 准备终端属性")
+		return 0, fmt.Errorf("%s", uiText("无法为 PowerShell 准备终端属性"))
 	}
 	storage := make([]byte, bytesNeeded)
 	attributes := unsafe.Pointer(&storage[0])
@@ -127,7 +127,7 @@ func startInPseudoConsole(exe, directory string, console uintptr) (syscall.Handl
 	err = syscall.CreateProcess(application, command, nil, nil, false, windowsExtendedStartupInfo,
 		nil, working, &startup.StartupInfo, &processInfo)
 	if err != nil {
-		return 0, fmt.Errorf("启动 PowerShell 失败：%w", err)
+		return 0, fmt.Errorf(uiText("启动 PowerShell 失败：%w"), err)
 	}
 	syscall.CloseHandle(processInfo.Thread)
 	return processInfo.Process, nil

@@ -13,15 +13,15 @@ func (m *editorApp) dataLocationPending(c ui.C) {
 		return
 	}
 	if desktop.dataLocation.path == "" {
-		ui.Wrap(c, "当前目录由 VIVA_EDITOR_DATA_DIR 指定。").FillWidth().Muted().FontSize(12)
+		ui.Wrap(c, uiText("当前目录由 VIVA_EDITOR_DATA_DIR 指定。")).FillWidth().Muted().FontSize(12)
 	}
 	if desktop.dataLocation.Pending != "" {
-		m.applicationSetting(c.Part("pending"), "重启后的数据目录", desktop.dataLocation.Pending, func() {
+		m.applicationSetting(c.Part("pending"), uiText("重启后的数据目录"), desktop.dataLocation.Pending, func() {
 			ui.Row(c.Part("pending-actions")).Gap(6).Children(func() {
-				if ui.Button(c.Part("cancel"), "取消更改").Ghost().Height(32).Clicked() {
+				if ui.Button(c.Part("cancel"), uiText("取消更改")).Ghost().Height(32).Clicked() {
 					c.After(func() { m.saveDataLocation("") })
 				}
-				if ui.Button(c.Part("restart"), "迁移并重启").Height(32).Clicked() {
+				if ui.Button(c.Part("restart"), uiText("迁移并重启")).Height(32).Clicked() {
 					c.After(func() {
 						if !desktop.exiting {
 							desktop.restart = true
@@ -31,22 +31,22 @@ func (m *editorApp) dataLocationPending(c ui.C) {
 				}
 			})
 		})
-		ui.Wrap(c, "重启时会复制会话、草稿、设置和已安装的组件，原数据保留为备份。").FillWidth().Muted().FontSize(12)
+		ui.Wrap(c, uiText("重启时会复制会话、草稿、设置和已安装的组件，原数据保留为备份。")).FillWidth().Muted().FontSize(12)
 	}
 }
 
 func (m *editorApp) chooseDataLocation() {
-	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "选择一个空文件夹存放 EditorX 数据"})
+	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: uiText("选择一个空文件夹存放 EditorX 数据")})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
 	if err != nil {
-		m.appSettings.problem = "无法选择数据目录：" + err.Error()
+		m.appSettings.problem = uiText("无法选择数据目录：") + err.Error()
 		return
 	}
 	destination, err := editorDataDestination(m.dataDirectory, path)
 	if err != nil {
-		m.appSettings.problem = "无法使用所选目录：" + err.Error()
+		m.appSettings.problem = uiText("无法使用所选目录：") + err.Error()
 		return
 	}
 	m.saveDataLocation(destination)
@@ -59,7 +59,7 @@ func (m *editorApp) saveDataLocation(destination string) {
 	location := m.desktop.dataLocation
 	location.Pending = destination
 	if err := location.save(); err != nil {
-		m.appSettings.problem = "无法保存数据目录设置：" + err.Error()
+		m.appSettings.problem = uiText("无法保存数据目录设置：") + err.Error()
 		return
 	}
 	m.desktop.dataLocation = location

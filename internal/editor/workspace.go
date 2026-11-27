@@ -307,15 +307,15 @@ func (m *editorApp) addProjects(paths ...string) {
 		}
 		switch added {
 		case 0:
-			m.status = "项目已在列表中"
+			m.status = uiText("项目已在列表中")
 		case 1:
-			m.status = "已添加项目 " + lastName
+			m.status = uiText("已添加项目 ") + lastName
 		default:
-			m.status = fmt.Sprintf("已添加 %d 个项目", added)
+			m.status = fmt.Sprintf(uiText("已添加 %d 个项目"), added)
 		}
 	}
 	if err := errors.Join(failures...); err != nil {
-		m.fail(fmt.Errorf("以下项目添加失败。\n%w", err))
+		m.fail(fmt.Errorf(uiText("以下项目添加失败。\n%w"), err))
 	}
 }
 
@@ -333,9 +333,9 @@ func (m *editorApp) refreshProject(root *fileNode, reveal string) {
 			}
 		}
 	}
-	tree.queueDirectory(root, folders, reveal).notice = "已刷新项目 " + root.name
+	tree.queueDirectory(root, folders, reveal).notice = uiText("已刷新项目 ") + root.name
 	m.invalidator.Invalidate()
-	m.status = "正在刷新项目 " + root.name
+	m.status = uiText("正在刷新项目 ") + root.name
 }
 
 func (m *editorApp) removeProject(root *fileNode) {
@@ -352,7 +352,7 @@ func (m *editorApp) removeProject(root *fileNode) {
 	if len(tree.roots) == 0 {
 		m.workspace = nil
 	}
-	m.status = "已移除项目 " + root.name
+	m.status = uiText("已移除项目 ") + root.name
 }
 
 var projectActionsIcon = gfx.Icon{ViewBox: 24, Stroke: 2.4, Cap: gfx.CapRound, Commands: []gfx.PathCommand{
@@ -361,15 +361,15 @@ var projectActionsIcon = gfx.Icon{ViewBox: 24, Stroke: 2.4, Cap: gfx.CapRound, C
 
 func (m *editorApp) filePanel(c ui.C, blocked bool) {
 	ui.Row(c).FillWidth().Height(30).PadX(18).Items(ui.Center).Children(func() {
-		ui.Text(c, "项目").FontSize(12).Bold().Muted()
+		ui.Text(c, m.menuText("项目")).FontSize(12).Bold().Muted()
 		ui.Slot(c).Grow(1)
-		if ui.Button(c, "定位当前文件").Icon(searchIcon).IconOnly().Ghost().Size(24, 24).Tooltip(m.shortcutHint("定位当前文件", shortcutRevealProjectFile)).Disabled(blocked || m.active == nil || m.active.doc.path == "" || m.projectRoot(m.active.doc.path) == "").Clicked() {
+		if ui.Button(c, m.menuText("定位当前文件")).Icon(searchIcon).IconOnly().Ghost().Size(24, 24).Tooltip(m.shortcutHint(uiText("定位当前文件"), shortcutRevealProjectFile)).Disabled(blocked || m.active == nil || m.active.doc.path == "" || m.projectRoot(m.active.doc.path) == "").Clicked() {
 			c.After(func() { m.revealProjectFile(m.active.doc.path) })
 		}
 	})
 	tree := m.workspace
 	if tree == nil {
-		ui.Text(c, "用「添加项目」打开文件夹").PadX(18).PadTop(7).FontSize(12).Muted()
+		ui.Text(c, m.menuText("用「添加项目」打开文件夹")).PadX(18).PadTop(7).FontSize(12).Muted()
 		return
 	}
 	tree.activePath, tree.blocked = "", blocked
@@ -402,11 +402,12 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 			if !blocked {
 				ui.ContextMenu(place, name, func(menu *ui.MenuItems) {
 					m.projectPathActions(place, menu, node.path)
+					m.projectGitActions(place, menu, node.path, node.directory)
 					menu.Separator()
 					if node.directory {
 						m.projectCreateActions(place, menu, node.path)
 						if node != row.start {
-							menu.Sub("上级目录", func(ancestors *ui.MenuItems) {
+							menu.Sub(m.menuText("上级目录"), func(ancestors *ui.MenuItems) {
 								for path := filepath.Dir(node.path); ; path = filepath.Dir(path) {
 									ancestors.Sub(filepath.Base(path), func(items *ui.MenuItems) {
 										m.projectCreateActions(place, items, path)
@@ -422,16 +423,16 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 						}
 						menu.Separator()
 					}
-					if node.directory && menu.Item("在此目录中查找…").Icon(searchIcon).Clicked() {
+					if node.directory && menu.Item(m.menuText("在此目录中查找…")).Icon(searchIcon).Clicked() {
 						place.After(func() { m.openDirectorySearch(node.path) })
 					}
-					if (node.directory || aiTextPath(node.path)) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
+					if (node.directory || aiTextPath(node.path)) && menu.Item(m.menuText("在 AI 助手中打开")).Icon(aiIcon).Clicked() {
 						place.After(func() { m.openAIAt(nil, node.path, node.directory) })
 					}
-					if !node.directory && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+					if !node.directory && menu.Item(m.menuText("比对历史…")).Icon(historyCompareIcon).Clicked() {
 						place.After(func() { m.openHistoryComparison(node.path, localHistoryVersion{}) })
 					}
-					if menu.Item("打开所在文件夹").Icon(folderOpenIcon).Clicked() {
+					if menu.Item(m.menuText("打开所在文件夹")).Icon(folderOpenIcon).Clicked() {
 						path := node.path
 						if !node.directory {
 							path = filepath.Dir(path)
@@ -480,8 +481,8 @@ func (m *editorApp) projectRow(c ui.C, rowID gfx.ID, root *fileNode, blocked boo
 		}
 		name := ui.Text(c, root.name).FontSize(13).Grow(1).MinWidth(0).Ellipsis().
 			LabelFor(rowID).Tooltip(description).TooltipOn(ui.TooltipRight)
-		actions := ui.Button(c, "项目操作 "+root.path).Icon(projectActionsIcon).IconOnly().Ghost().Size(24, 24).Shrink(0).
-			Tooltip("项目操作").Disabled(blocked)
+		actions := ui.Button(c, uiText("项目操作 ")+root.path).Icon(projectActionsIcon).IconOnly().Ghost().Size(24, 24).Shrink(0).
+			Tooltip(uiText("项目操作")).Disabled(blocked)
 		if actions.Clicked() {
 			root.menuOpen = !root.menuOpen
 		}
@@ -497,27 +498,25 @@ func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
 	menu.Separator()
 	menu.WidthRange(180, 290)
 	menu.Label(root.name)
-	if m.shortcutMenu(menu.Item("在此目录中查找…").Icon(searchIcon), shortcutDirectorySearch).Clicked() {
+	if m.shortcutMenu(menu.Item(m.menuText("在此目录中查找…")).Icon(searchIcon), shortcutDirectorySearch).Clicked() {
 		c.After(func() { m.openDirectorySearch(root.path) })
 	}
 	m.projectCreateActions(c, menu, root.path)
 	menu.Separator()
-	if menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
+	if menu.Item(m.menuText("在 AI 助手中打开")).Icon(aiIcon).Clicked() {
 		c.After(func() { m.openAIAt(nil, root.path, true) })
 	}
-	if menu.Item("打开项目文件夹").Icon(folderOpenIcon).Clicked() {
+	if menu.Item(m.menuText("打开项目文件夹")).Icon(folderOpenIcon).Clicked() {
 		c.After(func() { m.openExplorerFolder(root.path) })
 	}
-	if menu.Item("Git").Icon(gitBranchIcon).Clicked() {
-		c.After(func() { m.openProjectGit(root.path) })
-	}
-	if menu.Item("在终端中打开").Icon(shellIcon).Clicked() {
+	m.projectGitActions(c, menu, root.path, true)
+	if menu.Item(m.menuText("在终端中打开")).Icon(shellIcon).Clicked() {
 		c.After(func() { m.openLocalShell(root.path) })
 	}
-	if menu.Item("刷新项目").Icon(refreshIcon).Clicked() {
+	if menu.Item(m.menuText("刷新项目")).Icon(refreshIcon).Clicked() {
 		c.After(func() { m.refreshProject(root, "") })
 	}
-	if menu.Item("移除项目").Icon(closeIcon).Clicked() {
+	if menu.Item(m.menuText("移除项目")).Icon(closeIcon).Clicked() {
 		c.After(func() { m.removeProject(root) })
 	}
 	menu.Separator()

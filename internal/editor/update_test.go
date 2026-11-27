@@ -10,8 +10,52 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+func TestUpdateChecksPublicPageWhenAPIIsLimited(t *testing.T) {
+	var apiCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api":
+			apiCalls.Add(1)
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("Retry-After", "120")
+			w.WriteHeader(http.StatusForbidden)
+		case "/releases/latest":
+			http.Redirect(w, r, "/releases/tag/v0.41.0", http.StatusFound)
+		case "/redirect/latest":
+			http.Redirect(w, r, "https://example.com/releases/tag/v0.42.0", http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	cache := editorUpdateCache{}
+	for range 2 {
+		release, err := checkEditorRelease(context.Background(), server.Client(), server.URL+"/api", server.URL+"/releases/latest", "0.40.0", &cache)
+		if err != nil || !release.PageOnly || release.comparison != 1 || release.Version != "0.41.0" || release.Download != "" {
+			t.Fatalf("unexpected fallback result: %+v, %v", release, err)
+		}
+		cache.Release = release
+	}
+	if apiCalls.Load() != 1 || time.Until(cache.APIRetryAfter) < time.Minute {
+		t.Fatal("the client retried the API before its rate limit reset")
+	}
+	if _, err := fetchEditorReleasePage(context.Background(), server.Client(), server.URL+"/redirect/latest", "0.40.0"); err == nil {
+		t.Fatal("accepted a release location on another host")
+	}
+	state := &editorUpdateState{cache: cache}
+	dir := t.TempDir()
+	if err := state.save(dir); err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := readEditorUpdateCache(dir, "0.40.0"); err != nil || !saved.Release.PageOnly || saved.Release.comparison != 1 {
+		t.Fatalf("cached fallback could not be restored: %+v, %v", saved, err)
+	}
+}
 
 func TestUpdateDownloadsVerifiedExecutableAndPreservesPrevious(t *testing.T) {
 	binary, err := os.ReadFile(os.Args[0])

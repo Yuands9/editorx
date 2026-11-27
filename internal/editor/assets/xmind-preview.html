@@ -24,9 +24,9 @@ li>ul{margin-left:24px}li>ul:before{content:"";position:absolute;left:-24px;top:
 li.collapsed>ul{display:none}
 </style>
 <header>
-<label for="sheet">画布</label><select id="sheet">{{range $i,$sheet := .Sheets}}<option value="{{$i}}">{{$sheet.Title}}</option>{{end}}</select>
-<button type="button" id="smaller" aria-label="缩小">−</button><output id="zoom">100%</output><button type="button" id="larger" aria-label="放大">+</button>
-<button type="button" id="reset">重置</button>
+<label for="sheet" data-en-text="Sheet">画布</label><select id="sheet">{{range $i,$sheet := .Sheets}}<option value="{{$i}}">{{$sheet.Title}}</option>{{end}}</select>
+<button type="button" id="smaller" aria-label="缩小" data-en-label="Zoom Out">−</button><output id="zoom">100%</output><button type="button" id="larger" aria-label="放大" data-en-label="Zoom In">+</button>
+<button type="button" id="reset" data-en-text="Reset">重置</button>
 </header>
 <main id="view">
 {{range $i,$sheet := .Sheets}}
@@ -58,6 +58,6 @@ list.onclick = event => {
 </script>
 </html>
 {{define "topic"}}
-<div class="node" {{if .Note}}title="{{.Note}}"{{end}}><span>{{.Title}}</span>{{if .Children}}<button type="button" aria-expanded="true" aria-label="展开或收起分支" data-topic>−</button>{{end}}</div>
+<div class="node" {{if .Note}}title="{{.Note}}"{{end}}><span>{{.Title}}</span>{{if .Children}}<button type="button" aria-expanded="true" aria-label="展开或收起分支" data-en-label="Expand or Collapse Branch" data-topic>−</button>{{end}}</div>
 {{if .Children}}<ul>{{range .Children}}<li>{{template "topic" .}}</li>{{end}}</ul>{{end}}
 {{end}}

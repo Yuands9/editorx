@@ -10,7 +10,7 @@ import (
 )
 
 func (m *editorApp) projectPathActions(c ui.C, menu *ui.MenuItems, path string) {
-	menu.Sub("复制路径", func(items *ui.MenuItems) {
+	menu.Sub(m.menuText("复制路径"), func(items *ui.MenuItems) {
 		root := m.projectRoot(path)
 		relative, _ := filepath.Rel(root, path)
 		for _, option := range []struct {
@@ -19,7 +19,7 @@ func (m *editorApp) projectPathActions(c ui.C, menu *ui.MenuItems, path string) 
 		}{
 			{"完整路径", path, false}, {"相对项目路径", relative, root == ""}, {"文件名", filepath.Base(path), false},
 		} {
-			if items.Item(option.label).Icon(copyIcon).Disabled(option.disabled).Clicked() {
+			if items.Item(m.menuText(option.label)).Icon(copyIcon).Disabled(option.disabled).Clicked() {
 				c.After(func() {
 					if err := app.SetClipboardText(option.value); err != nil {
 						m.fail(err)
@@ -33,7 +33,7 @@ func (m *editorApp) projectPathActions(c ui.C, menu *ui.MenuItems, path string) 
 func (m *editorApp) revealProjectFile(path string) {
 	root := m.projectRoot(path)
 	if root == "" {
-		m.status = "当前文件不在已打开的项目中"
+		m.status = uiText("当前文件不在已打开的项目中")
 		return
 	}
 	m.showFiles = true

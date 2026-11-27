@@ -153,7 +153,7 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 		return
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		m.status = "请先完成中文选词，再刷新预览"
+		m.status = uiText("请先完成中文选词，再刷新预览")
 		return
 	}
 	source := t.source.text.String()
@@ -211,14 +211,14 @@ func (m *editorApp) refreshHTML(t *editorTab) {
 			},
 		})
 		if err != nil {
-			t.html.errorText = fmt.Sprintf("无法启动内嵌预览，请检查 Microsoft Edge WebView2 Runtime：%v", err)
+			t.html.errorText = fmt.Sprintf(uiText("无法启动内嵌预览，请检查 Microsoft Edge WebView2 Runtime：%v"), err)
 			return
 		}
 		t.html.view = view
 	} else {
 		t.html.view.Load(address)
 	}
-	m.status = "已刷新 HTML 预览"
+	m.status = uiText("已刷新 HTML 预览")
 }
 
 func (preview *htmlPreview) close() {
@@ -266,7 +266,7 @@ func (m *editorApp) htmlView(c ui.C, t *editorTab, blocked bool) {
 					message = t.html.errorText
 				}
 				ui.Text(c, message).FillWidth().Pad(20).FontSize(13).Muted()
-				if t.html.errorText != "" && ui.Button(c, "重试网页预览").MarginX(20).Clicked() {
+				if t.html.errorText != "" && ui.Button(c, uiText("重试网页预览")).MarginX(20).Clicked() {
 					c.After(func() { m.refreshHTML(t) })
 				}
 			})

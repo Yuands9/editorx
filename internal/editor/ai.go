@@ -97,7 +97,7 @@ func (m *editorApp) startAI() {
 	}
 	prompt := strings.TrimSpace(a.prompt.Text())
 	if _, composing := a.prompt.GetEditor().Composition(); composing {
-		a.message = "请先完成指令中的中文选词"
+		a.message = uiText("请先完成指令中的中文选词")
 		return
 	}
 	if prompt == "" {
@@ -110,7 +110,7 @@ func (m *editorApp) startAI() {
 	}
 	mode := a.mode
 	if mode == aiEdit && len(snapshot.files) == 0 && len(snapshot.folders) == 0 {
-		a.message = "请添加要修改的文件或文件夹"
+		a.message = uiText("请添加要修改的文件或文件夹")
 		return
 	}
 	displayed := a.profiles.active(a.profileID)
@@ -120,12 +120,12 @@ func (m *editorApp) startAI() {
 	}
 	settings := a.profiles.active(a.profileID)
 	if settings.ID == 0 {
-		a.message = "请先在模型设置中添加配置"
+		a.message = uiText("请先在模型设置中添加配置")
 		m.openAISettings()
 		return
 	}
 	if !reflect.DeepEqual(displayed, settings) {
-		a.message = "模型配置已有更新，请确认当前模型后重新发送"
+		a.message = uiText("模型配置已有更新，请确认当前模型后重新发送")
 		return
 	}
 	settings.Model = a.selectedModel(settings)
@@ -158,7 +158,7 @@ func (m *editorApp) startAI() {
 			return aiResult{}, err
 		}
 		if mode == aiEdit && len(targets) == 0 {
-			return aiResult{}, errors.New("所选文件夹中没有可修改的 UTF-8 文本文件")
+			return aiResult{}, errors.New(uiText("所选文件夹中没有可修改的 UTF-8 文本文件"))
 		}
 		return generateAI(ctx, settings, mode, prompt, targets, snapshot.folders, messages, effort, stream)
 	})
@@ -234,13 +234,13 @@ func parseAIChanges(reply string, mode int, targets []aiTarget) (aiResult, error
 		} `json:"changes"`
 	}
 	if err := json.Unmarshal([]byte(reply), &proposal); err != nil || proposal.Changes == nil {
-		return aiResult{}, errors.New("模型未按要求返回可审阅的修改，请重试")
+		return aiResult{}, errors.New(uiText("模型未按要求返回可审阅的修改，请重试"))
 	}
 	result := aiResult{}
 	seen := make(map[int]bool)
 	for _, item := range proposal.Changes {
 		if item.ID == nil || item.Text == nil || seen[*item.ID] {
-			return aiResult{}, errors.New("模型返回了缺少字段或重复的修改")
+			return aiResult{}, errors.New(uiText("模型返回了缺少字段或重复的修改"))
 		}
 		id := *item.ID
 		seen[id] = true
@@ -250,7 +250,7 @@ func parseAIChanges(reply string, mode int, targets []aiTarget) (aiResult, error
 		} else {
 			index := slices.IndexFunc(targets, func(target aiTarget) bool { return target.file.ID == id })
 			if mode != aiEdit || index < 0 {
-				return aiResult{}, errors.New("模型建议修改未授权的文件，请重试")
+				return aiResult{}, errors.New(uiText("模型建议修改未授权的文件，请重试"))
 			}
 			target = targets[index]
 		}
@@ -272,12 +272,12 @@ func parseAIChanges(reply string, mode int, targets []aiTarget) (aiResult, error
 
 func validateAIChange(target aiTarget, value string) error {
 	if strings.ContainsRune(value, 0) {
-		return errors.New("建议包含空字符，无法应用")
+		return errors.New(uiText("建议包含空字符，无法应用"))
 	}
 	switch target.file.Format {
 	case "JSON":
 		if !json.Valid([]byte(target.base[:target.start] + value + target.base[target.end:])) {
-			return errors.New("应用后整份文件无法通过 JSON 校验")
+			return errors.New(uiText("应用后整份文件无法通过 JSON 校验"))
 		}
 	case "XML":
 		decoder := xml.NewDecoder(strings.NewReader(target.base[:target.start] + value + target.base[target.end:]))
@@ -288,7 +288,7 @@ func validateAIChange(target aiTarget, value string) error {
 				break
 			}
 			if err != nil {
-				return errors.New("应用后整份文件无法通过 XML 校验")
+				return errors.New(uiText("应用后整份文件无法通过 XML 校验"))
 			}
 			switch tree := token.(type) {
 			case xml.StartElement:
@@ -300,7 +300,7 @@ func validateAIChange(target aiTarget, value string) error {
 				depth--
 			case xml.CharData:
 				if depth == 0 && strings.TrimSpace(string(tree)) != "" {
-					return errors.New("应用后的 XML 在根元素外有文本")
+					return errors.New(uiText("应用后的 XML 在根元素外有文本"))
 				}
 			}
 		}
@@ -352,9 +352,9 @@ func (turn *aiTurn) updateRequest(c ui.C) bool {
 		return true
 	}
 	if len(turn.changes) == 0 {
-		turn.notice = "模型没有提出内容修改"
+		turn.notice = uiText("模型没有提出内容修改")
 	} else {
-		turn.notice = fmt.Sprintf("生成了 %d 份修改建议", len(turn.changes))
+		turn.notice = fmt.Sprintf(uiText("生成了 %d 份修改建议"), len(turn.changes))
 	}
 	return true
 }
@@ -367,7 +367,7 @@ func (m *editorApp) applyAIChange(change *aiChange) error {
 	if target.file.ID == 0 {
 		m.newDocument()
 		m.active.source.text.ReplaceRange(text.Range{}, change.value)
-		m.status = "已生成草稿"
+		m.status = uiText("已生成草稿")
 		// A generated page opens in source view until the user selects preview.
 		if m.active.format() == "HTML" {
 			m.active.htmlMode = "编辑"
@@ -380,25 +380,25 @@ func (m *editorApp) applyAIChange(change *aiChange) error {
 		if tab == nil {
 			doc, err := readDocument(target.path)
 			if err != nil {
-				return fmt.Errorf("无法打开原文件：%w", err)
+				return fmt.Errorf(uiText("无法打开原文件：%w"), err)
 			}
 			if !target.matchesSource(doc.saved) {
-				return errors.New("磁盘内容已改变，请用最新内容重新生成")
+				return errors.New(uiText("磁盘内容已改变，请用最新内容重新生成"))
 			}
 			tab = m.addTab(doc, filepath.Base(target.path))
 			m.rememberPath(target.path, false)
 		}
 	}
 	if !aiTextTab(tab) || !strings.EqualFold(tab.doc.path, target.path) {
-		return errors.New("原标签已关闭或另存，请从当前文件重新生成")
+		return errors.New(uiText("原标签已关闭或另存，请从当前文件重新生成"))
 	}
 	editor := tab.source.text
 	if _, composing := editor.Composition(); composing {
-		return errors.New("请先完成正文中的中文选词")
+		return errors.New(uiText("请先完成正文中的中文选词"))
 	}
 	source := editor.String()
 	if !target.matchesSource(source) {
-		return errors.New("正文已改变，请用最新内容重新生成")
+		return errors.New(uiText("正文已改变，请用最新内容重新生成"))
 	}
 	if target.base == "" && target.baseHash != ([32]byte{}) {
 		target.base = source
@@ -414,7 +414,7 @@ func (m *editorApp) applyAIChange(change *aiChange) error {
 		tab.htmlMode = "分屏"
 	}
 	m.activate(tab)
-	m.status = "已应用 AI 修改 · 可撤销"
+	m.status = uiText("已应用 AI 修改 · 可撤销")
 	if tab.format() == "HTML" && tab.htmlMode != "编辑" {
 		m.refreshHTML(tab)
 	}

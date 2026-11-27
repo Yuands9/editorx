@@ -68,7 +68,7 @@ func (m *editorApp) openPasswordArchiveRestore() {
 	v := m.passwordVault
 	v.archives = readPasswordVaultArchives(passwordVaultPath(m.dataDirectory))
 	if len(v.archives) == 0 {
-		v.problem = "没有可恢复的旧密码本"
+		v.problem = uiText("没有可恢复的旧密码本")
 		return
 	}
 	v.dialog = &passwordVaultDialog{open: true, mode: passwordArchiveRestoreMode, archive: v.archives[0],
@@ -78,9 +78,9 @@ func (m *editorApp) openPasswordArchiveRestore() {
 
 func (m *editorApp) passwordArchiveModal(c ui.C, v *passwordVaultView, d *passwordVaultDialog) {
 	reset := d.mode == passwordArchiveResetMode
-	title := "恢复旧密码本"
+	title := uiText("恢复旧密码本")
 	if reset {
-		title = "创建新密码本"
+		title = uiText("创建新密码本")
 	}
 	closeDialog := func() {
 		v.dialog = d.returnToSettings
@@ -90,10 +90,10 @@ func (m *editorApp) passwordArchiveModal(c ui.C, v *passwordVaultView, d *passwo
 	if ui.ModalWith(c, &d.open, title, ui.ModalSpec{Width: 475}, func() {
 		ui.Column(c).FillWidth().Gap(9).Children(func() {
 			if reset {
-				ui.Wrap(c, "当前密码本会以原密码加密保留。日后想起密码，可通过「恢复旧密码本」重新打开。").FillWidth()
+				ui.Wrap(c, uiText("当前密码本会以原密码加密保留。日后想起密码，可通过「恢复旧密码本」重新打开。")).FillWidth()
 			} else {
 				if ui.Select(c.Part("archive-file"), &d.archive, v.archives, func(archive passwordVaultArchive) string { return archive.label }).
-					Label("归档时间").FillWidth().Height(34).Changed() {
+					Label(uiText("归档时间")).FillWidth().Height(34).Changed() {
 					d.master, d.problem = ui.Field{Secure: true}, ""
 				}
 				if !d.archive.windowsProtected {
@@ -106,7 +106,7 @@ func (m *editorApp) passwordArchiveModal(c ui.C, v *passwordVaultView, d *passwo
 					if needsCurrentPassword() {
 						m.passwordInput(c.Part("current-master"), &d.currentMaster, "当前密码本主密码", "输入当前密码本主密码", 36, false)
 					}
-					ui.Wrap(c, "恢复后，当前密码本会加密归档。").FillWidth().Muted().FontSize(12)
+					ui.Wrap(c, uiText("恢复后，当前密码本会加密归档。")).FillWidth().Muted().FontSize(12)
 				}
 			}
 			if d.problem != "" {
@@ -114,11 +114,11 @@ func (m *editorApp) passwordArchiveModal(c ui.C, v *passwordVaultView, d *passwo
 			}
 		})
 	}, func() {
-		if ui.Button(c, "取消").Ghost().Clicked() {
+		if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 			c.After(closeDialog)
 		}
 		if reset {
-			if ui.Button(c, "归档并继续").Clicked() {
+			if ui.Button(c, uiText("归档并继续")).Clicked() {
 				c.After(m.archiveCurrentPasswordVault)
 			}
 			return
@@ -148,7 +148,7 @@ func (m *editorApp) archiveCurrentPasswordVault() {
 	}
 	passwordVaultFileLock.Unlock()
 	if err != nil {
-		d.problem = fmt.Sprintf("无法归档旧密码本：%v", err)
+		d.problem = fmt.Sprintf(uiText("无法归档旧密码本：%v"), err)
 		return
 	}
 	pending := v.pendingSource
@@ -171,7 +171,7 @@ func (m *editorApp) restorePasswordArchive() {
 	archivePath := filepath.Join(m.dataDirectory, passwordVaultArchives, d.archive.name)
 	encoded, err := readTextAsset(archivePath, passwordVaultBytes)
 	if err != nil {
-		d.problem = fmt.Sprintf("无法读取旧密码本：%v", err)
+		d.problem = fmt.Sprintf(uiText("无法读取旧密码本：%v"), err)
 		return
 	}
 	restored, err := unlockPasswordVault(encoded, password)
@@ -199,7 +199,7 @@ func (m *editorApp) restorePasswordArchive() {
 				data = mergePasswordVaults(data, currentVault.data)
 				currentVault.clear()
 			} else {
-				err = fmt.Errorf("无法解锁当前密码本：%w", err)
+				err = fmt.Errorf(uiText("无法解锁当前密码本：%w"), err)
 			}
 		}
 	default:
@@ -220,9 +220,9 @@ func (m *editorApp) restorePasswordArchive() {
 	v.windowsProtected = passwordVaultUsesWindows(restored.header)
 	v.archives = readPasswordVaultArchives(path)
 	v.group, v.selected, v.favorites = passwordVaultAllGroups, 0, false
-	v.message = "已恢复旧密码本"
+	v.message = uiText("已恢复旧密码本")
 	if merge {
-		v.message = "已恢复旧密码本并合并当前内容"
+		v.message = uiText("已恢复旧密码本并合并当前内容")
 	}
 	m.lockOtherPasswordVaults()
 	m.vaultTouch()

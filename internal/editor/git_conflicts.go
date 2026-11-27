@@ -61,11 +61,11 @@ func (m *editorApp) openGitConflict(change gitChange) {
 		// editing mode while resolving instead of showing a format suggestion.
 		tab.formatPromptOpen, tab.suggestedFormat = false, ""
 		if !historyEditableTab(tab) {
-			m.tools.git.issue = "请在普通文本编辑模式处理冲突"
+			m.tools.git.issue = uiText("请在普通文本编辑模式处理冲突")
 			return
 		}
 		m.tools.git.conflict = tab
-		m.status = "处理冲突：可采用任一侧或手动编辑，Ctrl+Z 可撤销"
+		m.status = uiText("处理冲突：可采用任一侧或手动编辑，Ctrl+Z 可撤销")
 	})
 }
 
@@ -90,7 +90,7 @@ func (m *editorApp) gitConflictToolbar(c ui.C, busy bool) {
 	}
 	busy = busy || tab.savingText != nil || tab.source.text.CompositionActive()
 	ui.Row(c).FillWidth().Gap(4).Items(ui.Center).Children(func() {
-		ui.Text(c, fmt.Sprintf("冲突处理 · 剩余 %d 块", len(blocks))).FontSize(12).Muted()
+		ui.Text(c, fmt.Sprintf(uiText("冲突处理 · 剩余 %d 块"), len(blocks))).FontSize(12).Muted()
 		for _, choice := range []string{"采用当前分支", "采用传入分支", "保留双方"} {
 			if ui.Button(c.Key(choice), choice).Ghost().Height(27).Disabled(busy || len(blocks) == 0).Clicked() {
 				c.After(func() {
@@ -106,7 +106,7 @@ func (m *editorApp) gitConflictToolbar(c ui.C, busy bool) {
 					}
 					start, end, replacement := trimHistoryReplacement(value, block.start, block.end, replacement)
 					if utf8.RuneCountInString(value[start:end])+utf8.RuneCountInString(replacement) > historyMergeUndoRunes {
-						git.issue = "这块冲突超过可撤销上限，请分段编辑"
+						git.issue = uiText("这块冲突超过可撤销上限，请分段编辑")
 						return
 					}
 					tab.source.text.ReplaceRange(text.Range{Start: tab.source.text.RuneIndex(start), End: tab.source.text.RuneIndex(end)}, replacement)
@@ -115,14 +115,14 @@ func (m *editorApp) gitConflictToolbar(c ui.C, busy bool) {
 				})
 			}
 		}
-		if ui.Button(c, "下一个冲突").Icon(historyDownIcon).IconOnly().Ghost().Size(27, 27).Disabled(len(blocks) == 0 || busy).Clicked() {
+		if ui.Button(c, uiText("下一个冲突")).Icon(historyDownIcon).IconOnly().Ghost().Size(27, 27).Disabled(len(blocks) == 0 || busy).Clicked() {
 			c.After(func() {
 				tab.source.text.MoveTo(utf8.RuneCountInString(value[:blocks[(current+1)%len(blocks)].start]), false)
 				m.focusActiveSource()
 			})
 		}
 		ui.Slot(c).Grow(1)
-		if ui.Button(c, "保存并标记已解决").Height(27).Disabled(busy || unresolvedGitMarkers(value)).Clicked() {
+		if ui.Button(c, uiText("保存并标记已解决")).Height(27).Disabled(busy || unresolvedGitMarkers(value)).Clicked() {
 			c.After(func() { m.saveGitResolution(tab) })
 		}
 	})

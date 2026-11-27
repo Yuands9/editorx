@@ -51,17 +51,17 @@ func readEditorDataLocation(path string) (editorDataLocation, error) {
 		err = json.Unmarshal(data, &location)
 	}
 	if err == nil && (!filepath.IsAbs(location.Directory) || location.Pending != "" && !filepath.IsAbs(location.Pending)) {
-		err = errors.New("数据目录必须是绝对路径")
+		err = errors.New(uiText("数据目录必须是绝对路径"))
 	}
 	if err == nil {
 		var info os.FileInfo
 		info, err = os.Stat(location.Directory)
 		if err == nil && !info.IsDir() {
-			err = fmt.Errorf("数据路径不是文件夹：%s", location.Directory)
+			err = fmt.Errorf(uiText("数据路径不是文件夹：%s"), location.Directory)
 		}
 	}
 	if err != nil {
-		return editorDataLocation{}, fmt.Errorf("无法读取数据目录设置 %s：%w", path, err)
+		return editorDataLocation{}, fmt.Errorf(uiText("无法读取数据目录设置 %s：%w"), path, err)
 	}
 	location.Directory = filepath.Clean(location.Directory)
 	return location, nil
@@ -116,17 +116,17 @@ func editorDataDestination(source, destination string) (string, error) {
 		return "", err
 	}
 	if strings.EqualFold(resolved, resolvedSource) {
-		return "", errors.New("所选文件夹是当前数据目录")
+		return "", errors.New(uiText("所选文件夹是当前数据目录"))
 	}
 	if gitPathWithin(resolvedSource, resolved) || gitPathWithin(resolved, resolvedSource) {
-		return "", errors.New("请选择与当前数据目录互不包含的文件夹")
+		return "", errors.New(uiText("请选择与当前数据目录互不包含的文件夹"))
 	}
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
 		return "", err
 	}
 	if len(entries) != 0 {
-		return "", errors.New("请选择一个空文件夹")
+		return "", errors.New(uiText("请选择一个空文件夹"))
 	}
 	return resolved, nil
 }
@@ -137,7 +137,7 @@ func (location editorDataLocation) migrate() (editorDataLocation, func(), error)
 		return location, nil, err
 	}
 	if !strings.EqualFold(target, location.Pending) {
-		return location, nil, errors.New("目标文件夹的位置已变化，请重新选择")
+		return location, nil, errors.New(uiText("目标文件夹的位置已变化，请重新选择"))
 	}
 	release, err := lockSessionDirectory(target)
 	if err != nil {
@@ -180,7 +180,7 @@ func copyEditorData(source string, destination editorDataLocation) error {
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("数据目录包含无法复制的条目：%s", name)
+			return fmt.Errorf(uiText("数据目录包含无法复制的条目：%s"), name)
 		}
 		file, err := root.Open(filepath.FromSlash(name))
 		if err != nil {
@@ -201,7 +201,7 @@ func copyEditorData(source string, destination editorDataLocation) error {
 		return err
 	}
 	if len(targetEntries) != 1 || targetEntries[0].Name() != filepath.Base(staged) {
-		return errors.New("目标文件夹已有其他内容")
+		return errors.New(uiText("目标文件夹已有其他内容"))
 	}
 	moved := 0
 	for _, entry := range entries {

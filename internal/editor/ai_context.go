@@ -121,14 +121,14 @@ func (m *editorApp) setAIDefaultContext(tab *editorTab, path string, directory b
 func aiTabTarget(tab *editorTab, useSelection bool) (aiTarget, error) {
 	editor := tab.source.text
 	if _, composing := editor.Composition(); composing {
-		return aiTarget{}, fmt.Errorf("请先完成 %s 中的中文选词", tab.title())
+		return aiTarget{}, fmt.Errorf(uiText("请先完成 %s 中的中文选词"), tab.title())
 	}
 	base := editor.String()
 	start, end, scope := 0, len(base), "整份文件"
 	selected := editor.Selection()
 	if useSelection && selected.Start != selected.End {
 		if editor.SelectionCount() > 1 {
-			return aiTarget{}, errors.New("请保留一个正文选区，或添加整份文件")
+			return aiTarget{}, errors.New(uiText("请保留一个正文选区，或添加整份文件"))
 		}
 		start = editor.ByteOffset(min(selected.Start, selected.End))
 		end = editor.ByteOffset(max(selected.Start, selected.End))
@@ -217,7 +217,7 @@ func (snapshot aiRequestContext) targets(ctx context.Context) ([]aiTarget, error
 			var err error
 			target, err = readAIFile(path, -len(targets)-1)
 			if err != nil {
-				return nil, fmt.Errorf("无法读取附件 %s：%w", aiPathName(path), err)
+				return nil, fmt.Errorf(uiText("无法读取附件 %s：%w"), aiPathName(path), err)
 			}
 		}
 		for _, folder := range snapshot.folders {
@@ -238,7 +238,7 @@ func (snapshot aiRequestContext) targets(ctx context.Context) ([]aiTarget, error
 				return err
 			}
 			if path == folder && !entry.IsDir() {
-				return errors.New("所选路径不是文件夹")
+				return errors.New(uiText("所选路径不是文件夹"))
 			}
 			key := strings.ToLower(path)
 			if !entry.Type().IsRegular() || seenFiles[key] {
@@ -260,7 +260,7 @@ func (snapshot aiRequestContext) targets(ctx context.Context) ([]aiTarget, error
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("无法读取附件文件夹 %s：%w", aiPathName(folder), err)
+			return nil, fmt.Errorf(uiText("无法读取附件文件夹 %s：%w"), aiPathName(folder), err)
 		}
 	}
 	return targets, nil

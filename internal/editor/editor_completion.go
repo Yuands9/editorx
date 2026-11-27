@@ -1,7 +1,8 @@
 package editor
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -13,11 +14,12 @@ import (
 )
 
 const (
-	automaticCompletionDelay  = 150 * time.Millisecond
+	automaticCompletionDelay  = 100 * time.Millisecond
 	automaticCompletionRadius = 16 << 10
 	manualCompletionRadius    = 128 << 10
 	completionWordLimit       = 128
 	completionItemLimit       = 200
+	completionVisibleRows     = 8
 )
 
 type editorCompletion struct {
@@ -25,7 +27,7 @@ type editorCompletion struct {
 	revision                    uint64
 	start, caret, end, selected int
 	items                       []string
-	buttonScope                 gfx.Scope
+	buttons                     [completionVisibleRows]gfx.ID
 	automatic, justOpened       bool
 }
 
@@ -81,22 +83,16 @@ func completionWordRange(value string, caret int) (start, end int) {
 func completionCandidates(value, language string, start, caret, end, radius int) []string {
 	prefix := value[start:caret]
 	foldedPrefix := strings.ToLower(prefix)
-	words := map[string]struct{}{}
-	add := func(word string) {
-		if len(words) == completionItemLimit || len(word) <= len(prefix) || len(word) > completionWordLimit ||
+	words := map[string]int{}
+	add := func(word string, distance int) {
+		if len(word) <= len(prefix) || len(word) > completionWordLimit ||
 			word == value[start:end] || !strings.HasPrefix(word, prefix) && !completionFoldedPrefix(word, foldedPrefix) {
 			return
 		}
-		words[word] = struct{}{}
-	}
-	if syntax := codeSyntaxByName[language]; syntax != nil {
-		for word := range syntax.words {
-			add(word)
-		}
-	}
-	if language == "JSON" {
-		for _, word := range []string{"true", "false", "null"} {
-			add(word)
+		if closest, seen := words[word]; seen {
+			words[word] = min(closest, distance)
+		} else if len(words) < completionItemLimit {
+			words[word] = distance
 		}
 	}
 	// Scan only nearby words. Neither the popup nor a pending refresh owns the
@@ -118,28 +114,54 @@ func completionCandidates(value, language string, start, caret, end, radius int)
 			}
 		} else if wordStart >= 0 {
 			if wordStart > from || atWordBoundary {
-				add(value[wordStart : from+offset])
+				wordEnd := from + offset
+				add(value[wordStart:wordEnd], max(caret-wordEnd, wordStart-caret, 0))
 			}
 			wordStart = -1
-			if len(words) == completionItemLimit {
-				break
-			}
 		}
 	}
 	if wordStart >= 0 && to == len(value) && (wordStart > from || atWordBoundary) {
-		add(value[wordStart:to])
+		add(value[wordStart:to], max(wordStart-caret, 0))
 	}
-	items := make([]string, 0, len(words))
-	for word := range words {
-		items = append(items, strings.Clone(word))
-	}
-	sort.Slice(items, func(i, j int) bool {
-		exactI, exactJ := strings.HasPrefix(items[i], prefix), strings.HasPrefix(items[j], prefix)
-		if exactI != exactJ {
-			return exactI
+	if syntax := codeSyntaxByName[language]; syntax != nil {
+		for word := range syntax.words {
+			add(word, radius+1)
 		}
-		return items[i] < items[j]
+	}
+	if language == "JSON" {
+		for _, word := range []string{"true", "false", "null"} {
+			add(word, radius+1)
+		}
+	}
+	type rankedWord struct {
+		word     string
+		distance int
+		exact    bool
+	}
+	var firstWords [12]rankedWord
+	ordered := firstWords[:0]
+	if len(words) > len(firstWords) {
+		ordered = make([]rankedWord, 0, len(words))
+	}
+	for word, distance := range words {
+		ordered = append(ordered, rankedWord{word, distance, strings.HasPrefix(word, prefix)})
+	}
+	slices.SortFunc(ordered, func(a, b rankedWord) int {
+		if a.exact != b.exact {
+			if a.exact {
+				return -1
+			}
+			return 1
+		}
+		if distance := cmp.Compare(a.distance, b.distance); distance != 0 {
+			return distance
+		}
+		return strings.Compare(a.word, b.word)
 	})
+	items := make([]string, len(ordered))
+	for i, candidate := range ordered {
+		items[i] = strings.Clone(candidate.word)
+	}
 	return items
 }
 
@@ -214,16 +236,19 @@ func (p *editorPane) completionKey(event gfx.KeyEvent) gfx.EventResult {
 	switch event.Key {
 	case gfx.KeyEscape:
 		p.completion = nil
-	case gfx.KeyUp, gfx.KeyDown:
+	case gfx.KeyUp, gfx.KeyDown, gfx.KeyPageUp, gfx.KeyPageDown:
 		if len(s.items) == 0 {
 			return gfx.EventResult{}
 		}
-		if event.Key == gfx.KeyDown {
+		switch event.Key {
+		case gfx.KeyPageUp:
+			s.selected = max(0, s.selected-completionVisibleRows)
+		case gfx.KeyPageDown:
+			s.selected = min(len(s.items)-1, max(0, s.selected)+completionVisibleRows)
+		case gfx.KeyDown:
 			s.selected = (s.selected + 1) % len(s.items)
-		} else if s.selected <= 0 {
-			s.selected = len(s.items) - 1
-		} else {
-			s.selected--
+		case gfx.KeyUp:
+			s.selected = (max(0, s.selected) + len(s.items) - 1) % len(s.items)
 		}
 	case gfx.KeyEnter, gfx.KeyTab:
 		if event.Key == gfx.KeyEnter && s.selected < 0 || !p.acceptCompletion(s, max(0, s.selected)) {
@@ -265,12 +290,22 @@ func (p *editorPane) updateTypingCompletion(canvas *gfx.Canvas) {
 		}
 		edit := edits[0]
 		caret := editor.ByteOffset(editor.Caret())
-		if edit.Inserted == 0 || edit.Inserted > completionWordLimit || edit.Removed > completionWordLimit || edit.Start+edit.Inserted != caret {
+		popup := p.completion
+		refresh := popup != nil && popup.automatic && popup.editor == editor && popup.revision == previous && !composed
+		if (edit.Inserted == 0 && (!refresh || edit.Removed == 0)) || edit.Inserted > completionWordLimit ||
+			edit.Removed > completionWordLimit || edit.Start+edit.Inserted != caret {
 			return
 		}
 		value := editor.String()
 		start, _ := completionWordRange(value, caret)
 		if start < 0 || edit.Start < start || utf8.RuneCountInString(value[start:caret]) < 2 {
+			return
+		}
+		if refresh && start == popup.start {
+			p.setCompletion(true)
+			if p.completion != nil && popup.selected >= 0 {
+				p.completion.selected = slices.Index(p.completion.items, popup.items[popup.selected])
+			}
 			return
 		}
 		tracker.readyAt = canvas.Now() + automaticCompletionDelay
@@ -307,7 +342,7 @@ func (p *editorPane) completionView(c ui.C, editorID gfx.ID, available bool) {
 	if s == nil {
 		return
 	}
-	buttonFocused := !s.buttonScope.IsZero() && canvas.Focused().Scope() == s.buttonScope
+	buttonFocused := !canvas.Focused().IsZero() && slices.Contains(s.buttons[:], canvas.Focused())
 	if p.text.CompositionActive() || !p.completionSelectionEmpty() ||
 		!focused && !buttonFocused && !s.justOpened || s.automatic && !p.automaticCompletion {
 		p.completion = nil
@@ -330,7 +365,7 @@ func (p *editorPane) completionView(c ui.C, editorID gfx.ID, available bool) {
 	if !ok {
 		return
 	}
-	height := float32(max(1, min(8, len(s.items)))*27 + 8)
+	height := float32(max(1, min(completionVisibleRows, len(s.items)))*27 + 8)
 	viewport := c.Bounds()
 	bounds := gfx.Rect{X: position.X, Y: position.Y + position.Height, Width: min(280, viewport.Width), Height: height}
 	bounds.X = max(viewport.X, min(bounds.X, viewport.X+viewport.Width-bounds.Width))
@@ -340,16 +375,17 @@ func (p *editorPane) completionView(c ui.C, editorID gfx.ID, available bool) {
 	ui.Overlay(c, ui.OverlaySpec{Band: ui.LayerPaneChrome, Bounds: bounds}).Children(func() {
 		ui.Column(c).Fill().Pad(4).Radius(6).Background(c.Theme().Popover).Border(1, c.Theme().Border).Clip().Children(func() {
 			if len(s.items) == 0 {
-				ui.Text(c, "没有匹配的文档词或关键字").FontSize(12).Muted()
+				ui.Text(c, uiText("没有匹配的文档词或关键字")).FontSize(12).Muted()
 				return
 			}
-			start := max(0, s.selected-7)
-			for i := start; i < min(start+8, len(s.items)); i++ {
+			clear(s.buttons[:])
+			start := max(0, s.selected-completionVisibleRows+1)
+			for i := start; i < min(start+completionVisibleRows, len(s.items)); i++ {
 				item := s.items[i]
 				row := ui.Row(c).FillWidth().Height(27).PadX(8).Gap(8).Items(ui.Center).Radius(4).
 					HitWith(ui.ID(c.KeyInt(i)), item, gfx.HitOptions{Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand, SkipTab: true}).
 					Hover(ui.Look{}.Background(c.Theme().Hover))
-				s.buttonScope = row.N().ID.Scope()
+				s.buttons[i-start] = row.N().ID
 				if i == s.selected {
 					row.Background(c.Theme().Secondary)
 				}

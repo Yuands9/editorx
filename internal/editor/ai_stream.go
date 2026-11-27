@@ -74,10 +74,10 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 		}
 		var event aiSSEEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			return errors.New("模型返回了无效的流式事件")
+			return errors.New(uiText("模型返回了无效的流式事件"))
 		}
 		if len(event.Error) > 0 && string(event.Error) != "null" || event.Type == "error" || event.Type == "response.failed" {
-			return errors.New("服务商中断了流式回复")
+			return errors.New(uiText("服务商中断了流式回复"))
 		}
 		if event.Model != "" {
 			reply.Model = event.Model
@@ -96,7 +96,7 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 			switch event.Type {
 			case "response.output_text.delta":
 				if err := json.Unmarshal(event.Delta, &delta); err != nil {
-					return errors.New("Responses 流式回复中的文本格式无效")
+					return errors.New(uiText("Responses 流式回复中的文本格式无效"))
 				}
 			case "response.completed", "response.incomplete":
 				done, reply.Truncated = true, event.Type == "response.incomplete"
@@ -121,7 +121,7 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 					StopReason string `json:"stop_reason"`
 				}
 				if err := json.Unmarshal(event.Delta, &block); err != nil {
-					return errors.New("Messages 流式回复中的文本格式无效")
+					return errors.New(uiText("Messages 流式回复中的文本格式无效"))
 				}
 				if block.Type == "text_delta" {
 					delta = block.Text
@@ -134,7 +134,7 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 			}
 		}
 		if output.Len()+len(delta) > aiResponseLimit {
-			return errors.New("模型响应超过 2 MB")
+			return errors.New(uiText("模型响应超过 2 MB"))
 		}
 		if delta != "" {
 			output.WriteString(delta)
@@ -146,7 +146,7 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 		line := scanner.Text()
 		if value, ok := strings.CutPrefix(line, "data:"); ok {
 			if eventData.Len()+len(value) > aiResponseLimit+4096 {
-				return aiCompletion{}, errors.New("流式事件超过 2 MB")
+				return aiCompletion{}, errors.New(uiText("流式事件超过 2 MB"))
 			}
 			if eventData.Len() != 0 {
 				eventData.WriteByte('\n')
@@ -166,7 +166,7 @@ func readAIStream(protocol aiProtocol, reader io.Reader, onDelta func(string)) (
 		}
 	}
 	if scanner.Err() != nil || !done {
-		return aiCompletion{}, errors.New("连接中断，未收到完整的流式回复")
+		return aiCompletion{}, errors.New(uiText("连接中断，未收到完整的流式回复"))
 	}
 	reply.Text = output.String()
 	return reply, nil

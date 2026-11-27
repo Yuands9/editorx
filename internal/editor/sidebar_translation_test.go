@@ -200,8 +200,10 @@ func TestSidebarCollapsesWithoutVisibleButtons(t *testing.T) {
 	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
 	editorBounds := func() gfx.Rect {
 		t.Helper()
-		hit, err := s.Locate("textfield:代码编辑区")
-		check(err)
+		hit, found := s.AccessByRole(gfx.RoleTextField, "代码编辑区")
+		if !found {
+			t.Fatal("missing editor")
+		}
 		return hit.Bounds
 	}
 	check(s.Resize(900, 560))

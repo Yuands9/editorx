@@ -21,6 +21,8 @@ import (
 
 type passwordVaultView struct {
 	active, exists, favorites, revealed, focusSearch bool
+	detailOpen, groupsOpen                           bool
+	split                                            ui.SplitterState
 	useMaster, windowsProtected                      bool
 	store                                            *unlockedPasswordVault
 	password, confirmation, search                   ui.Field
@@ -35,6 +37,18 @@ type passwordVaultView struct {
 	clipboardCleanup                                 *passwordClipboardCleanup
 	dialog                                           *passwordVaultDialog
 	archives                                         []passwordVaultArchive
+	searchCache                                      passwordEntrySearch
+	copiedField                                      string
+	copiedEntry                                      int
+	copyFeedbackUntil                                time.Time
+}
+
+type passwordEntrySearch struct {
+	store     *unlockedPasswordVault
+	query     string
+	group     int
+	favorites bool
+	indexes   []int
 }
 
 const (
@@ -46,16 +60,16 @@ const (
 )
 
 type passwordVaultDialog struct {
-	open, confirmDelete, useMaster bool
-	master, masterConfirmation     ui.Field
-	returnToSettings               *passwordVaultDialog
-	archive                        passwordVaultArchive
-	mergeCurrent                   bool
-	currentMaster                  ui.Field
-	mode, problem                  string
-	id, group, parent              int
-	idleLock, clearClipboard       bool
-	idleMinutes, clipboardSeconds  ui.Field
+	open, confirmDelete, useMaster  bool
+	master, masterConfirmation      ui.Field
+	returnToSettings, returnToEntry *passwordVaultDialog
+	archive                         passwordVaultArchive
+	mergeCurrent                    bool
+	currentMaster                   ui.Field
+	mode, problem                   string
+	id, group, parent               int
+	idleLock, clearClipboard        bool
+	idleMinutes, clipboardSeconds   ui.Field
 
 	kind                                            string
 	name, account, site, secret, note, tags, source ui.Field
@@ -84,13 +98,18 @@ func (m *editorApp) openPasswordVault() {
 		m.closeSettings()
 	}
 	if m.passwordVault == nil {
-		m.passwordVault = &passwordVaultView{group: passwordVaultAllGroups, collapsed: make(map[string]bool), useMaster: true}
+		m.passwordVault = &passwordVaultView{group: passwordVaultAllGroups, collapsed: make(map[string]bool), useMaster: true, split: m.newAssetSplit()}
 		m.passwordVault.lock()
 	}
 	v := m.passwordVault
 	if v.active {
 		return
 	}
+	if m.ai.open {
+		m.toggleAIPanel()
+	}
+	m.tools.gitOpen = false
+	m.translation, m.templatePanel = nil, nil
 	v.active = true
 	path := passwordVaultPath(m.dataDirectory)
 	v.readProtection(path)
@@ -113,7 +132,7 @@ func (v *passwordVaultView) readProtection(path string) {
 	defer file.Close()
 	var prefix [len(passwordVaultMagic)]byte
 	if _, err := io.ReadFull(file, prefix[:]); err != nil {
-		v.problem = "密码库格式无效或版本不受支持"
+		v.problem = uiText("密码库格式无效或版本不受支持")
 		return
 	}
 	v.windowsProtected = passwordVaultUsesWindows(prefix[:])
@@ -150,11 +169,14 @@ func (v *passwordVaultView) lock() {
 	v.password, v.confirmation = ui.Field{Secure: true}, ui.Field{Secure: true}
 	v.search = ui.Field{}
 	v.resultList = ui.ListState{}
+	v.searchCache = passwordEntrySearch{}
+	v.copiedField, v.copiedEntry, v.copyFeedbackUntil = "", 0, time.Time{}
 	v.groupTree = ui.TreeState{}
 	v.closedGroups = make(map[int]bool)
 	v.pendingSource, v.backupSource, v.problem, v.message = "", "", "", ""
 	v.dialog = nil
 	v.revealed, v.focusSearch = false, false
+	v.detailOpen, v.groupsOpen = false, false
 }
 
 func (m *editorApp) vaultTouch() {
@@ -210,7 +232,7 @@ func (m *editorApp) submitPasswordVault() {
 	}
 	if m.nativeWindow != nil && m.desktop != nil && (m.desktop.watchPasswordSession == nil || !m.desktop.watchPasswordSession()) {
 		v.password, v.confirmation = ui.Field{Secure: true}, ui.Field{Secure: true}
-		v.problem = "暂时无法监听 Windows 锁屏，请稍后重试"
+		v.problem = uiText("暂时无法监听 Windows 锁屏，请稍后重试")
 		return
 	}
 	password := v.password.Text()
@@ -280,7 +302,7 @@ func (m *editorApp) lockOtherPasswordVaults() {
 
 func createConfirmedPasswordVault(password, confirmation string) (*unlockedPasswordVault, error) {
 	if password != confirmation {
-		return nil, errors.New("两次输入的密码不同")
+		return nil, errors.New(uiText("两次输入的密码不同"))
 	}
 	return createPasswordVault(password)
 }
@@ -307,6 +329,7 @@ func (m *editorApp) savePasswordData(data passwordVaultData) bool {
 		return false
 	}
 	v.problem = ""
+	v.searchCache = passwordEntrySearch{}
 	m.vaultTouch()
 	return true
 }
@@ -322,7 +345,7 @@ func (m *editorApp) savePasswordVaultSettings() {
 		}
 		minutes, err := strconv.Atoi(strings.TrimSpace(d.idleMinutes.Text()))
 		if err != nil || !validPasswordVaultDuration(minutes, time.Minute) {
-			d.problem = "请输入有效的闲置锁定分钟数，至少 1 分钟"
+			d.problem = uiText("请输入有效的闲置锁定分钟数，至少 1 分钟")
 			return
 		}
 		data.IdleMinutes = minutes
@@ -333,7 +356,7 @@ func (m *editorApp) savePasswordVaultSettings() {
 		}
 		seconds, err := strconv.Atoi(strings.TrimSpace(d.clipboardSeconds.Text()))
 		if err != nil || !validPasswordVaultDuration(seconds, time.Second) {
-			d.problem = "请输入有效的剪贴板清理秒数，至少 1 秒"
+			d.problem = uiText("请输入有效的剪贴板清理秒数，至少 1 秒")
 			return
 		}
 		data.ClipboardSeconds = seconds
@@ -378,7 +401,7 @@ func (m *editorApp) savePasswordVaultSettings() {
 
 func (m *editorApp) choosePasswordVaultBackup() {
 	v := m.passwordVault
-	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "打开加密密码备份", Filters: []app.FileFilter{{Name: "EditorX 密码库", Pattern: "*.edxvault"}}})
+	paths, err := app.OpenFiles(app.OpenFileOptions{Title: uiText("打开加密密码备份"), Filters: []app.FileFilter{{Name: uiText("EditorX 密码库"), Pattern: "*.edxvault"}}})
 	if errors.Is(err, app.ErrCanceled) || err == nil && len(paths) == 0 {
 		return
 	}
@@ -407,7 +430,7 @@ func (m *editorApp) exportPasswordVault() {
 	path := passwordVaultPath(m.dataDirectory)
 	encoded, err := readTextAsset(path, passwordVaultBytes)
 	if err != nil || sha256.Sum256(encoded) != v.store.revision {
-		dialog.problem = "无法读取当前加密密码库，请重新解锁后再试"
+		dialog.problem = uiText("无法读取当前加密密码库，请重新解锁后再试")
 		return
 	}
 	if v.windowsProtected {
@@ -426,7 +449,7 @@ func (m *editorApp) exportPasswordVault() {
 			return
 		}
 	}
-	backup, err := app.SaveFile(app.SaveFileOptions{Title: "导出加密密码备份", SuggestedName: "EditorX-password-backup.edxvault", Filters: []app.FileFilter{{Name: "EditorX 密码库", Pattern: "*.edxvault"}}})
+	backup, err := app.SaveFile(app.SaveFileOptions{Title: uiText("导出加密密码备份"), SuggestedName: "EditorX-password-backup.edxvault", Filters: []app.FileFilter{{Name: uiText("EditorX 密码库"), Pattern: "*.edxvault"}}})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
@@ -441,7 +464,7 @@ func (m *editorApp) exportPasswordVault() {
 		if pathErr != nil {
 			err = pathErr
 		} else if strings.EqualFold(absolute, path) {
-			err = errors.New("请选择密码库之外的备份文件位置")
+			err = errors.New(uiText("请选择密码库之外的备份文件位置"))
 		} else {
 			err = writeTextAsset(absolute, encoded, passwordVaultBytes)
 		}
@@ -451,7 +474,7 @@ func (m *editorApp) exportPasswordVault() {
 		return
 	}
 	dialog.problem = ""
-	v.message = "已导出加密备份"
+	v.message = uiText("已导出加密备份")
 	v.dialog = nil
 	m.vaultTouch()
 }
@@ -505,7 +528,9 @@ func (m *editorApp) copyPasswordField(value, label string) {
 		v.problem = err.Error()
 		return
 	}
-	v.problem, v.message = "", "已复制"+label
+	v.copiedField, v.copiedEntry = label, v.selected
+	v.copyFeedbackUntil = time.Now().Add(1800 * time.Millisecond)
+	v.problem, v.message = "", fmt.Sprintf(uiText("已复制%s"), uiText(label))
 	if !v.store.data.DisableClipboardCleanup {
 		cleanup := &passwordClipboardCleanup{clear: clearClipboard}
 		v.clipboardCleanup = cleanup
@@ -513,9 +538,32 @@ func (m *editorApp) copyPasswordField(value, label string) {
 		if m.nativeWindow != nil {
 			v.clipboardTimer = time.AfterFunc(time.Duration(seconds)*time.Second, func() { cleanup.try(20) })
 		}
-		v.message = fmt.Sprintf("已复制%s，%d 秒后清理剪贴板", label, seconds)
+		v.message = fmt.Sprintf(uiText("已复制%s，%d 秒后清理剪贴板"), uiText(label), seconds)
 	}
 	m.vaultTouch()
+}
+
+func (v *passwordVaultView) matchingEntries(query string) []int {
+	cache := &v.searchCache
+	if cache.store == v.store && cache.group == v.group && cache.favorites == v.favorites && cache.query == query {
+		return cache.indexes
+	}
+	cache.store, cache.group, cache.favorites, cache.query = v.store, v.group, v.favorites, query
+	cache.indexes = cache.indexes[:0]
+	terms := strings.Fields(query)
+	for index, entry := range v.store.data.Entries {
+		if v.group != passwordVaultAllGroups && v.group != entry.Group || v.favorites && !entry.Favorite {
+			continue
+		}
+		if len(terms) > 0 {
+			target := strings.ToLower(entry.Name + " " + entry.Account + " " + entry.Site + " " + strings.Join(entry.Tags, " "))
+			if slices.ContainsFunc(terms, func(term string) bool { return !strings.Contains(target, term) }) {
+				continue
+			}
+		}
+		cache.indexes = append(cache.indexes, index)
+	}
+	return cache.indexes
 }
 
 func (m *editorApp) openPasswordEntry(entry passwordEntry) {
@@ -589,6 +637,7 @@ func (v *passwordVaultView) selectSaved(entry passwordEntry) {
 	}
 	v.search = ui.Field{}
 	v.resultList.ScrollIntoView(0)
+	v.detailOpen = true
 }
 
 func (m *editorApp) confirmPasswordDelete(mode string, id int) {
@@ -604,7 +653,7 @@ func (m *editorApp) deletePasswordEntry() {
 	data := v.store.data.clone()
 	data.Entries = slices.DeleteFunc(data.Entries, func(entry passwordEntry) bool { return entry.ID == d.id })
 	if m.savePasswordData(data) {
-		v.revealed = false
+		v.revealed, v.detailOpen = false, false
 		v.dialog = nil
 	}
 }
@@ -643,7 +692,7 @@ func (v *passwordVaultView) entryGroup() int {
 }
 
 func (v *passwordVaultView) selectGroup(id int) {
-	v.group, v.revealed = id, false
+	v.group, v.revealed, v.detailOpen = id, false, false
 	for parent := v.store.data.group(id).Parent; parent != 0; parent = v.store.data.group(parent).Parent {
 		delete(v.closedGroups, parent)
 	}
@@ -685,6 +734,11 @@ func (m *editorApp) savePasswordGroup() {
 		}
 	}
 	if m.savePasswordData(data) {
+		if d.returnToEntry != nil {
+			d.returnToEntry.group, d.returnToEntry.problem = group.ID, ""
+			v.dialog = d.returnToEntry
+			return
+		}
 		v.selectGroup(group.ID)
 		v.favorites = false
 		v.search = ui.Field{}
@@ -709,12 +763,12 @@ func (d *passwordVaultDialog) parsePasswordImport() {
 	d.importRows = nil
 	d.id = 0
 	if len(source) > passwordImportLimit {
-		d.problem = "请一次粘贴不超过 64 KiB 的文本"
+		d.problem = uiText("请一次粘贴不超过 64 KiB 的文本")
 		return
 	}
 	candidates := detectPasswordEntries(source)
 	if len(candidates) > passwordImportRows {
-		d.problem = fmt.Sprintf("一次最多识别 %d 条，请分批粘贴", passwordImportRows)
+		d.problem = fmt.Sprintf(uiText("一次最多识别 %d 条，请分批粘贴"), passwordImportRows)
 		return
 	}
 	for _, candidate := range candidates {
@@ -762,6 +816,7 @@ func (m *editorApp) savePasswordImport() {
 	data.Entries = append(imported, data.Entries...)
 	if m.savePasswordData(data) {
 		v.selectSaved(imported[0])
+		v.detailOpen = false
 		v.dialog = nil
 	}
 }

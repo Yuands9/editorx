@@ -97,7 +97,7 @@ func readAIProfiles(directory string) (aiProfiles, error) {
 		aiSettings
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
-		return aiProfiles{}, errors.New("AI 设置文件无法读取")
+		return aiProfiles{}, errors.New(uiText("AI 设置文件无法读取"))
 	}
 	if file.Profiles == nil && file.BaseURL != "" {
 		// 旧版只有一套 Chat Completions 设置。沿用其地址、模型和密文。

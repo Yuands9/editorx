@@ -58,7 +58,7 @@ func (m *editorApp) openDirectorySearch(root string) {
 	}
 	s := m.directorySearch
 	s.open, s.focus, s.replaceMode = true, true, false
-	m.tools.active = ""
+	m.tools.terminalOpen = false
 	if root == "" {
 		root = m.activeTextProject(m.active)
 	}
@@ -86,7 +86,7 @@ func directoryPatterns(value string) ([]string, error) {
 			continue
 		}
 		if _, err := filepath.Match(pattern, "test"); err != nil {
-			return nil, fmt.Errorf("文件过滤格式无效：%s", pattern)
+			return nil, fmt.Errorf(uiText("文件过滤格式无效：%s"), pattern)
 		}
 		patterns = append(patterns, strings.ToLower(pattern))
 	}
@@ -113,7 +113,7 @@ func searchDirectoryWithBuffers(ctx context.Context, root string, query *find.Qu
 		return result, err
 	}
 	if !info.IsDir() {
-		return result, errors.New("请选择一个目录")
+		return result, errors.New(uiText("请选择一个目录"))
 	}
 	visited := 0
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -192,7 +192,7 @@ func (m *editorApp) startDirectorySearch() {
 		return
 	}
 	if s.query.Text() == "" {
-		s.problem = "请输入查找内容"
+		s.problem = uiText("请输入查找内容")
 		return
 	}
 	include, err := directoryPatterns(s.include.Text())
@@ -264,7 +264,7 @@ func (m *editorApp) chooseDirectoryHit(index int) {
 			tab.source.text.SetSelection(text.Range{Start: tab.source.text.RuneIndex(span.Start), End: tab.source.text.RuneIndex(span.End)})
 			tab.source.focus = true
 		} else {
-			m.status = "文件内容已变化，原匹配已不存在"
+			m.status = uiText("文件内容已变化，原匹配已不存在")
 		}
 	})
 }
@@ -288,25 +288,25 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 		return
 	}
 	busy := s.request != nil || s.planRequest != nil || s.replacing || s.replaceJob != nil
-	title := "在目录中查找"
+	title := uiText("在目录中查找")
 	if s.replaceMode {
-		title = "在目录中替换"
+		title = uiText("在目录中替换")
 	}
 	dismissed := ui.ModalWith(c, &s.open, title, ui.ModalSpec{Width: min(850, c.Bounds().Width-32)}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Row(c).FillWidth().Gap(6).Children(func() {
-				ui.TextField(c.Part("root"), &s.root, "搜索目录", "目录路径").Grow(1).Height(32).Disabled(busy)
-				if ui.Button(c, "选择目录…").Ghost().Disabled(busy).Clicked() {
+				ui.TextField(c.Part("root"), &s.root, uiText("搜索目录"), uiText("目录路径")).Grow(1).Height(32).Disabled(busy)
+				if ui.Button(c, uiText("选择目录…")).Ghost().Disabled(busy).Clicked() {
 					c.After(func() {
-						paths, err := app.OpenDirectories(app.OpenDirectoryOptions{Title: "搜索目录"})
+						paths, err := app.OpenDirectories(app.OpenDirectoryOptions{Title: uiText("搜索目录")})
 						if err == nil && len(paths) > 0 {
 							s.root.SetText(paths[0])
 						}
 					})
 				}
 			})
-			field := ui.TextField(c.Part("query"), &s.query, "目录查找内容", "查找内容").FillWidth().Height(32).Disabled(busy)
-			ui.TextField(c.Part("replacement"), &s.replacement, "目录替换内容", "替换为（可留空；正则支持 $1）").FillWidth().Height(32).Disabled(busy)
+			field := ui.TextField(c.Part("query"), &s.query, uiText("目录查找内容"), uiText("查找内容")).FillWidth().Height(32).Disabled(busy)
+			ui.TextField(c.Part("replacement"), &s.replacement, uiText("目录替换内容"), uiText("替换为（可留空；正则支持 $1）")).FillWidth().Height(32).Disabled(busy)
 			if s.focus {
 				field.AutoFocus()
 				s.focus = false
@@ -316,24 +316,24 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 			}
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Text(c, "包含文件").FontSize(11).Muted()
-					ui.TextField(c.Part("include"), &s.include, "包含文件", "如 *.go;*.md").FillWidth().Height(32).Disabled(busy)
+					ui.Text(c, uiText("包含文件")).FontSize(11).Muted()
+					ui.TextField(c.Part("include"), &s.include, uiText("包含文件"), uiText("如 *.go;*.md")).FillWidth().Height(32).Disabled(busy)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Text(c, "排除文件或目录").FontSize(11).Muted()
-					ui.TextField(c.Part("exclude"), &s.exclude, "排除文件或目录", "用分号分隔名称或通配符").FillWidth().Height(32).Disabled(busy)
+					ui.Text(c, uiText("排除文件或目录")).FontSize(11).Muted()
+					ui.TextField(c.Part("exclude"), &s.exclude, uiText("排除文件或目录"), uiText("用分号分隔名称或通配符")).FillWidth().Height(32).Disabled(busy)
 				})
 			})
 			ui.Row(c).FillWidth().Gap(12).Items(ui.Center).Children(func() {
-				ui.Checkbox(c, &s.caseSensitive, "区分大小写").Disabled(busy)
-				ui.Checkbox(c, &s.wholeWord, "整词").Disabled(busy)
-				ui.Checkbox(c, &s.regularExpression, "正则").Disabled(busy)
+				ui.Checkbox(c, &s.caseSensitive, uiText("区分大小写")).Disabled(busy)
+				ui.Checkbox(c, &s.wholeWord, uiText("整词")).Disabled(busy)
+				ui.Checkbox(c, &s.regularExpression, uiText("正则")).Disabled(busy)
 				ui.Slot(c).Grow(1)
 				if busy {
-					if ui.Button(c, "停止搜索").Clicked() && s.cancel != nil {
+					if ui.Button(c, uiText("停止搜索")).Clicked() && s.cancel != nil {
 						s.cancel()
 					}
-				} else if ui.Button(c, "搜索目录").Clicked() {
+				} else if ui.Button(c, uiText("搜索目录")).Clicked() {
 					c.After(m.startDirectorySearch)
 				}
 			})
@@ -361,7 +361,7 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 		if index, submitted := s.list.Submitted(); submitted {
 			c.After(func() { m.chooseDirectoryHit(index) })
 		}
-		message := fmt.Sprintf("%d 个匹配 · 已搜索 %d 个文件 · 跳过 %d 个不可读取、二进制或超过 64 MiB 的文件", len(s.result.hits), s.result.files, s.result.skipped)
+		message := fmt.Sprintf(uiText("%d 个匹配 · 已搜索 %d 个文件 · 跳过 %d 个不可读取、二进制或超过 64 MiB 的文件"), len(s.result.hits), s.result.files, s.result.skipped)
 		if busy {
 			message = "正在搜索，可停止；已打开文件使用当前编辑内容。"
 		}

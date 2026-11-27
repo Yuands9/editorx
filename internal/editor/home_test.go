@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestTablessHomeThroughUI(t *testing.T) {
+	t.Cleanup(func() { setUILanguage(menuChinese) })
 	directory := t.TempDir()
 	store, err := openSessionStore(filepath.Join(directory, "data"))
 	if err != nil {
@@ -44,7 +46,7 @@ func TestTablessHomeThroughUI(t *testing.T) {
 				t.Fatalf("document control visible without a tab: %s", label)
 			}
 		}
-		for _, label := range []string{"打开现有文件", "最近打开文件", "最近文件 " + latest} {
+		for _, label := range []string{"打开文件", "打开项目", "最近打开文件", "最近文件 " + latest} {
 			_, err := s.Locate(label)
 			check(err)
 		}
@@ -60,6 +62,15 @@ func TestTablessHomeThroughUI(t *testing.T) {
 	}
 	check(s.Resize(900, 560))
 	expectHome()
+	projectButton, err := s.Locate("button:打开项目")
+	check(err)
+	fileButton, err := s.Locate("button:打开文件")
+	check(err)
+	recentButton, err := s.Locate("button:最近打开文件")
+	check(err)
+	if projectButton.Bounds.X >= fileButton.Bounds.X || fileButton.Bounds.X >= recentButton.Bounds.X {
+		t.Fatal("home actions must be ordered project, file, recent files")
+	}
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
 		check(s.Screenshot(filepath.Join(preview, "home-no-tabs-dark.png")))
 		m.setLightMode(true)
@@ -67,7 +78,7 @@ func TestTablessHomeThroughUI(t *testing.T) {
 		check(s.Screenshot(filepath.Join(preview, "home-no-tabs-light.png")))
 	}
 	check(s.Driver().QueueOpenFiles(nil, app.ErrCanceled))
-	check(s.ClickLabel("打开现有文件"))
+	check(s.ClickLabel("打开文件"))
 	expectHome()
 	check(s.Driver().QueueOpenFiles([]string{filepath.Join(directory, "缺失文件")}, nil))
 	check(s.Keys("ctrl+o"))
@@ -77,6 +88,38 @@ func TestTablessHomeThroughUI(t *testing.T) {
 	if len(m.tabs) != 1 || m.active.title() != "未命名-1" {
 		t.Fatal("Ctrl+N did not create the first tab")
 	}
+	if _, found := s.AccessByRole(gfx.RoleTextField, "代码编辑区"); !found {
+		t.Fatal("blank welcome page has no editor")
+	}
+	for _, label := range []string{"打开文件", "最近打开文件", "打开项目"} {
+		_, err := s.Locate("button:" + label)
+		check(err)
+	}
+	if !s.HasText("开始编辑") || !s.HasText("直接输入内容，或打开已有文件") {
+		t.Fatal("blank document did not retain the centered welcome page")
+	}
+	if _, found := s.AccessByRole(gfx.RoleButton, "打开链接文件"); found {
+		t.Fatal("home still shows the link button")
+	}
+	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
+		check(s.Screenshot(filepath.Join(preview, "home-blank-light.png")))
+		m.setLightMode(false)
+		check(s.Frame())
+		check(s.Screenshot(filepath.Join(preview, "home-blank-dark.png")))
+	}
+	setUILanguage(menuEnglish)
+	m.menuLanguage = menuEnglish
+	check(s.Frame())
+	for _, label := range []string{"打开文件", "最近打开文件", "打开项目"} {
+		_, err := s.Locate("button:" + uiText(label))
+		check(err)
+	}
+	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
+		check(s.Screenshot(filepath.Join(preview, "home-blank-english.png")))
+	}
+	setUILanguage(menuChinese)
+	m.menuLanguage = menuChinese
+	check(s.Frame())
 	check(s.ClickLabel("最近文件 " + latest))
 	if len(m.tabs) != 2 || m.active.doc.path != latest {
 		t.Fatal("opening a recent file replaced an explicitly created untitled tab")
@@ -93,7 +136,7 @@ func TestTablessHomeThroughUI(t *testing.T) {
 	check(s.Keys("ctrl+w"))
 	expectHome()
 	check(s.Driver().QueueOpenFiles([]string{directory}, nil))
-	check(s.Keys("ctrl+shift+o"))
+	check(s.ClickLabel("打开项目"))
 	if m.workspace == nil || !m.showFiles || m.active != nil {
 		t.Fatal("opening a folder should leave the editor tabless")
 	}
@@ -116,7 +159,7 @@ func TestCollapseOnlyGroupKeepsStartPageAndRestores(t *testing.T) {
 	if !group.Collapsed || m.active != nil || len(m.tabs) != 1 {
 		t.Fatal("collapsing the only group created a blank tab or selected a hidden member")
 	}
-	if _, err := s.Locate("打开现有文件"); err != nil {
+	if _, err := s.Locate("打开文件"); err != nil {
 		t.Fatal(err)
 	}
 	again := newEditorApp()

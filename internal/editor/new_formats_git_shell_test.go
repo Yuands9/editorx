@@ -184,6 +184,10 @@ func TestProjectGitStageCommitPushFetchAndPull(t *testing.T) {
 		}
 	}
 	waitForGit()
+	click("checkbox:选择提交 · " + name)
+	if m.tools.git.request != nil || len(m.tools.git.selectedCommitPaths()) != 1 {
+		t.Fatal("choosing the staged file must select it without running Git")
+	}
 	click("提交说明")
 	entry, err := session.Locate("提交说明")
 	if err != nil {

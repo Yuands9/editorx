@@ -52,18 +52,18 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 		removeSelection := window.TextEvent{Kind: window.TextPaste}
 		menu.RowHeight(28)
 		if !pane.readOnly {
-			if menu.Item("撤销").Icon(blankMenuIcon).Keys(ui.Ctrl, "z").Disabled(composing || !canUndo).Clicked() {
+			if menu.Item(m.menuText("撤销")).Icon(blankMenuIcon).Keys(ui.Ctrl, "z").Disabled(composing || !canUndo).Clicked() {
 				c.After(func() {
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextUndo})
 				})
 			}
-			if menu.Item("重做").Icon(blankMenuIcon).Keys(redoModifiers, redoKey).Disabled(composing || !canRedo).Clicked() {
+			if menu.Item(m.menuText("重做")).Icon(blankMenuIcon).Keys(redoModifiers, redoKey).Disabled(composing || !canRedo).Clicked() {
 				c.After(func() {
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextRedo})
 				})
 			}
 			menu.Separator()
-			if menu.Item("剪切").Icon(blankMenuIcon).Keys(ui.Ctrl, "x").Disabled(composing || !selected).Clicked() {
+			if menu.Item(m.menuText("剪切")).Icon(blankMenuIcon).Keys(ui.Ctrl, "x").Disabled(composing || !selected).Clicked() {
 				c.After(func() {
 					if m.copyEditorSelection(tab, pane) {
 						m.applyEditorMenuEvent(tab, pane, removeSelection)
@@ -71,7 +71,7 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 				})
 			}
 		}
-		if menu.Item("复制").Icon(copyIcon).Keys(ui.Ctrl, "c").Disabled(composing || !selected).Clicked() {
+		if menu.Item(m.menuText("复制")).Icon(copyIcon).Keys(ui.Ctrl, "c").Disabled(composing || !selected).Clicked() {
 			c.After(func() {
 				if m.copyEditorSelection(tab, pane) {
 					pane.focus = true
@@ -79,14 +79,14 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 			})
 		}
 		if !pane.readOnly {
-			if menu.Item("粘贴").Icon(blankMenuIcon).Keys(ui.Ctrl, "v").Disabled(composing).Clicked() {
+			if menu.Item(m.menuText("粘贴")).Icon(blankMenuIcon).Keys(ui.Ctrl, "v").Disabled(composing).Clicked() {
 				c.After(func() { m.pasteEditorClipboard(tab, pane) })
 			}
-			if menu.Item("删除选区").Icon(aiDeleteIcon).Disabled(composing || !selected).Clicked() {
+			if menu.Item(m.menuText("删除选区")).Icon(aiDeleteIcon).Disabled(composing || !selected).Clicked() {
 				c.After(func() { m.applyEditorMenuEvent(tab, pane, removeSelection) })
 			}
 		}
-		if menu.Item(selectAll).Icon(blankMenuIcon).Keys(ui.Ctrl, "a").Disabled(composing || !hasText).Clicked() {
+		if menu.Item(m.menuText(selectAll)).Icon(blankMenuIcon).Keys(ui.Ctrl, "a").Disabled(composing || !hasText).Clicked() {
 			c.After(func() {
 				m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextSelectAll})
 			})
@@ -94,50 +94,50 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 
 		if (source && tab.canFind()) || tab.searchPaneVisible(pane) {
 			menu.Separator()
-			if m.shortcutMenu(menu.Item("查找…").Icon(searchIcon), shortcutFind).Clicked() {
+			if m.shortcutMenu(menu.Item(m.menuText("查找…")).Icon(searchIcon), shortcutFind).Clicked() {
 				c.After(func() { tab.openSearchIn(pane) })
 			}
 			if source && !pane.readOnly && tab.canReplace() &&
-				m.shortcutMenu(menu.Item("替换…").Icon(blankMenuIcon), shortcutReplace).Clicked() {
+				m.shortcutMenu(menu.Item(m.menuText("替换…")).Icon(blankMenuIcon), shortcutReplace).Clicked() {
 				c.After(tab.openReplace)
 			}
-			if source && m.shortcutMenu(menu.Item("转到行…").Icon(blankMenuIcon), shortcutGotoLine).Clicked() {
+			if source && m.shortcutMenu(menu.Item(m.menuText("转到行…")).Icon(blankMenuIcon), shortcutGotoLine).Clicked() {
 				c.After(m.openGotoLine)
 			}
 		}
 		if !pane.readOnly && tab.largeText == nil {
-			if m.shortcutMenu(menu.Item("补全文档词 / 关键字").Icon(blankMenuIcon), shortcutComplete).Clicked() {
+			if m.shortcutMenu(menu.Item(m.menuText("补全文档词 / 关键字")).Icon(blankMenuIcon), shortcutComplete).Clicked() {
 				c.After(pane.openCompletion)
 			}
 			if foldableLanguage(tab.format()) {
-				if m.shortcutMenu(menu.Item("折叠全部").Icon(collapseIcon), shortcutFoldAll).Clicked() {
+				if m.shortcutMenu(menu.Item(m.menuText("折叠全部")).Icon(collapseIcon), shortcutFoldAll).Clicked() {
 					c.After(func() { pane.foldAll(true) })
 				}
-				if m.shortcutMenu(menu.Item("展开全部").Icon(expandIcon), shortcutUnfoldAll).Clicked() {
+				if m.shortcutMenu(menu.Item(m.menuText("展开全部")).Icon(expandIcon), shortcutUnfoldAll).Clicked() {
 					c.After(func() { pane.foldAll(false) })
 				}
 			}
-			menu.Sub("多光标与列编辑", func(items *ui.MenuItems) {
-				if m.shortcutMenu(items.Item("选择下一个相同内容").Icon(blankMenuIcon), shortcutSelectNext).Clicked() {
+			menu.Sub(m.menuText("多光标与列编辑"), func(items *ui.MenuItems) {
+				if m.shortcutMenu(items.Item(m.menuText("选择下一个相同内容")).Icon(blankMenuIcon), shortcutSelectNext).Clicked() {
 					c.After(func() { pane.selectNextOccurrence(false); pane.focus = true })
 				}
-				if m.shortcutMenu(items.Item("选择全部相同内容").Icon(blankMenuIcon), shortcutSelectAllMatches).Clicked() {
+				if m.shortcutMenu(items.Item(m.menuText("选择全部相同内容")).Icon(blankMenuIcon), shortcutSelectAllMatches).Clicked() {
 					c.After(func() { pane.selectNextOccurrence(true); pane.focus = true })
 				}
-				if m.shortcutMenu(items.Item("拆分为多行选区").Icon(blankMenuIcon), shortcutSplitSelection).Clicked() {
+				if m.shortcutMenu(items.Item(m.menuText("拆分为多行选区")).Icon(blankMenuIcon), shortcutSplitSelection).Clicked() {
 					c.After(func() { pane.splitSelectionLines(); pane.focus = true })
 				}
 				items.Separator()
-				items.Label("Alt+单击添加光标 · Alt+拖动列选择")
+				items.Label(m.menuText("Alt+单击添加光标 · Alt+拖动列选择"))
 			}).Icon(blankMenuIcon)
 		}
 		if !source {
 			return
 		}
-		if historyEditableTab(tab) && menu.Item("与其他文本对比…").Icon(historyCompareIcon).Clicked() {
+		if historyEditableTab(tab) && menu.Item(m.menuText("与其他文本对比…")).Icon(historyCompareIcon).Clicked() {
 			c.After(m.openTextComparePicker)
 		}
-		if tab.doc.path != "" && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+		if tab.doc.path != "" && menu.Item(m.menuText("比对历史…")).Icon(historyCompareIcon).Clicked() {
 			c.After(func() { m.openHistoryComparison(tab.doc.path, localHistoryVersion{}) })
 		}
 		translateSelection := !composing && tab.hasTranslationSelection()
@@ -148,10 +148,10 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 			if translateSelection {
 				m.translationSelectionItem(c, menu)
 			}
-			if translateDocument && menu.Item("整篇翻译").Icon(translationIcon).Clicked() {
+			if translateDocument && menu.Item(m.menuText("整篇翻译")).Icon(translationIcon).Clicked() {
 				c.After(func() { m.openDocumentTranslation(tab) })
 			}
-			if importSelection && menu.Item("识别到密码本…").Icon(passwordVaultIcon).Clicked() {
+			if importSelection && menu.Item(m.menuText("识别到密码本…")).Icon(passwordVaultIcon).Clicked() {
 				c.After(func() { m.openPasswordSelection(tab) })
 			}
 		}

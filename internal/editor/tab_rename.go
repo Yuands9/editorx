@@ -29,9 +29,9 @@ func (m *editorApp) renameDialog(c ui.C) {
 	if !rename.open {
 		return
 	}
-	title, label, saveLabel := "重命名标签", "标签名称", "保存标签名称"
+	title, label, saveLabel := uiText("重命名标签"), "标签名称", "保存标签名称"
 	if rename.group != nil {
-		title, label, saveLabel = "重命名标签分组", "分组名称", "保存分组名称"
+		title, label, saveLabel = uiText("重命名标签分组"), "分组名称", "保存分组名称"
 	}
 	closeDialog := func() {
 		m.rename = tabRenameState{}
@@ -39,16 +39,16 @@ func (m *editorApp) renameDialog(c ui.C) {
 	}
 	submitted := false
 	dismissed := ui.ModalWith(c, &rename.open, title, ui.ModalSpec{Width: 400}, func() {
-		field := ui.TextField(c, &rename.field, label, "输入"+label).FillWidth()
+		field := ui.TextField(c, &rename.field, label, uiText("输入")+label).FillWidth()
 		submitted = field.Submitted()
 	}, func() {
-		if ui.Button(c, "取消重命名").Outline().Clicked() {
+		if ui.Button(c, uiText("取消重命名")).Outline().Clicked() {
 			c.After(closeDialog)
 		}
 		name := strings.TrimSpace(rename.field.Text())
 		_, composing := rename.field.GetEditor().Composition()
 		valid := !composing && name != "" && (rename.group == nil || utf8.RuneCountInString(name) <= 32)
-		save := ui.Button(c, saveLabel).Disabled(!valid).Tooltip("Enter 确认")
+		save := ui.Button(c, saveLabel).Disabled(!valid).Tooltip(uiText("Enter 确认"))
 		if valid && (save.Clicked() || submitted) {
 			c.After(func() {
 				if rename.group != nil {

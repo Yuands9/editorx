@@ -23,7 +23,12 @@ func TestEditorContextMenuEditing(t *testing.T) {
 	}
 	openMenu := func() {
 		t.Helper()
-		check(session.RightClickLabel("textfield:代码编辑区"))
+		area, found := session.AccessByRole(gfx.RoleTextField, "代码编辑区")
+		if !found {
+			t.Fatal("missing editor")
+		}
+		// The welcome buttons can cover the center of an empty editor.
+		check(session.RightClick(area.Bounds.X+80, area.Bounds.Y+20))
 	}
 	click := func(label string) {
 		t.Helper()

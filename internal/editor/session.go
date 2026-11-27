@@ -138,7 +138,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 			saved, backupErr = decodeEditorSession(backup)
 		}
 		if backupErr != nil {
-			return nil, fmt.Errorf("会话记录无法读取，原文件已保留：%s：%w", path, err)
+			return nil, fmt.Errorf(uiText("会话记录无法读取，原文件已保留：%s：%w"), path, err)
 		}
 		data, recovered = backup, true
 	}
@@ -155,6 +155,8 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		m := newEditorApp()
 		m.editorPrefs = preferences.Editor
 		m.keyBindings = preferences.Shortcuts
+		m.keyPreset = preferences.ShortcutPreset
+		m.menuLanguage = preferences.MenuLanguage
 		m.applySidebarPreferences(preferences.Sidebar)
 		m.store, m.dataDirectory = store, directory
 		if len(store.windows) > 0 && !saved.SeparateWindows {
@@ -171,7 +173,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		}
 		m.restoreSession(state)
 		if recovered {
-			m.status = "主会话记录损坏，已从上一份备份恢复"
+			m.status = uiText("主会话记录损坏，已从上一份备份恢复")
 		}
 		store.windows = append(store.windows, m)
 	}
@@ -179,7 +181,7 @@ func openSessionStore(directory string) (*sessionStore, error) {
 		main := store.windows[0]
 		main.sortPinnedTabs()
 		if !recovered {
-			main.status = "已将旧会话的文件和项目恢复到当前窗口"
+			main.status = uiText("已将旧会话的文件和项目恢复到当前窗口")
 		}
 	}
 	return store, nil
@@ -198,7 +200,7 @@ func decodeEditorSession(data []byte) (savedSession, error) {
 
 func (saved savedSession) validateVersion() error {
 	if saved.Version != editorSessionVersion {
-		return fmt.Errorf("不支持的会话版本：%d", saved.Version)
+		return fmt.Errorf(uiText("不支持的会话版本：%d"), saved.Version)
 	}
 	return nil
 }
@@ -468,7 +470,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 			preview, err := readDocumentPreview(item.Path)
 			if err != nil {
 				issues++
-				preview.issue = "原文件暂时无法读取：" + err.Error()
+				preview.issue = uiText("原文件暂时无法读取：") + err.Error()
 			}
 			tab.preview = preview
 			tab.source.readOnly, tab.source.view.Snapshot.ReadOnly = true, true
@@ -477,7 +479,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 			picture, err := readImage(item.Path)
 			if err != nil {
 				issues++
-				picture = &imageDocument{errorText: "原图片暂时无法读取：" + err.Error()}
+				picture = &imageDocument{errorText: uiText("原图片暂时无法读取：") + err.Error()}
 			}
 			tab.picture = picture
 			picture.zoom, picture.pan = item.ImageZoom, item.ImagePan
@@ -514,9 +516,9 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 		return err
 	}
 	m.restoreAI(state.AI)
-	m.status = "已恢复上次会话"
+	m.status = uiText("已恢复上次会话")
 	if issues > 0 {
-		m.status = fmt.Sprintf("已恢复会话；%d 个文件或目录暂时无法读取，文本副本已保留", issues)
+		m.status = fmt.Sprintf(uiText("已恢复会话；%d 个文件或目录暂时无法读取，文本副本已保留"), issues)
 	}
 	return nil
 }

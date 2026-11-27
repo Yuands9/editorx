@@ -14,13 +14,13 @@ import (
 func (m *editorApp) mergeJSONDifference(tab *editorTab, difference jsonDifference, intoLeft bool) {
 	for _, pane := range []*editorPane{tab.source, tab.comparison} {
 		if _, composing := pane.text.Composition(); composing {
-			m.status = "请先完成中文选词，再合并差异"
+			m.status = uiText("请先完成中文选词，再合并差异")
 			return
 		}
 	}
 	if !tab.jsonCompare || !tab.diffReady || tab.diffError != "" ||
 		tab.source.text.String() != tab.diffLeft || tab.comparison.text.String() != tab.diffRight {
-		m.status = "对比内容已更新，请重新选择差异"
+		m.status = uiText("对比内容已更新，请重新选择差异")
 		return
 	}
 	destination, side := tab.comparison, "右侧"
@@ -35,7 +35,7 @@ func (m *editorApp) mergeJSONDifference(tab *editorTab, difference jsonDifferenc
 	editor := destination.text
 	editor.ReplaceRange(text.Range{Start: editor.RuneIndex(span.Start), End: editor.RuneIndex(span.End)}, value)
 	tab.source.focus, tab.comparison.focus = intoLeft, !intoLeft
-	m.status = "已合并到" + side + " · Ctrl+Z 撤销"
+	m.status = uiText("已合并到") + side + uiText(" · Ctrl+Z 撤销")
 }
 
 // 只替换目标值或一段容器成员，保留差异之外的换行、键顺序及数字原文。
@@ -61,19 +61,19 @@ func jsonMergeEdit(left, right string, difference jsonDifference, intoLeft bool,
 	}
 	parent, key := jsonMergeParent(root, difference.path)
 	if parent == nil || (parent.kind != "object" && parent.kind != "array") {
-		return text.Span{}, "", errors.New("无法定位差异的父级，请重新比较")
+		return text.Span{}, "", errors.New(uiText("无法定位差异的父级，请重新比较"))
 	}
 	index, count := parent.memberIndex(key), len(parent.members)
 	if parent.kind == "array" {
 		index, err = strconv.Atoi(key)
 		count = len(parent.items)
 		if err != nil || index < 0 || index > count {
-			return text.Span{}, "", errors.New("请先合并前面缺失的数组项")
+			return text.Span{}, "", errors.New(uiText("请先合并前面缺失的数组项"))
 		}
 	}
 	if !hasSource {
 		if index < 0 || index >= count {
-			return text.Span{}, "", errors.New("无法定位要删除的值，请重新比较")
+			return text.Span{}, "", errors.New(uiText("无法定位要删除的值，请重新比较"))
 		}
 		if count == 1 {
 			return text.Span{Start: parent.start + 1, End: parent.end - 1}, "", nil

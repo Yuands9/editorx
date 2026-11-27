@@ -9,6 +9,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
 )
 
 func TestEfficiencyPresetUIAndPersistence(t *testing.T) {
@@ -40,7 +41,7 @@ func TestEfficiencyPresetUIAndPersistence(t *testing.T) {
 	check(s.ClickLabel("Sublime Text"))
 	saved, err := readApplicationPreferences(store.directory)
 	check(err)
-	if shortcutPresetName(saved.Shortcuts) != "Sublime Text" || shortcutPresetName(other.keyBindings) != "Sublime Text" {
+	if shortcutPresetName(saved.Shortcuts, saved.ShortcutPreset) != "Sublime Text" || shortcutPresetName(other.keyBindings, other.keyPreset) != "Sublime Text" {
 		t.Fatal("preset was not saved and broadcast")
 	}
 	check(s.ClickLabel("button:关闭设置"))
@@ -95,7 +96,7 @@ func TestIdeaShortcutPreset(t *testing.T) {
 	check(s.ClickLabel("option:" + ideaShortcutPreset))
 	saved, err := readApplicationPreferences(store.directory)
 	check(err)
-	if shortcutPresetName(saved.Shortcuts) != ideaShortcutPreset {
+	if shortcutPresetName(saved.Shortcuts, saved.ShortcutPreset) != ideaShortcutPreset {
 		t.Fatal("IDEA preset did not persist")
 	}
 	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
@@ -153,6 +154,117 @@ func TestIdeaShortcutPreset(t *testing.T) {
 	chord(gfx.ModifierControl, 'y')
 	if left.search.query.String() != "query" || left.source.text.String() != "longerName" {
 		t.Fatal("Ctrl+Y did not remain redo in the search field")
+	}
+}
+
+func TestShortcutSearchAndPyCharmPreset(t *testing.T) {
+	m := newEditorApp()
+	m.dataDirectory = t.TempDir()
+	s := openTestSession(t, m)
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(s.ClickLabel("button:设置"))
+	check(s.ClickLabel("textfield:搜索设置"))
+	check(s.Type("gitCommit"))
+	check(s.ClickLabel("button:打开 快捷键"))
+	if !s.HasText("打开 Git 提交面板") || s.HasText("新建文件") {
+		t.Fatal("global settings search did not open the matching shortcut", s.Texts())
+	}
+	check(s.ClickLabel("textfield:搜索快捷键"))
+	check(s.Keys("cmd+a"))
+	check(s.Type("Ctrl + K"))
+	if !s.HasText("打开 Git 提交面板") || s.HasText("新建文件") {
+		t.Fatal("search by chord did not filter the shortcut list", s.Texts())
+	}
+	check(s.ClickLabel("combobox:快捷键预设"))
+	check(s.ClickLabel("option:PyCharm"))
+	saved, err := readApplicationPreferences(m.dataDirectory)
+	check(err)
+	if saved.ShortcutPreset != pycharmShortcutPreset || m.keyBindings.chord(shortcutComplete).Label() != "Ctrl+Alt+Space" ||
+		m.keyBindings.chord(shortcutCommandPalette).Label() != "Ctrl+Shift+A" {
+		t.Fatal("PyCharm keymap could not be selected and saved")
+	}
+}
+
+func TestVSCodeShortcutPreset(t *testing.T) {
+	m := newEditorApp()
+	m.dataDirectory = t.TempDir()
+	tab := m.addTab(document{saved: "word one\nword two\nword three"}, "vscode.txt")
+	s := openTestSession(t, m)
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	chord := func(mods gfx.Modifiers, key rune) {
+		t.Helper()
+		_, err := s.Driver().ShortcutChord(mods, key)
+		check(err)
+	}
+	check(s.ClickLabel("button:设置"))
+	check(s.ClickLabel("button:快捷键"))
+	check(s.ClickLabel("combobox:快捷键预设"))
+	check(s.ClickLabel("option:VS Code"))
+	saved, err := readApplicationPreferences(m.dataDirectory)
+	check(err)
+	if shortcutPresetName(saved.Shortcuts, saved.ShortcutPreset) != vsCodeShortcutPreset || m.keyBindings.chord(shortcutComplete).Label() != "Alt+/" {
+		t.Fatal("VS Code preset or input-method-friendly completion key was not applied")
+	}
+	check(s.ClickLabel("button:关闭设置页"))
+	check(s.ClickLabel("textfield:代码编辑区"))
+	chord(gfx.ModifierControl, 'h')
+	if !tab.search.open || !tab.search.replacing {
+		t.Fatal("Ctrl+H did not open Replace")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'h')
+	if m.directorySearch == nil || !m.directorySearch.open || !m.directorySearch.replaceMode {
+		t.Fatal("Ctrl+Shift+H did not open Replace in Files")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	const original = "word one\nword two\nword three"
+	tab.source.text.MoveTo(1, false)
+	check(s.Frame())
+	chord(gfx.ModifierControl, 'd')
+	if tab.source.text.Selection() != (text.Range{Start: 0, End: 4}) || tab.source.text.String() != original {
+		t.Fatal("Ctrl+D did not select the word without duplicating the line")
+	}
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'l')
+	if tab.source.text.SelectionCount() != 3 {
+		t.Fatal("Ctrl+Shift+L did not select all occurrences")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	for _, key := range []gfx.Key{gfx.KeyDown, gfx.KeyUp} {
+		tab.source.text.MoveTo(1, false)
+		check(s.Frame())
+		check(s.Driver().Key(key, gfx.ModifierAlt|gfx.ModifierShift))
+		if tab.source.text.String() != "word one\nword one\nword two\nword three" {
+			t.Fatalf("Alt+Shift+%v did not duplicate exactly one line: %q", key, tab.source.text.String())
+		}
+		chord(gfx.ModifierControl, 'z')
+	}
+	tab.source.text.MoveTo(1, false)
+	check(s.Frame())
+	check(s.Driver().Key(gfx.KeyDown, gfx.ModifierControl|gfx.ModifierAlt|gfx.ModifierShift))
+	if tab.source.text.SelectionCount() != 2 {
+		t.Fatal("VS Code column selection did not add the second line")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	tab.source.text.MoveTo(1, false)
+	check(s.Frame())
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'k')
+	if tab.source.text.String() != "word two\nword three" {
+		t.Fatalf("Ctrl+Shift+K did not delete exactly one line: %q", tab.source.text.String())
+	}
+	m.tools.terminalOpen = true
+	chord(gfx.ModifierControl, '`')
+	if m.tools.terminalOpen {
+		t.Fatal("Ctrl+backtick did not toggle the terminal")
 	}
 }
 

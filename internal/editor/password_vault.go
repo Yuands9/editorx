@@ -136,12 +136,19 @@ func (data passwordVaultData) groupRemoval(id int) (map[int]bool, int) {
 
 func (data passwordVaultData) groupPath(id int) string {
 	group := data.group(id)
-	path := group.Name
+	path := group.displayName()
 	for group.Parent > 0 {
 		group = data.group(group.Parent)
-		path = group.Name + " / " + path
+		path = group.displayName() + " / " + path
 	}
 	return path
+}
+
+func (group passwordGroup) displayName() string {
+	if group.ID == 0 && group.Name == "未分组" || group.ID == 1 && group.Name == "默认分组" {
+		return uiText(group.Name)
+	}
+	return group.Name
 }
 
 func (data passwordVaultData) entry(id int) (passwordEntry, bool) {
@@ -155,35 +162,35 @@ func (data passwordVaultData) entry(id int) (passwordEntry, bool) {
 
 func validatePasswordEntry(entry passwordEntry) error {
 	if name := strings.TrimSpace(entry.Name); name == "" || utf8.RuneCountInString(name) > 80 {
-		return errors.New("请输入 1 至 80 个字符的条目名称")
+		return errors.New(uiText("请输入 1 至 80 个字符的条目名称"))
 	}
 	switch entry.Kind {
 	case vaultLogin:
 		if strings.TrimSpace(entry.Account) == "" || entry.Secret == "" {
-			return errors.New("请填写用户名和密码")
+			return errors.New(uiText("请填写用户名和密码"))
 		}
 	case vaultKey:
 		if entry.Secret == "" {
-			return errors.New("请填写密钥")
+			return errors.New(uiText("请填写密钥"))
 		}
 	case vaultNote:
 		if strings.TrimSpace(entry.Note) == "" {
-			return errors.New("请填写安全备注")
+			return errors.New(uiText("请填写安全备注"))
 		}
 	default:
-		return errors.New("条目类型无效")
+		return errors.New(uiText("条目类型无效"))
 	}
 	if len(entry.Site) > 2048 || len(entry.Account) > 512 || len(entry.Secret) > 4096 || len(entry.Note) > 16<<10 || len(entry.Tags) > 20 {
-		return errors.New("条目字段超出长度限制，最多可添加 20 个标签")
+		return errors.New(uiText("条目字段超出长度限制，最多可添加 20 个标签"))
 	}
 	for _, value := range []string{entry.Name, entry.Site, entry.Account, entry.Secret, entry.Note} {
 		if !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
-			return errors.New("条目含有无效字符")
+			return errors.New(uiText("条目含有无效字符"))
 		}
 	}
 	for _, tag := range entry.Tags {
 		if !utf8.ValidString(tag) || strings.ContainsRune(tag, 0) || utf8.RuneCountInString(tag) > 32 {
-			return errors.New("标签含有无效字符或超过 32 个字符")
+			return errors.New(uiText("标签含有无效字符或超过 32 个字符"))
 		}
 	}
 	return nil
@@ -196,10 +203,10 @@ func validPasswordVaultDuration(value int, unit time.Duration) bool {
 
 func validatePasswordVault(data passwordVaultData) error {
 	if data.Next < 0 || data.Next > 1<<30 || len(data.Entries) > passwordVaultMaxItems || len(data.Groups) > passwordVaultMaxGroups {
-		return errors.New("密码库超出条目或分组数量限制")
+		return errors.New(uiText("密码库超出条目或分组数量限制"))
 	}
 	if !validPasswordVaultDuration(data.IdleMinutes, time.Minute) || !validPasswordVaultDuration(data.ClipboardSeconds, time.Second) {
-		return errors.New("密码库的锁定或剪贴板设置无效")
+		return errors.New(uiText("密码库的锁定或剪贴板设置无效"))
 	}
 	ids := make(map[int]bool, len(data.Groups)+len(data.Entries))
 	groups := make(map[int]passwordGroup, len(data.Groups))
@@ -213,20 +220,20 @@ func validatePasswordVault(data passwordVaultData) error {
 		key := groupName{group.Parent, name}
 		if group.ID <= 0 || group.ID > data.Next || ids[group.ID] || name == "" || utf8.RuneCountInString(name) > 32 ||
 			!utf8.ValidString(name) || strings.ContainsRune(name, 0) || names[key] {
-			return errors.New("分组名称须为 1 至 32 个字符，且在同一级内唯一")
+			return errors.New(uiText("分组名称须为 1 至 32 个字符，且在同一级内唯一"))
 		}
 		ids[group.ID], groups[group.ID], names[key] = true, group, true
 	}
 	if data.DefaultGroup != 0 {
 		if group, exists := groups[data.DefaultGroup]; !exists || group.Parent != 0 {
-			return errors.New("默认分组无效")
+			return errors.New(uiText("默认分组无效"))
 		}
 	}
 	for _, group := range data.Groups {
 		for parent, depth := group.Parent, 0; parent != 0; depth++ {
 			ancestor, exists := groups[parent]
 			if !exists || depth >= len(groups)-1 {
-				return errors.New("分组层级无效")
+				return errors.New(uiText("分组层级无效"))
 			}
 			parent = ancestor.Parent
 		}
@@ -234,7 +241,7 @@ func validatePasswordVault(data passwordVaultData) error {
 	for _, entry := range data.Entries {
 		_, inGroup := groups[entry.Group]
 		if entry.ID <= 0 || entry.ID > data.Next || ids[entry.ID] || entry.Group != passwordVaultNoGroup && !inGroup {
-			return errors.New("密码库中有无效的条目标识或分组")
+			return errors.New(uiText("密码库中有无效的条目标识或分组"))
 		}
 		if err := validatePasswordEntry(entry); err != nil {
 			return err
@@ -283,7 +290,7 @@ func passwordVaultHeaderSize(encoded []byte) int {
 func unlockPasswordVault(encoded []byte, password string) (*unlockedPasswordVault, error) {
 	headerSize := passwordVaultHeaderSize(encoded)
 	if headerSize == 0 {
-		return nil, errors.New("密码库格式无效或版本不受支持")
+		return nil, errors.New(uiText("密码库格式无效或版本不受支持"))
 	}
 	header := bytes.Clone(encoded[:headerSize])
 	var key []byte
@@ -292,11 +299,11 @@ func unlockPasswordVault(encoded []byte, password string) (*unlockedPasswordVaul
 		key, err = windowsUserData(header[len(passwordVaultWindowsMagic)+2:], false)
 		if err != nil || len(key) != 32 {
 			clear(key)
-			return nil, errors.New("当前 Windows 账户无法解锁密码本")
+			return nil, errors.New(uiText("当前 Windows 账户无法解锁密码本"))
 		}
 	} else {
 		if len(password) == 0 || len(password) > 4096 {
-			return nil, errors.New("请输入有效的主密码")
+			return nil, errors.New(uiText("请输入有效的主密码"))
 		}
 		key, err = pbkdf2.Key(sha256.New, password, header[len(passwordVaultMagic):], passwordVaultRounds, 32)
 		if err != nil {
@@ -317,14 +324,14 @@ func unlockPasswordVault(encoded []byte, password string) (*unlockedPasswordVaul
 	defer clear(plain)
 	if err := json.Unmarshal(plain, &vault.data); err != nil || validatePasswordVault(vault.data) != nil {
 		vault.clear()
-		return nil, errors.New("无法读取密码库中的条目")
+		return nil, errors.New(uiText("无法读取密码库中的条目"))
 	}
 	return vault, nil
 }
 
 func createPasswordVault(password string) (*unlockedPasswordVault, error) {
 	if utf8.RuneCountInString(password) < passwordVaultMinMasterLength || len(password) > 4096 || strings.TrimSpace(password) == "" {
-		return nil, fmt.Errorf("密码至少需要 %d 个字符，最多 4096 字节", passwordVaultMinMasterLength)
+		return nil, fmt.Errorf(uiText("密码至少需要 %d 个字符，最多 4096 字节"), passwordVaultMinMasterLength)
 	}
 	salt := make([]byte, passwordVaultSaltSize)
 	if _, err := rand.Read(salt); err != nil {
@@ -346,7 +353,7 @@ func createWindowsPasswordVault() (*unlockedPasswordVault, error) {
 	wrapped, err := windowsUserData(key, true)
 	if err != nil || len(wrapped) == 0 || len(wrapped) > passwordVaultMaxWrappedKey {
 		clear(key)
-		return nil, errors.New("当前 Windows 账户无法保护密码本")
+		return nil, errors.New(uiText("当前 Windows 账户无法保护密码本"))
 	}
 	header := binary.LittleEndian.AppendUint16([]byte(passwordVaultWindowsMagic), uint16(len(wrapped)))
 	return &unlockedPasswordVault{data: newPasswordVaultData(), key: key, header: append(header, wrapped...)}, nil
@@ -379,11 +386,11 @@ func (vault *unlockedPasswordVault) saveWithArchive(path string, data passwordVa
 	}
 	if archiveCurrent && len(current) != 0 {
 		if err := writeTextAsset(newPasswordArchivePath(path), current, passwordVaultBytes); err != nil {
-			return fmt.Errorf("无法归档当前密码本：%w", err)
+			return fmt.Errorf(uiText("无法归档当前密码本：%w"), err)
 		}
 	}
 	if err := writeTextAsset(path, encoded, passwordVaultBytes); err != nil {
-		return fmt.Errorf("无法保存加密密码库：%w", err)
+		return fmt.Errorf(uiText("无法保存加密密码库：%w"), err)
 	}
 	vault.data, vault.revision = data, sha256.Sum256(encoded)
 	return nil
@@ -395,11 +402,11 @@ func (vault *unlockedPasswordVault) encode(data passwordVaultData) ([]byte, erro
 	}
 	plain, err := json.Marshal(data)
 	if err != nil {
-		return nil, errors.New("无法编码密码库")
+		return nil, errors.New(uiText("无法编码密码库"))
 	}
 	defer clear(plain)
 	if len(plain)+len(vault.header)+28 > passwordVaultBytes {
-		return nil, errors.New("密码库超过 8 MiB")
+		return nil, errors.New(uiText("密码库超过 8 MiB"))
 	}
 	block, err := passwordVaultCipher(vault.key)
 	if err != nil {

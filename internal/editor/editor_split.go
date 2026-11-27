@@ -70,7 +70,7 @@ func (m *editorApp) splitDocumentView(c ui.C, tab *editorTab, blocked bool) {
 	ui.Row(c.Part("ordinary-split")).FillWidth().Grow(1).MinHeight(0).Children(func() {
 		for _, right := range []bool{false, true} {
 			if right {
-				ui.Splitter(c.Part("divider"), &s.divider).Mins(140, 140).SplitterThickness(6).Label("调整分屏宽度")
+				ui.Splitter(c.Part("divider"), &s.divider).Mins(140, 140).SplitterThickness(6).Label(uiText("调整分屏宽度"))
 			}
 			part := c.Key("left")
 			target := s.left
@@ -103,7 +103,7 @@ func (m *editorApp) splitDocumentView(c ui.C, tab *editorTab, blocked bool) {
 							m.activate(selected)
 						})
 					}
-					if right && ui.Button(part, "关闭分屏").Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
+					if right && ui.Button(part, uiText("关闭分屏")).Icon(closeIcon).IconOnly().Ghost().Size(28, 28).Disabled(blocked).Clicked() {
 						c.After(func() { m.editorSplit = nil; m.focusActiveSource() })
 					}
 				})

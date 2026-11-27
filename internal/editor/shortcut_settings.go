@@ -2,6 +2,7 @@ package editor
 
 import (
 	"maps"
+	"strings"
 
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/keymap"
@@ -16,29 +17,59 @@ type shortcutEditState struct {
 	problem string
 }
 
-func (m *editorApp) shortcutSettings(c ui.C) {
+var shortcutSearchKey = strings.NewReplacer(" ", "", "\t", "", "control", "ctrl", "↑", "up", "↓", "down", "←", "left", "→", "right")
+
+func (m *editorApp) shortcutMatches(action editorShortcut, query string) bool {
+	if query == "" {
+		return true
+	}
+	spec := editorShortcutSpecs[action]
+	caption := strings.ToLower(spec.label + " " + menuEnglish.text(spec.label) + " " + spec.id)
+	if strings.Contains(caption, query) {
+		return true
+	}
+	binding := shortcutSearchKey.Replace(strings.ToLower(m.keyBindings.chord(action).Label()))
+	key := shortcutSearchKey.Replace(query)
+	if !strings.ContainsRune(key, '+') {
+		binding = strings.ReplaceAll(binding, "+", "")
+	}
+	return key != "" && strings.Contains(binding, key)
+}
+
+func (m *editorApp) hasMatchingShortcut(query string) bool {
+	for action := shortcutNewFile; action < editorShortcutCount; action++ {
+		if m.shortcutMatches(action, query) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *editorApp) shortcutSettings(c ui.C, query string) {
 	edit := &m.appSettings.shortcutEdit
-	current := shortcutPresetName(m.keyBindings)
+	current := shortcutPresetName(m.keyBindings, m.keyPreset)
 	ui.Row(c.Part("presets")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
-		ui.Text(c, "快捷键预设").Bold().Grow(1)
+		label := m.menuText("快捷键预设")
+		ui.Text(c, label).Bold().Grow(1)
 		choices := shortcutPresetNames[:]
 		if current == "自定义" {
 			choices = append(choices, current)
 		}
 		selected := current
-		ui.Select(c, &selected, choices, func(value string) string { return value }).Label("快捷键预设").Width(170).Height(32)
+		ui.Select(c, &selected, choices, m.menuText).Label(label).Width(170).Height(32)
 		if selected != current && selected != "自定义" {
 			c.After(func() { m.applyShortcutPreset(selected) })
 		}
 	})
-	ui.Wrap(c, "切换预设会替换当前快捷键，之后仍可逐项修改。补全使用独立按键，避开输入法的 Ctrl+Space。").FillWidth().FontSize(12).Muted()
+	ui.Wrap(c, m.menuText("切换预设会替换当前快捷键，之后仍可逐项修改。补全使用独立按键，避开输入法的 Ctrl+Space。")).FillWidth().FontSize(12).Muted()
 	ui.Row(c.Part("help")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
-		ui.Wrap(c, "点击快捷键后，按下新的组合键。").Grow(1).FontSize(12).Muted()
-		if ui.Button(c.Part("reset-all"), "恢复默认快捷键").Ghost().Height(30).
+		ui.Wrap(c, m.menuText("点击快捷键后，按下新的组合键。")).Grow(1).FontSize(12).Muted()
+		if ui.Button(c.Part("reset-all"), m.menuText("恢复默认快捷键")).Ghost().Height(30).
 			Disabled(len(m.keyBindings) == 0).Clicked() {
 			c.After(m.resetEditorShortcuts)
 		}
 	})
+	found := false
 	for _, group := range []struct {
 		title       string
 		first, last editorShortcut
@@ -48,26 +79,36 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 		{"工作区", shortcutFiles, shortcutOpenSettings},
 		{"分屏、补全与导航", shortcutComplete, shortcutOrdinarySplit},
 	} {
-		ui.Text(c, group.title).Bold().FontSize(14).Height(22)
+		var actions []editorShortcut
+		for action := group.first; action <= group.last; action++ {
+			if m.shortcutMatches(action, query) {
+				actions = append(actions, action)
+			}
+		}
+		if len(actions) == 0 {
+			continue
+		}
+		found = true
+		ui.Text(c, m.menuText(group.title)).Bold().FontSize(14).Height(22)
 		ui.Column(c.Key(group.title)).FillWidth().Radius(11).Border(1, m.theme.Border).Clip().Children(func() {
-			for action := group.first; action <= group.last; action++ {
-				if action != group.first {
+			for index, action := range actions {
+				if index != 0 {
 					ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 				}
 				spec := editorShortcutSpecs[action]
 				ui.Row(c.Key(spec.id)).FillWidth().Height(38).PadX(12).Gap(8).Items(ui.Center).Children(func() {
-					ui.Text(c, spec.label).Grow(1).MinWidth(0).Ellipsis()
+					ui.Text(c, m.menuText(spec.label)).Grow(1).MinWidth(0).Ellipsis()
 					if edit.action == action {
 						m.shortcutRecordingRow(c, action)
 						return
 					}
 					label := m.keyBindings.chord(action).Label()
 					if label == "" {
-						label = "未绑定"
+						label = m.menuText("未绑定")
 					}
 					if ui.Button(c.Part("change"), label).Ghost().Height(28).MinWidth(88).FontSize(12).
 						Radius(7).Background(m.theme.Card).Border(1, m.theme.Border).
-						Hover(ui.Look{}.Background(m.theme.Hover)).Tooltip("修改快捷键 · " + spec.label).Clicked() {
+						Hover(ui.Look{}.Background(m.theme.Hover)).Tooltip(m.menuText("修改快捷键") + " · " + m.menuText(spec.label)).Clicked() {
 						*edit = shortcutEditState{
 							action: action, focus: true,
 							input: ui.Handlers{Role: gfx.RoleButton, Key: m.recordShortcut},
@@ -80,26 +121,30 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 			}
 		})
 	}
+	if !found {
+		ui.Text(c, uiText("没有匹配的快捷键")).Muted().FontSize(13)
+	}
 }
 
 func (m *editorApp) shortcutRecordingRow(c ui.C, action editorShortcut) {
 	edit := &m.appSettings.shortcutEdit
-	input := ui.Control(c.Part("capture"), "按下新快捷键", &edit.input).Width(122).Height(28).Radius(7).
+	label := m.menuText("按下新快捷键")
+	input := ui.Control(c.Part("capture"), label, &edit.input).MinWidth(122).Height(28).Radius(7).
 		Background(m.theme.Secondary).Focus(ui.Look{}.Border(m.theme.Ring)).Draw(func(d *ui.DrawContext) {
-		d.Canvas.Label("按下新快捷键", d.Rect.Inset(gfx.Insets{Left: 8, Right: 8}), gfx.TextStyle{Size: 12, Color: m.theme.Foreground})
+		d.Canvas.Label(label, d.Rect.Inset(gfx.Insets{Left: 8, Right: 8}), gfx.TextStyle{Size: 12, Color: m.theme.Foreground})
 	})
 	edit.id = input.N().ID
 	if edit.focus {
 		input.AutoFocus()
 		edit.focus = false
 	}
-	if ui.Button(c.Part("clear"), "清除").Ghost().Height(28).FontSize(12).Clicked() {
+	if ui.Button(c.Part("clear"), m.menuText("清除")).Ghost().Height(28).FontSize(12).Clicked() {
 		c.After(func() { m.changeEditorShortcut(action, keymap.Chord{}) })
 	}
-	if ui.Button(c.Part("reset"), "恢复默认").Ghost().Height(28).FontSize(12).Clicked() {
+	if ui.Button(c.Part("reset"), m.menuText("恢复默认")).Ghost().Height(28).FontSize(12).Clicked() {
 		c.After(func() { m.changeEditorShortcut(action, editorShortcutSpecs[action].chord) })
 	}
-	if ui.Button(c.Part("cancel"), "取消录入快捷键").Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Clicked() {
+	if ui.Button(c.Part("cancel"), m.menuText("取消录入快捷键")).Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Clicked() {
 		*edit = shortcutEditState{}
 	}
 }
@@ -117,7 +162,7 @@ func (m *editorApp) recordShortcut(event gfx.KeyEvent) gfx.EventResult {
 	}
 	chord, ok := keymap.FromEvent(event)
 	if !ok || !assignableEditorShortcut(edit.action, chord) {
-		edit.problem = "请使用 Ctrl 或 Alt 组合键，或使用 F1–F12。系统和常用编辑键保留原用途。"
+		edit.problem = uiText("请使用 Ctrl 或 Alt 组合键，或使用 F1–F12。系统和常用编辑键保留原用途。")
 	} else {
 		m.changeEditorShortcut(edit.action, chord)
 	}
@@ -128,11 +173,11 @@ func (m *editorApp) changeEditorShortcut(action editorShortcut, chord keymap.Cho
 	edit := &m.appSettings.shortcutEdit
 	preferences, err := m.applicationPreferences()
 	if err != nil {
-		edit.problem = "无法读取快捷键：" + err.Error()
+		edit.problem = uiText("无法读取快捷键：") + err.Error()
 		return
 	}
 	if current := preferences.Shortcuts.actionFor(chord); current != shortcutNone && current != action {
-		edit.problem = chord.Label() + " 已用于「" + editorShortcutSpecs[current].label + "」。"
+		edit.problem = chord.Label() + uiText(" 已用于「") + editorShortcutSpecs[current].label + "」。"
 		edit.focus = true
 		return
 	}
@@ -154,10 +199,11 @@ func (m *editorApp) changeEditorShortcut(action editorShortcut, chord keymap.Cho
 func (m *editorApp) resetEditorShortcuts() {
 	preferences, err := m.applicationPreferences()
 	if err != nil {
-		m.appSettings.problem = "无法读取快捷键：" + err.Error()
+		m.appSettings.problem = uiText("无法读取快捷键：") + err.Error()
 		return
 	}
 	preferences.Shortcuts = nil
+	preferences.ShortcutPreset = ""
 	if m.persistApplicationSettings(preferences) {
 		m.appSettings.shortcutEdit = shortcutEditState{}
 	}

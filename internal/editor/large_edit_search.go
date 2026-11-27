@@ -243,8 +243,8 @@ func (t *editorTab) reportLargeEditReplacement(result largeEditReplacement, err 
 		return
 	}
 	if result.count == 0 {
-		s.message = "没有需要替换的匹配"
+		s.message = uiText("没有需要替换的匹配")
 		return
 	}
-	s.message = fmt.Sprintf("已替换 %d 处", result.count)
+	s.message = fmt.Sprintf(uiText("已替换 %d 处"), result.count)
 }

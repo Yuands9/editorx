@@ -192,6 +192,30 @@ func TestNativeEditingDepth(t *testing.T) {
 								finish(fmt.Errorf("native Tab did not accept automatic completion"))
 								return
 							}
+							m.keyBindings = shortcutPreset(vsCodeShortcutPreset)
+							tab.source.replace("one\ntwo\nthree")
+							tab.source.text.MoveTo(5, false)
+							m.invalidator.Invalidate()
+						case 13:
+							if !postChord(0x104, 0x28, 0x12, 0x10) {
+								finish(fmt.Errorf("posting native Alt+Shift+Down failed"))
+								return
+							}
+						case 14:
+							if tab.source.text.String() != "one\ntwo\ntwo\nthree" {
+								finish(fmt.Errorf("native VS Code copy line: %q", tab.source.text.String()))
+								return
+							}
+							m.tools.terminalOpen = true
+							if !postChord(0x100, 0xc0, 0x11) {
+								finish(fmt.Errorf("posting native Ctrl+backtick failed"))
+								return
+							}
+						case 15:
+							if m.tools.terminalOpen {
+								finish(fmt.Errorf("native VS Code terminal toggle failed"))
+								return
+							}
 							finish(nil)
 						}
 						step++

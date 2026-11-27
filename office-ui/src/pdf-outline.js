@@ -5,7 +5,7 @@ function bookmarkEntries(bookmarks, parent = "") {
     const key = parent + "/" + index;
     return {
       key,
-      title: bookmark.title.trim() || "未命名标题",
+      title: bookmark.title.trim() || text("未命名标题", "Untitled Heading"),
       target: bookmark.dest,
       children: bookmarkEntries(bookmark.items, key),
     };
@@ -52,6 +52,8 @@ function readMarkedText(items, wantedIDs) {
   }
   return spans;
 }
+
+import { text } from "./i18n.js";
 
 export async function readPDFOutline(documentPDF) {
   const bookmarks = await documentPDF.getOutline();

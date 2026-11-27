@@ -6,9 +6,13 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-const ideaShortcutPreset = "IntelliJ IDEA"
+const (
+	ideaShortcutPreset    = "IntelliJ IDEA"
+	pycharmShortcutPreset = "PyCharm"
+	vsCodeShortcutPreset  = "VS Code"
+)
 
-var shortcutPresetNames = [...]string{"EditorX", "Notepad++", "Sublime Text", "EditPlus", ideaShortcutPreset}
+var shortcutPresetNames = [...]string{"EditorX", "Notepad++", "Sublime Text", "EditPlus", ideaShortcutPreset, pycharmShortcutPreset, vsCodeShortcutPreset}
 
 // Presets adapt supported commands; they do not emulate another editor's engine.
 func shortcutPreset(name string) shortcutOverrides {
@@ -33,7 +37,17 @@ func shortcutPreset(name string) shortcutOverrides {
 		set(shortcutDuplicateLine, ui.Ctrl, 'j')
 		set(shortcutSaveAll, ui.Ctrl|ui.Shift, 's')
 		set(shortcutSaveAs, ui.Ctrl|ui.Alt, 's')
-	case ideaShortcutPreset:
+	case vsCodeShortcutPreset:
+		set(shortcutReplace, ui.Ctrl, 'h')
+		set(shortcutDirectoryReplace, ui.Ctrl|ui.Shift, 'h')
+		set(shortcutSelectNext, ui.Ctrl, 'd')
+		set(shortcutSelectAllMatches, ui.Ctrl|ui.Shift, 'l')
+		set(shortcutOpenLink, ui.Ctrl|ui.Alt, 'l')
+		set(shortcutDeleteLine, ui.Ctrl|ui.Shift, 'k')
+		set(shortcutTerminal, ui.Ctrl, '`')
+		bindings[editorShortcutSpecs[shortcutDuplicateLine].id] = keymap.Chord{Modifiers: ui.Alt | ui.Shift, Key: gfx.KeyDown}
+		bindings[editorShortcutSpecs[shortcutDuplicateLineAbove].id] = keymap.Chord{Modifiers: ui.Alt | ui.Shift, Key: gfx.KeyUp}
+	case ideaShortcutPreset, pycharmShortcutPreset:
 		setKey := func(action editorShortcut, mods gfx.Modifiers, key gfx.Key) {
 			bindings[editorShortcutSpecs[action].id] = keymap.Chord{Modifiers: mods, Key: key}
 		}
@@ -63,17 +77,23 @@ func shortcutPreset(name string) shortcutOverrides {
 	return bindings
 }
 
-func shortcutPresetName(bindings shortcutOverrides) string {
-	for _, name := range shortcutPresetNames {
+func shortcutPresetName(bindings shortcutOverrides, preferred string) string {
+	matches := func(name string) bool {
 		preset := shortcutPreset(name)
-		matches := true
 		for action := shortcutNewFile; action < editorShortcutCount; action++ {
 			if preset.chord(action) != bindings.chord(action) {
-				matches = false
-				break
+				return false
 			}
 		}
-		if matches {
+		return true
+	}
+	for _, name := range shortcutPresetNames {
+		if preferred == name && matches(name) {
+			return name
+		}
+	}
+	for _, name := range shortcutPresetNames {
+		if matches(name) {
 			return name
 		}
 	}
@@ -83,10 +103,11 @@ func shortcutPresetName(bindings shortcutOverrides) string {
 func (m *editorApp) applyShortcutPreset(name string) {
 	preferences, err := m.applicationPreferences()
 	if err != nil {
-		m.appSettings.problem = "无法读取快捷键：" + err.Error()
+		m.appSettings.problem = uiText("无法读取快捷键：") + err.Error()
 		return
 	}
 	preferences.Shortcuts = shortcutPreset(name)
+	preferences.ShortcutPreset = name
 	if m.persistApplicationSettings(preferences) {
 		m.appSettings.shortcutEdit = shortcutEditState{}
 	}

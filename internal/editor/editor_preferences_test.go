@@ -107,12 +107,13 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 		check(session.Screenshot(filepath.Join(preview, "editor-wrap-types.png")))
 	}
 	click("文件类型 · 2 项")
-	click("combobox:JSON 默认缩进")
-	click("option:2 个空格")
-	if !m.appSettings.open || jsonTab.jsonIndent != 2 || !plain.source.view.Snapshot.Wrap {
+	if _, err := session.Locate("combobox:JSON 默认缩进"); err == nil {
+		t.Fatal("the global JSON indentation setting is still visible")
+	}
+	if !m.appSettings.open || jsonTab.jsonIndent != 4 || !plain.source.view.Snapshot.Wrap {
 		t.Fatal("settings did not take effect immediately while the settings page was open")
 	}
-	want := editorPreferences{FontFamily: fontFamily, FontSize: 18, TabWidth: 8, HardTabs: true, WrapFileTypes: []string{"纯文本", "JSON"}, JSONIndent: 2}
+	want := editorPreferences{FontFamily: fontFamily, FontSize: 18, TabWidth: 8, HardTabs: true, WrapFileTypes: []string{"纯文本", "JSON"}, JSONIndent: 4, AutomaticCompletion: true}
 	saved, err := readApplicationPreferences(store.directory)
 	if err != nil || !saved.Editor.equal(want) {
 		t.Fatalf("saved editor settings = %+v, %v", saved.Editor, err)
@@ -133,8 +134,8 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	checkPanes(jsonTab, true)
 	checkPanes(overridden, false)
 	click("关闭设置")
-	if jsonTab.jsonIndent != 2 || overridden.jsonIndent != 4 ||
-		jsonTab.result.text.String() != "{\n  \"field\": [\n    1,\n    2\n  ]\n}" ||
+	if jsonTab.jsonIndent != 4 || overridden.jsonIndent != 4 ||
+		jsonTab.result.text.String() != "{\n    \"field\": [\n        1,\n        2\n    ]\n}" ||
 		jsonTab.source.text.String() != `{"field":[1,2]}` {
 		t.Fatal("JSON did not use the correct global or per-tab indentation")
 	}
@@ -149,14 +150,14 @@ func TestEditorSettingsApplyAcrossWindowsAndRestore(t *testing.T) {
 	}
 	fresh := m.addTab(document{saved: `{"field":5}`}, "new.json")
 	checkPanes(fresh, true)
-	if fresh.jsonIndent != 2 {
-		t.Fatal("new JSON tab did not inherit the global indentation")
+	if fresh.jsonIndent != 4 {
+		t.Fatal("new JSON tab did not use the default indentation")
 	}
 
 	check(store.save())
 	reopened, err := openSessionStore(store.directory)
 	check(err)
-	if len(reopened.windows) != 2 || reopened.windows[0].tabs[1].jsonIndent != 2 ||
+	if len(reopened.windows) != 2 || reopened.windows[0].tabs[1].jsonIndent != 4 ||
 		reopened.windows[1].tabs[0].jsonIndent != 4 ||
 		!reopened.windows[1].tabs[0].wrapOverride || !reopened.windows[1].tabs[0].indentOverride {
 		t.Fatal("session restore lost global defaults or per-tab overrides")

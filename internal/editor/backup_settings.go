@@ -60,15 +60,15 @@ func (m *editorApp) backupSettings(c ui.C) {
 	hasTabs := slices.ContainsFunc(m.backupWindows(), func(window *editorApp) bool {
 		return !window.windowClosed && slices.ContainsFunc(window.tabs, func(tab *editorTab) bool { return !tab.isTemporaryLink() })
 	})
-	m.applicationSetting(c.Part("export"), "导出会话备份",
-		"勾选要备份的文件和草稿，保存为 ZIP 压缩包。", func() {
-			if ui.Button(c, "导出备份").Height(32).Disabled(working || !hasTabs).Clicked() {
+	m.applicationSetting(c.Part("export"), uiText("导出会话备份"),
+		uiText("勾选要备份的文件和草稿，保存为 ZIP 压缩包。"), func() {
+			if ui.Button(c, uiText("导出备份")).Height(32).Disabled(working || !hasTabs).Clicked() {
 				c.After(m.chooseBackupTabs)
 			}
 		})
-	m.applicationSetting(c.Part("restore"), "恢复会话备份",
-		"打开 EditorX 导出的 ZIP 备份，将文件和项目恢复到当前窗口。", func() {
-			if ui.Button(c, "选择备份…").Outline().Height(32).Disabled(working || m.post == nil).Clicked() {
+	m.applicationSetting(c.Part("restore"), uiText("恢复会话备份"),
+		uiText("打开 EditorX 导出的 ZIP 备份，将文件和项目恢复到当前窗口。"), func() {
+			if ui.Button(c, uiText("选择备份…")).Outline().Height(32).Disabled(working || m.post == nil).Clicked() {
 				c.After(m.importBackup)
 			}
 		})
@@ -76,7 +76,7 @@ func (m *editorApp) backupSettings(c ui.C) {
 	case working && state.progress != nil:
 		m.backupImportProgress(c.Part("import-progress"))
 	case working:
-		ui.Text(c, "正在导出会话备份…").Muted().FontSize(12)
+		ui.Text(c, uiText("正在导出会话备份…")).Muted().FontSize(12)
 	case state.problem != "":
 		ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
 	case state.message != "":
@@ -90,16 +90,16 @@ func (m *editorApp) backupImportProgress(c ui.C) {
 	label := "正在读取 ZIP 备份…"
 	if total := state.progress.total.Load(); total > 0 {
 		fraction = float32(state.progress.completed.Load()) / float32(total)
-		label = fmt.Sprintf("正在恢复文件和项目 · %.0f%%", fraction*100)
+		label = fmt.Sprintf(uiText("正在恢复文件和项目 · %.0f%%"), fraction*100)
 	}
 	if state.applying {
 		label = "正在恢复到当前窗口…"
 	}
 	ui.Row(c.Part("status")).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 		ui.Text(c, label).Grow(1).Muted().FontSize(12)
-		if !state.applying && ui.Button(c.Part("cancel"), "取消导入").Ghost().Height(26).Clicked() {
+		if !state.applying && ui.Button(c.Part("cancel"), uiText("取消导入")).Ghost().Height(26).Clicked() {
 			c.After(func() {
-				m.backup = editorBackupState{message: "已取消备份导入"}
+				m.backup = editorBackupState{message: uiText("已取消备份导入")}
 			})
 		}
 	})
@@ -134,14 +134,14 @@ func (m *editorApp) backupSelectionDialog(c ui.C) {
 		return
 	}
 	selected := 0
-	dismissed := ui.ModalWith(c, &state.selecting, "选择要备份的文件", ui.ModalSpec{Width: 536}, func() {
+	dismissed := ui.ModalWith(c, &state.selecting, uiText("选择要备份的文件"), ui.ModalSpec{Width: 536}, func() {
 		ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
-			if ui.Button(c.Part("all"), "全选").Ghost().Height(28).Clicked() {
+			if ui.Button(c.Part("all"), uiText("全选")).Ghost().Height(28).Clicked() {
 				for i := range state.choices {
 					state.choices[i].checked = true
 				}
 			}
-			if ui.Button(c.Part("none"), "清空选择").Ghost().Height(28).Clicked() {
+			if ui.Button(c.Part("none"), uiText("清空选择")).Ghost().Height(28).Clicked() {
 				for i := range state.choices {
 					state.choices[i].checked = false
 				}
@@ -169,8 +169,8 @@ func (m *editorApp) backupSelectionDialog(c ui.C) {
 			})
 		})
 	}, func() {
-		ui.Text(c, fmt.Sprintf("已选 %d 个文件", selected)).FontSize(12).Muted()
-		if ui.Button(c.Part("save-backup"), "选择保存位置…").Disabled(selected == 0).Clicked() {
+		ui.Text(c, fmt.Sprintf(uiText("已选 %d 个文件"), selected)).FontSize(12).Muted()
+		if ui.Button(c.Part("save-backup"), uiText("选择保存位置…")).Disabled(selected == 0).Clicked() {
 			c.After(m.exportBackup)
 		}
 	})
@@ -181,22 +181,22 @@ func (m *editorApp) backupSelectionDialog(c ui.C) {
 
 func (m *editorApp) exportBackup() {
 	path, err := app.SaveFile(app.SaveFileOptions{
-		Title:            "导出 EditorX 会话备份",
+		Title:            uiText("导出 EditorX 会话备份"),
 		SuggestedName:    "EditorX-" + time.Now().Format("20060102-150405") + ".editorx-backup.zip",
 		DefaultExtension: "zip",
-		Filters:          []app.FileFilter{{Name: "EditorX 压缩备份", Pattern: "*.zip"}},
+		Filters:          []app.FileFilter{{Name: uiText("EditorX 压缩备份"), Pattern: "*.zip"}},
 	})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
 	if err != nil {
-		m.backup.problem = "无法选择备份位置：" + err.Error()
+		m.backup.problem = uiText("无法选择备份位置：") + err.Error()
 		m.backup.selecting, m.backup.choices = false, nil
 		return
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		m.backup.problem = "无法读取备份路径：" + err.Error()
+		m.backup.problem = uiText("无法读取备份路径：") + err.Error()
 		m.backup.selecting, m.backup.choices = false, nil
 		return
 	}
@@ -216,7 +216,7 @@ func (m *editorApp) exportBackup() {
 	}
 	m.backup = editorBackupState{}
 	if len(saved.Windows) == 0 {
-		m.backup.problem = "所选文件已关闭，请重新选择。"
+		m.backup.problem = uiText("所选文件已关闭，请重新选择。")
 		return
 	}
 	m.backup.request = ui.NewEffect[editorBackupResult, int](func(ctx context.Context) (editorBackupResult, error) {
@@ -260,18 +260,18 @@ func readEditorBackup(path string) (savedSession, error) {
 
 func readEditorBackupDrafts(path, directory string) (savedSession, error) {
 	if !strings.EqualFold(filepath.Ext(path), ".zip") {
-		return savedSession{}, errors.New("请选择 EditorX 导出的 ZIP 备份")
+		return savedSession{}, errors.New(uiText("请选择 EditorX 导出的 ZIP 备份"))
 	}
 	archive, err := zip.OpenReader(path)
 	if archive != nil {
 		defer archive.Close()
 	}
 	if err != nil {
-		return savedSession{}, fmt.Errorf("无法打开 ZIP 备份：%w", err)
+		return savedSession{}, fmt.Errorf(uiText("无法打开 ZIP 备份：%w"), err)
 	}
 	entry, err := archive.Open(backupSessionEntry)
 	if err != nil {
-		return savedSession{}, fmt.Errorf("ZIP 备份中缺少会话数据：%w", err)
+		return savedSession{}, fmt.Errorf(uiText("ZIP 备份中缺少会话数据：%w"), err)
 	}
 	defer entry.Close()
 	decoder := json.NewDecoder(entry)
@@ -283,7 +283,7 @@ func readEditorBackupDrafts(path, directory string) (savedSession, error) {
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
-			err = errors.New("备份包含多余的会话数据")
+			err = errors.New(uiText("备份包含多余的会话数据"))
 		}
 		return savedSession{}, err
 	}
@@ -297,14 +297,14 @@ func readEditorBackupDrafts(path, directory string) (savedSession, error) {
 }
 
 func (m *editorApp) importBackup() {
-	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "打开 EditorX 会话备份", Filters: []app.FileFilter{
-		{Name: "EditorX 压缩备份", Pattern: "*.zip"},
+	paths, err := app.OpenFiles(app.OpenFileOptions{Title: uiText("打开 EditorX 会话备份"), Filters: []app.FileFilter{
+		{Name: uiText("EditorX 压缩备份"), Pattern: "*.zip"},
 	}})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
 	if err != nil {
-		m.backup.problem = "无法选择会话备份：" + err.Error()
+		m.backup.problem = uiText("无法选择会话备份：") + err.Error()
 		return
 	}
 	if len(paths) == 0 {
@@ -319,7 +319,7 @@ func (m *editorApp) importBackup() {
 			return editorBackupResult{}, err
 		}
 		if len(saved.Windows) == 0 {
-			return editorBackupResult{}, errors.New("备份中没有可恢复的窗口")
+			return editorBackupResult{}, errors.New(uiText("备份中没有可恢复的窗口"))
 		}
 		total := len(saved.Windows)
 		for _, window := range saved.Windows {
@@ -363,7 +363,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 	}
 	if err != nil {
 		state.request, state.progress = nil, nil
-		state.problem = "会话备份操作失败：" + err.Error()
+		state.problem = uiText("会话备份操作失败：") + err.Error()
 		return
 	}
 	if result.path != "" {
@@ -372,7 +372,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 		if result.size >= 1<<20 {
 			size = fmt.Sprintf("%.1f MB", float64(result.size)/(1<<20))
 		}
-		state.message = "备份已保存 · " + size + " · " + result.path
+		state.message = uiText("备份已保存 · ") + size + " · " + result.path
 		return
 	}
 	request := state.request
@@ -386,7 +386,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 			m.invalidator.Invalidate()
 		}()
 		if m.windowClosed || (m.desktop != nil && m.desktop.exiting) {
-			state.problem = "EditorX 正在退出，请稍后恢复备份。"
+			state.problem = uiText("EditorX 正在退出，请稍后恢复备份。")
 			return
 		}
 		var active *editorTab
@@ -401,7 +401,7 @@ func (m *editorApp) backupProgress(c ui.C) {
 		if active != nil {
 			m.activate(active)
 		}
-		state.message = "已将备份恢复到当前窗口"
+		state.message = uiText("已将备份恢复到当前窗口")
 		m.status = state.message
 		if m.appSettings.open && m.appSettings.section == settingsBackup {
 			m.closeSettings()

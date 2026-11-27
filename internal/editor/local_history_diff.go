@@ -85,7 +85,7 @@ func (diff *historyDiff) appendSeparator(count int) {
 	if diff.separators == nil {
 		diff.separators = make(map[int]string)
 	}
-	diff.separators[len(diff.changes.Rows)] = fmt.Sprintf("省略 %d 行", count)
+	diff.separators[len(diff.changes.Rows)] = fmt.Sprintf(uiText("省略 %d 行"), count)
 	diff.changes.Rows = append(diff.changes.Rows, components.CodeDiffRow{LeftLine: -1, RightLine: -1})
 }
 

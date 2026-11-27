@@ -11,7 +11,7 @@ func (m *editorApp) encodingPicker(c ui.C, tab *editorTab, blocked bool) {
 		m.encodingMenu = false
 	}
 	_, composing := tab.source.text.Composition()
-	button := ui.Button(c.Part("file-encoding"), tab.doc.encoding.label(tab.doc.bom)).Icon(chevronDownIcon).Ghost().Height(24).PadX(7).FontSize(12).Tooltip("文件编码").Disabled(blocked || composing || tab.savingText != nil)
+	button := ui.Button(c.Part("file-encoding"), tab.doc.encoding.label(tab.doc.bom)).Icon(chevronDownIcon).Ghost().Height(24).PadX(7).FontSize(12).Tooltip(m.menuText("文件编码")).Disabled(blocked || composing || tab.savingText != nil)
 	if button.Clicked() {
 		m.encodingMenu = !m.encodingMenu
 	}
@@ -19,7 +19,7 @@ func (m *editorApp) encodingPicker(c ui.C, tab *editorTab, blocked bool) {
 		menu.Above()
 		menu.WidthRange(200, 250)
 		menu.RowHeight(27)
-		menu.Sub("转换编码（保存后生效）", func(items *ui.MenuItems) {
+		menu.Sub(m.menuText("转换编码（保存后生效）"), func(items *ui.MenuItems) {
 			for _, enc := range textEncodings {
 				bom := enc == utf16LEEncoding || enc == utf16BEEncoding
 				if items.Item(enc.label(bom)).Checked(tab.doc.encoding == enc && tab.doc.bom == bom).Clicked() {
@@ -30,8 +30,8 @@ func (m *editorApp) encodingPicker(c ui.C, tab *editorTab, blocked bool) {
 				c.After(func() { m.convertTextEncoding(tab, utf8Encoding, true) })
 			}
 		}).Disabled(!canConvertText(tab))
-		menu.Sub("按编码重新打开", func(items *ui.MenuItems) {
-			if items.Item("自动识别").Clicked() {
+		menu.Sub(m.menuText("按编码重新打开"), func(items *ui.MenuItems) {
+			if items.Item(m.menuText("自动识别")).Clicked() {
 				c.After(func() { m.reopenTextEncoding(tab, "") })
 			}
 			for _, enc := range textEncodings {
@@ -48,7 +48,7 @@ func (m *editorApp) reopenTextEncoding(tab *editorTab, enc textEncoding) {
 		return
 	}
 	if _, composing := tab.source.text.Composition(); composing || tab.modified() || tab.hasResultDraft() {
-		m.fail(fmt.Errorf("请先保存当前修改，再按其他编码打开 %s", tab.title()))
+		m.fail(fmt.Errorf(uiText("请先保存当前修改，再按其他编码打开 %s"), tab.title()))
 		return
 	}
 	if tab.largeText != nil && tab.largeText.busyEditing() {
@@ -61,7 +61,7 @@ func (m *editorApp) reopenTextEncoding(tab *editorTab, enc textEncoding) {
 		}
 		page, err := readLargeTextPage(tab.doc.path, state.index, -1, "", enc)
 		if err != nil {
-			m.fail(fmt.Errorf("重新打开 %s 失败\n%w", tab.title(), err))
+			m.fail(fmt.Errorf(uiText("重新打开 %s 失败\n%w"), tab.title(), err))
 			return
 		}
 		state.found, state.search, state.selectedResult = -1, nil, -1
@@ -69,7 +69,7 @@ func (m *editorApp) reopenTextEncoding(tab *editorTab, enc textEncoding) {
 	} else {
 		doc, err := readDocumentAs(tab.doc.path, enc)
 		if err != nil {
-			m.fail(fmt.Errorf("重新打开 %s 失败\n%w", tab.title(), err))
+			m.fail(fmt.Errorf(uiText("重新打开 %s 失败\n%w"), tab.title(), err))
 			return
 		}
 		tab.doc = doc
@@ -83,6 +83,6 @@ func (m *editorApp) reopenTextEncoding(tab *editorTab, enc textEncoding) {
 			m.refreshHTML(tab)
 		}
 	}
-	m.status = "已按 " + tab.doc.encoding.label(tab.doc.bom) + " 重新打开"
+	m.status = uiText("已按 ") + tab.doc.encoding.label(tab.doc.bom) + uiText(" 重新打开")
 	m.focusActiveSource()
 }

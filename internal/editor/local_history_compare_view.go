@@ -41,7 +41,7 @@ func (state *historyCompareState) view(c ui.C) {
 		})
 		ui.Row(c.Part("footer")).FillWidth().MinHeight(34).PadX(4).Gap(8).Items(ui.Center).Children(func() {
 			if state.export != nil {
-				ui.Text(c, "正在另存历史副本…").FontSize(12).Muted().Grow(1).MinWidth(0)
+				ui.Text(c, uiText("正在另存历史副本…")).FontSize(12).Muted().Grow(1).MinWidth(0)
 			} else if state.problem != "" {
 				ui.Wrap(c, state.problem).FontSize(12).Color(m.theme.Danger).Grow(1).MinWidth(0)
 			} else if state.notice != "" {
@@ -57,7 +57,7 @@ func (state *historyCompareState) view(c ui.C) {
 			if ui.Button(c.Part("restore"), restoreLabel).Ghost().Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
 				state.queueMerge(c, state.block, true)
 			}
-			if ui.Button(c.Part("combine"), "合并此区别").Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
+			if ui.Button(c.Part("combine"), uiText("合并此区别")).Height(30).FontSize(12).Disabled(!canMerge).Clicked() {
 				state.queueMerge(c, state.block, false)
 			}
 		})
@@ -98,12 +98,12 @@ func (state *historyCompareState) updateCaret() {
 }
 
 func (m *editorApp) historyVersionList(c ui.C, state *historyCompareState, blocked bool) {
-	heading := ui.Text(c, "历史版本").FontSize(14).Bold().Height(43).PadX(13).PadY(12)
+	heading := ui.Text(c, uiText("历史版本")).FontSize(14).Bold().Height(43).PadX(13).PadY(12)
 	if state.source != "" {
 		heading.Hit(ui.ID(c.Part("source-path")), state.source).Tooltip(state.source)
 	}
 	if state.catalog != nil {
-		ui.Text(c, "正在读取版本…").Muted().FontSize(12).PadX(13)
+		ui.Text(c, uiText("正在读取版本…")).Muted().FontSize(12).PadX(13)
 		return
 	}
 	ui.List(c.Part("timeline-list"), &state.versionList, len(state.versions), func(item ui.ListRow) {
@@ -129,7 +129,7 @@ func (m *editorApp) historyVersionList(c ui.C, state *historyCompareState, block
 				})
 			}
 		})
-	}).FillWidth().Grow(1).MinHeight(0).Label("历史版本列表")
+	}).FillWidth().Grow(1).MinHeight(0).Label(uiText("历史版本列表"))
 }
 
 func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState, blocked bool) {
@@ -138,23 +138,23 @@ func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState,
 		count = len(state.comparison.diff.blocks)
 	}
 	ui.Row(c.Part("actions")).FillWidth().Height(43).PadX(8).Items(ui.Center).Gap(4).Children(func() {
-		if ui.Button(c.Part("previous"), "上一个区别").Icon(historyUpIcon).IconOnly().Ghost().Size(30, 30).
-			Tooltip("上一个区别").Disabled(blocked || count == 0).Clicked() {
+		if ui.Button(c.Part("previous"), uiText("上一个区别")).Icon(historyUpIcon).IconOnly().Ghost().Size(30, 30).
+			Tooltip(uiText("上一个区别")).Disabled(blocked || count == 0).Clicked() {
 			c.After(func() { state.selectBlock((state.block + count - 1) % count) })
 		}
-		if ui.Button(c.Part("next"), "下一个区别").Icon(historyDownIcon).IconOnly().Ghost().Size(30, 30).
-			Tooltip("下一个区别").Disabled(blocked || count == 0).Clicked() {
+		if ui.Button(c.Part("next"), uiText("下一个区别")).Icon(historyDownIcon).IconOnly().Ghost().Size(30, 30).
+			Tooltip(uiText("下一个区别")).Disabled(blocked || count == 0).Clicked() {
 			c.After(func() { state.selectBlock((state.block + 1) % count) })
 		}
 		progress := "0 处区别"
 		if state.block >= 0 && count > 0 {
-			progress = fmt.Sprintf("%d / %d 处区别", state.block+1, count)
+			progress = fmt.Sprintf(uiText("%d / %d 处区别"), state.block+1, count)
 		} else if state.comparison != nil && state.comparison.oldProblem == "" && state.comparison.diskProblem == "" && state.limitProblem == nil {
 			progress = "两份内容一致"
 		}
 		ui.Text(c, progress).FontSize(12).Muted().Shrink(0).PadLeft(4)
 		if state.comparison != nil && state.comparison.diff.full.Stats.Coarse {
-			ui.Text(c, "部分区别按整块展示").FontSize(11).Muted().MinWidth(0).Ellipsis().PadLeft(4)
+			ui.Text(c, uiText("部分区别按整块展示")).FontSize(11).Muted().MinWidth(0).Ellipsis().PadLeft(4)
 		}
 		ui.Slot(c).Grow(1).MinWidth(0)
 		ui.Row(c.Part("modes")).Items(ui.Center).Gap(2).Pad(2).Radius(8).Background(m.theme.Card).Children(func() {
@@ -163,8 +163,8 @@ func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState,
 				icon  gfx.Icon
 				only  bool
 			}{{"展示全文件", expandIcon, false}, {"只看区别", collapseIcon, true}} {
-				button := ui.Button(c.Part("mode").Key(mode.label), mode.label).Icon(mode.icon).IconOnly().Ghost().Size(30, 30).
-					Tooltip(mode.label).Disabled(blocked || state.comparison == nil || state.comparison.oldProblem != "" || state.limitProblem != nil)
+				button := ui.Button(c.Part("mode").Key(mode.label), uiText(mode.label)).Icon(mode.icon).IconOnly().Ghost().Size(30, 30).
+					Tooltip(uiText(mode.label)).Disabled(blocked || state.comparison == nil || state.comparison.oldProblem != "" || state.limitProblem != nil)
 				if state.onlyChanges == mode.only {
 					button.Secondary()
 				}
@@ -177,8 +177,8 @@ func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState,
 			}
 		})
 		if !state.generic {
-			if ui.Button(c.Part("export"), "另存副本…").Icon(exportIcon).IconOnly().Ghost().Size(30, 30).
-				Tooltip("另存副本…").Disabled(blocked || state.selection < 0 || state.export != nil).Clicked() {
+			if ui.Button(c.Part("export"), uiText("另存副本…")).Icon(exportIcon).IconOnly().Ghost().Size(30, 30).
+				Tooltip(uiText("另存副本…")).Disabled(blocked || state.selection < 0 || state.export != nil).Clicked() {
 				c.After(func() { m.exportHistoryComparison(state) })
 			}
 		}
@@ -187,18 +187,18 @@ func (m *editorApp) historyComparisonToolbar(c ui.C, state *historyCompareState,
 
 func (m *editorApp) historyComparisonBody(c ui.C, state *historyCompareState, blocked bool) {
 	if state.catalog != nil || state.read != nil {
-		ui.Text(c, "正在比对历史…").Muted().FontSize(13).Pad(14)
+		ui.Text(c, uiText("正在比对历史…")).Muted().FontSize(13).Pad(14)
 		return
 	}
 	if state.comparison == nil {
 		if state.problem == "" {
-			ui.Text(c, "这个文件还没有历史版本").Muted().FontSize(13).Pad(14)
+			ui.Text(c, uiText("这个文件还没有历史版本")).Muted().FontSize(13).Pad(14)
 		}
 		return
 	}
 	comparison := state.comparison
 	if state.limitProblem != nil {
-		ui.Wrap(c, "已暂停比对："+state.limitProblem.Error()+"。可在主编辑器调整内容后继续比对。")
+		ui.Wrap(c, uiText("已暂停比对：")+state.limitProblem.Error()+uiText("。可在主编辑器调整内容后继续比对。"))
 		return
 	}
 	if comparison.oldProblem != "" {
@@ -207,17 +207,17 @@ func (m *editorApp) historyComparisonBody(c ui.C, state *historyCompareState, bl
 	}
 	editable := state.canEditCurrent()
 	ui.Row(c.Part("columns")).FillWidth().Height(30).PadX(9).Gap(8).Items(ui.Center).Children(func() {
-		leftLabel := "历史内容"
+		leftLabel := uiText("历史内容")
 		if state.generic {
 			leftLabel = state.leftLabel
 		}
 		ui.Text(c, leftLabel).FontSize(12).Bold().Grow(1).Basis(0).MinWidth(0)
-		current := "当前版本"
+		current := uiText("当前版本")
 		if state.generic && state.tab != nil {
 			current = state.tab.tabTitle()
 		}
 		if editable {
-			current += " · 可编辑"
+			current += uiText(" · 可编辑")
 		}
 		ui.Text(c, current).FontSize(12).Bold().Grow(1).Basis(0).MinWidth(0)
 	})

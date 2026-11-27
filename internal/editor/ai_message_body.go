@@ -262,7 +262,7 @@ func (m *editorApp) aiMessageText(c ui.C, body *aiMessageBody, label, value stri
 				c.After(func() { m.copyAIText("复制选中内容", body.selectedText()) })
 			}
 			ui.ContextMenu(c, control, func(menu *ui.MenuItems) {
-				if menu.Item("复制选中内容").Icon(copyIcon).Clicked() {
+				if menu.Item(m.menuText("复制选中内容")).Icon(copyIcon).Clicked() {
 					c.After(func() { m.copyAIText("复制选中内容", body.selectedText()) })
 				}
 			})

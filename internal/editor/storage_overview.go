@@ -109,14 +109,14 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 		if scan, err, ready := state.request.Take(); ready {
 			state.usage, state.ready, state.request = scan.usage, true, nil
 			if state.cleaning && (err == nil || scan.cleared > 0) {
-				state.notice = fmt.Sprintf("已清理 %s 缓存", historySize(scan.cleared))
+				state.notice = fmt.Sprintf(uiText("已清理 %s 缓存"), historySize(scan.cleared))
 			}
 			if err != nil {
 				label := "存储统计不完整"
 				if state.cleaning {
 					label = "部分缓存无法清理"
 				}
-				state.problem = label + "：" + err.Error()
+				state.problem = fmt.Sprintf(uiText("%s：%s"), uiText(label), err.Error())
 			}
 			state.cleaning = false
 		}
@@ -124,7 +124,7 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 	total := state.usage.data + state.usage.history
 	size := func(bytes int64) string {
 		if !state.ready {
-			return "统计中…"
+			return uiText("统计中…")
 		}
 		return historySize(bytes)
 	}
@@ -132,10 +132,10 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 	ui.Column(c.Part("total")).FillWidth().Pad(14).Gap(9).Radius(12).Border(1, m.theme.Border).Background(m.theme.Background).Children(func() {
 		ui.Row(c.Part("heading")).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-				ui.Text(c, "EditorX 总占用").FontSize(13).Muted()
+				ui.Text(c, uiText("EditorX 总占用")).FontSize(13).Muted()
 				ui.Text(c, size(total)).FontSize(24).Bold()
 			})
-			if ui.Button(c.Part("refresh"), "刷新占用").Icon(refreshIcon).Ghost().Height(32).
+			if ui.Button(c.Part("refresh"), uiText("刷新占用")).Icon(refreshIcon).Ghost().Height(32).
 				Disabled(state.request != nil).Clicked() {
 				c.After(func() { state.ready = false })
 			}
@@ -155,7 +155,7 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 			}{{"应用数据", dataColor}, {"历史版本", historyColor}} {
 				ui.Row(c.Key(entry.label)).Gap(5).Items(ui.Center).Children(func() {
 					ui.Slot(c).Size(8, 8).Radius(4).Background(entry.color)
-					ui.Text(c, entry.label).Muted().FontSize(12)
+					ui.Text(c, uiText(entry.label)).Muted().FontSize(12)
 				})
 			}
 		})
@@ -163,20 +163,20 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 	ui.Column(c.Part("data")).FillWidth().Pad(14).Gap(10).Radius(12).Border(1, m.theme.Border).Background(m.theme.Background).Children(func() {
 		ui.Row(c.Part("data-heading")).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-				ui.Text(c, "应用数据").FontSize(14).Bold()
+				ui.Text(c, uiText("应用数据")).FontSize(14).Bold()
 				path := m.dataDirectory
 				ui.Text(c, path).FontSize(12).Muted().Ellipsis().Hit(ui.ID(c.Part("data-path")), path).Tooltip(path)
 			})
 			ui.Text(c, size(state.usage.data)).FontSize(15).Bold().Shrink(0)
-			if ui.Button(c.Part("browse"), "打开数据目录").Icon(folderOpenIcon).Ghost().Height(32).
+			if ui.Button(c.Part("browse"), uiText("打开数据目录")).Icon(folderOpenIcon).Ghost().Height(32).
 				Disabled(m.dataDirectory == "").Clicked() {
 				c.After(func() { m.openExplorerFolder(m.dataDirectory) })
 			}
 		})
 		ui.Row(c.Part("cache-details")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
-			ui.Text(c, "可清理 "+size(state.usage.cache)).FontSize(12).Muted().Shrink(0)
-			ui.Text(c, "不可清理 "+size(state.usage.data-state.usage.cache)).FontSize(12).Muted().Grow(1).MinWidth(0).Ellipsis()
-			if ui.Button(c.Part("change"), "更换位置…").Outline().Height(32).
+			ui.Text(c, uiText("可清理 ")+size(state.usage.cache)).FontSize(12).Muted().Shrink(0)
+			ui.Text(c, uiText("不可清理 ")+size(state.usage.data-state.usage.cache)).FontSize(12).Muted().Grow(1).MinWidth(0).Ellipsis()
+			if ui.Button(c.Part("change"), uiText("更换位置…")).Outline().Height(32).
 				Disabled(m.desktop == nil || m.desktop.dataLocation.path == "" || state.cleaning).Clicked() {
 				c.After(m.chooseDataLocation)
 			}
@@ -184,8 +184,8 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 			if state.cleaning {
 				label = "正在清理…"
 			}
-			if ui.Button(c.Part("clean"), label).Outline().Height(32).
-				Tooltip("清理残留的 HTML 预览和 AI CLI 临时文件").Disabled(state.request != nil || state.usage.cache == 0).Clicked() {
+			if ui.Button(c.Part("clean"), uiText(label)).Outline().Height(32).
+				Tooltip(uiText("清理残留的 HTML 预览和 AI CLI 临时文件")).Disabled(state.request != nil || state.usage.cache == 0).Clicked() {
 				c.After(func() { state.startScan(m.dataDirectory, true) })
 			}
 		})
@@ -194,10 +194,10 @@ func (m *editorApp) storageOverview(c ui.C, page *localHistoryPage) {
 		}
 	})
 	m.dataLocationPending(c.Part("location"))
-	m.applicationSetting(c.Part("history"), "历史版本",
-		fmt.Sprintf("只记录大小在 %d MiB 以内的版本。", localHistoryFileSizeLimit>>20), func() {
+	m.applicationSetting(c.Part("history"), uiText("历史版本"),
+		fmt.Sprintf(uiText("只记录大小在 %d MiB 以内的版本。"), localHistoryFileSizeLimit>>20), func() {
 			ui.Text(c, size(state.usage.history)).FontSize(15).Bold().Shrink(0)
-			if ui.Button(c.Part("manage"), "管理历史版本").Icon(historyCompareIcon).Outline().Height(32).Disabled(state.cleaning).Clicked() {
+			if ui.Button(c.Part("manage"), uiText("管理历史版本")).Icon(historyCompareIcon).Outline().Height(32).Disabled(state.cleaning).Clicked() {
 				c.After(func() { page.manage = true })
 			}
 		})

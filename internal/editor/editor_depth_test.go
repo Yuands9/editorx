@@ -89,13 +89,19 @@ func TestAutomaticCompletionSettingsAndTyping(t *testing.T) {
 	reset(fixture)
 	check(s.Type("lon"))
 	check(s.Driver().Advance(automaticCompletionDelay))
-	if tab.source.completion != nil || m.editorPrefs.AutomaticCompletion {
-		t.Fatal("automatic completion was enabled in a fresh profile")
+	if tab.source.completion == nil || !m.editorPrefs.AutomaticCompletion {
+		t.Fatal("automatic completion was not enabled in a fresh profile")
 	}
 	check(s.ClickLabel("button:设置"))
 	check(s.ClickLabel("button:编辑器"))
 	check(s.ClickLabel("switch:输入时自动补全"))
 	saved, err := readApplicationPreferences(m.dataDirectory)
+	check(err)
+	if saved.Editor.AutomaticCompletion || tab.source.automaticCompletion {
+		t.Fatal("automatic completion could not be disabled")
+	}
+	check(s.ClickLabel("switch:输入时自动补全"))
+	saved, err = readApplicationPreferences(m.dataDirectory)
 	check(err)
 	if !saved.Editor.AutomaticCompletion || !tab.source.automaticCompletion {
 		t.Fatal("automatic completion setting did not apply and persist")
@@ -120,6 +126,21 @@ func TestAutomaticCompletionSettingsAndTyping(t *testing.T) {
 	check(s.Driver().Key(gfx.KeyEnter, 0))
 	if tab.source.text.String() != fixture+"lon\n" {
 		t.Fatal("an unselected suggestion intercepted Enter")
+	}
+
+	reset("longFar\nmore\nlongNear\n")
+	check(s.Type("lo"))
+	check(s.Driver().Advance(automaticCompletionDelay))
+	if popup := tab.source.completion; popup == nil || len(popup.items) != 2 || popup.items[0] != "longNear" {
+		t.Fatalf("nearest candidate should appear first: %+v", popup)
+	}
+	check(s.Type("ngN"))
+	if popup := tab.source.completion; popup == nil || len(popup.items) != 1 || popup.items[0] != "longNear" {
+		t.Fatalf("visible suggestions did not refresh immediately: %+v", popup)
+	}
+	check(s.Driver().Key(gfx.KeyBackspace, 0))
+	if popup := tab.source.completion; popup == nil || len(popup.items) != 2 {
+		t.Fatalf("backspace did not refresh visible suggestions: %+v", popup)
 	}
 
 	reset(fixture + "ler")

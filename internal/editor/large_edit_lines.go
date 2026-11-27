@@ -27,7 +27,7 @@ func (t *editorTab) largeEditCodeCommand(command components.CodeEditorCommand) {
 		left, right := w.local(start), w.local(end)
 		if start < w.start || end > w.end || w.start > 0 && !strings.ContainsRune(w.value[:left], '\n') ||
 			w.end < edit.revision.size && !strings.ContainsRune(w.value[right:], '\n') {
-			state.problem = "请缩小选区后再执行此行操作"
+			state.problem = uiText("请缩小选区后再执行此行操作")
 			return
 		}
 		command.Apply(pane.text)

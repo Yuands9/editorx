@@ -9,29 +9,29 @@
 <body>
   <header>
     <strong id="name">正在打开…</strong>
-    <div id="word-zoom" class="header-actions" role="group" aria-label="缩放" hidden>
-      <button id="word-smaller" title="缩小" aria-label="缩小">−</button>
-      <button id="word-fit" title="适合宽度">100%</button>
-      <button id="word-larger" title="放大" aria-label="放大">＋</button>
+    <div id="word-zoom" class="header-actions" role="group" aria-label="缩放" data-en-label="Zoom" hidden>
+      <button id="word-smaller" title="缩小" data-en-title="Zoom Out" aria-label="缩小" data-en-label="Zoom Out">−</button>
+      <button id="word-fit" title="适合宽度" data-en-title="Fit to Width">100%</button>
+      <button id="word-larger" title="放大" data-en-title="Zoom In" aria-label="放大" data-en-label="Zoom In">＋</button>
     </div>
     <div class="header-actions">
-      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" disabled hidden>标题</button>
+      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" data-en-title="Show Outline" data-en-text="Outline" disabled hidden>标题</button>
       <span id="state"></span>
-      <button id="save">保存 · Ctrl+S</button>
-      <button id="save-as">另存为</button>
+      <button id="save" data-en-text="Save · Ctrl+S">保存 · Ctrl+S</button>
+      <button id="save-as" data-en-text="Save As">另存为</button>
     </div>
   </header>
   <div id="notice" hidden></div>
   <div id="toolbar"></div>
   <div class="document-layout">
-    <aside id="document-outline" class="document-outline" aria-label="标题" hidden>
-      <h2>标题</h2>
+    <aside id="document-outline" class="document-outline" aria-label="标题" data-en-label="Outline" hidden>
+      <h2 data-en-text="Outline">标题</h2>
       <p id="outline-status" role="status" hidden></p>
       <div id="outline-entries"></div>
     </aside>
     <main id="editor"></main>
   </div>
-  <div id="busy" hidden>正在保存…</div>
+  <div id="busy" data-en-text="Saving…" hidden>正在保存…</div>
   <script type="module" src="main.js"></script>
 </body>
 </html>

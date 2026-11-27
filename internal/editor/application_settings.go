@@ -26,14 +26,16 @@ type applicationPreferences struct {
 	TranslationEnabled       bool                    `json:"translationEnabled,omitempty"`
 	DisableAutoUpdate        bool                    `json:"disableAutoUpdate,omitempty"`
 	Theme                    string                  `json:"theme,omitempty"`
+	MenuLanguage             menuLanguage            `json:"menuLanguage,omitempty"`
 	Editor                   editorPreferences       `json:"editor"`
 	Sidebar                  sidebarPreferences      `json:"sidebar"`
 	Shortcuts                shortcutOverrides       `json:"shortcuts,omitempty"`
+	ShortcutPreset           string                  `json:"shortcutPreset,omitempty"`
 	LocalHistory             localHistoryPreferences `json:"localHistory,omitzero"`
 }
 
 func readApplicationPreferences(directory string) (applicationPreferences, error) {
-	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, Editor: defaultEditorPreferences(), Sidebar: sidebarPreferences{Position: "right"}}
+	defaults := applicationPreferences{ShowTrayIcon: true, ExitOnClose: true, Theme: themeSystem, MenuLanguage: menuChinese, Editor: defaultEditorPreferences(), Sidebar: sidebarPreferences{Position: "right"}}
 	data, err := os.ReadFile(filepath.Join(directory, applicationSettingsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return defaults, nil
@@ -49,6 +51,9 @@ func readApplicationPreferences(directory string) (applicationPreferences, error
 	}
 	if preferences.Theme != themeSystem && preferences.Theme != themeDark && preferences.Theme != themeLight {
 		preferences.Theme = themeSystem
+	}
+	if preferences.MenuLanguage != menuEnglish {
+		preferences.MenuLanguage = menuChinese
 	}
 	preferences.Editor = preferences.Editor.normalized()
 	preferences.Sidebar = preferences.Sidebar.normalized()
@@ -85,12 +90,13 @@ func (m *editorApp) saveApplicationSettings() {
 		settings.draft.DisableAutoUpdate == settings.original.DisableAutoUpdate &&
 		settings.draft.LocalHistory == settings.original.LocalHistory &&
 		settings.draft.Sidebar == settings.original.Sidebar &&
-		settings.draft.Theme == settings.original.Theme && settings.draft.Editor.equal(settings.original.Editor) {
+		settings.draft.Theme == settings.original.Theme && settings.draft.MenuLanguage == settings.original.MenuLanguage &&
+		settings.draft.Editor.equal(settings.original.Editor) {
 		return
 	}
 	preferences, err := m.applicationPreferences()
 	if err != nil {
-		settings.problem = "无法读取设置：" + err.Error()
+		settings.problem = uiText("无法读取设置：") + err.Error()
 		settings.draft = settings.original
 		return
 	}
@@ -110,6 +116,9 @@ func (m *editorApp) saveApplicationSettings() {
 	}
 	if settings.draft.Theme != settings.original.Theme {
 		preferences.Theme = settings.draft.Theme
+	}
+	if settings.draft.MenuLanguage != settings.original.MenuLanguage {
+		preferences.MenuLanguage = settings.draft.MenuLanguage
 	}
 	if settings.draft.TranslationEnabled != settings.original.TranslationEnabled {
 		preferences.TranslationEnabled = settings.draft.TranslationEnabled
@@ -134,15 +143,15 @@ func (m *editorApp) saveApplicationSettings() {
 func (m *editorApp) persistApplicationSettings(preferences applicationPreferences) bool {
 	settings := &m.appSettings
 	if err := preferences.save(m.dataDirectory); err != nil {
-		settings.problem = "无法保存设置：" + err.Error()
+		settings.problem = uiText("无法保存设置：") + err.Error()
 		settings.draft = settings.original
 		return false
 	}
 	settings.original, settings.draft, settings.problem = preferences, preferences, ""
 	if err := m.applyApplicationPreferences(preferences); err != nil {
-		settings.problem = fmt.Sprintf("设置已保存，无法更新系统托盘图标：%v", err)
+		settings.problem = fmt.Sprintf(uiText("设置已保存，无法更新系统托盘图标：%v"), err)
 	}
-	m.status = "设置已保存"
+	m.status = uiText("设置已保存")
 	return true
 }
 
@@ -171,14 +180,14 @@ func (m *editorApp) cycleTheme() {
 	if m.dataDirectory == "" {
 		directory, err := editorDataDirectory()
 		if err != nil {
-			m.fail(fmt.Errorf("无法读取设置目录：%w", err))
+			m.fail(fmt.Errorf(uiText("无法读取设置目录：%w"), err))
 			return
 		}
 		m.dataDirectory = directory
 	}
 	preferences, err := m.applicationPreferences()
 	if err != nil {
-		m.fail(fmt.Errorf("无法读取设置：%w", err))
+		m.fail(fmt.Errorf(uiText("无法读取设置：%w"), err))
 		return
 	}
 	next, label := themeLight, "浅色"
@@ -187,16 +196,17 @@ func (m *editorApp) cycleTheme() {
 	}
 	preferences.Theme = next
 	if err := preferences.save(m.dataDirectory); err != nil {
-		m.fail(fmt.Errorf("无法保存颜色主题：%w", err))
+		m.fail(fmt.Errorf(uiText("无法保存颜色主题：%w"), err))
 		return
 	}
-	m.status = "颜色主题 · " + label
+	m.status = uiText("颜色主题 · ") + label
 	if err := m.applyApplicationPreferences(preferences); err != nil {
 		m.fail(err)
 	}
 }
 
 func (m *editorApp) applyApplicationPreferences(preferences applicationPreferences) error {
+	setUILanguage(preferences.MenuLanguage)
 	app.SetNativeAppearance(themeAppearance(preferences.Theme))
 	if m.desktop != nil {
 		desktop := m.desktop
@@ -215,7 +225,8 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 			if !window.windowClosed {
 				window.applyThemePreference(preferences.Theme)
 				window.applyEditorPreferences(preferences.Editor)
-				window.keyBindings = preferences.Shortcuts
+				window.applyShortcutBindings(preferences.Shortcuts, preferences.ShortcutPreset)
+				window.applyLanguagePreference(preferences.MenuLanguage)
 				window.applySidebarPreferences(preferences.Sidebar)
 				if window.translationEnabled && !preferences.TranslationEnabled {
 					window.translation = nil
@@ -237,7 +248,8 @@ func (m *editorApp) applyApplicationPreferences(preferences applicationPreferenc
 	}
 	m.applyThemePreference(preferences.Theme)
 	m.applyEditorPreferences(preferences.Editor)
-	m.keyBindings = preferences.Shortcuts
+	m.applyShortcutBindings(preferences.Shortcuts, preferences.ShortcutPreset)
+	m.applyLanguagePreference(preferences.MenuLanguage)
 	m.applySidebarPreferences(preferences.Sidebar)
 	if m.translationEnabled && !preferences.TranslationEnabled {
 		m.translation = nil

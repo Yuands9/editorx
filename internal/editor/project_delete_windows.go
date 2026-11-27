@@ -21,7 +21,7 @@ type projectDeleteDialog struct {
 }
 
 func (m *editorApp) projectDeleteAction(c ui.C, menu *ui.MenuItems, path string, directory bool) {
-	if menu.Item("删除").Icon(aiDeleteIcon).Disabled(filepath.Dir(path) == path).Clicked() {
+	if menu.Item(m.menuText("删除")).Icon(aiDeleteIcon).Disabled(filepath.Dir(path) == path).Clicked() {
 		c.After(func() {
 			m.projectDelete = &projectDeleteDialog{open: true, directory: directory, path: path}
 		})
@@ -33,10 +33,10 @@ func (m *editorApp) showProjectDeleteDialog(c ui.C) {
 	if dialog == nil {
 		return
 	}
-	title := "删除文件？"
+	title := uiText("删除文件？")
 	message := "将此文件移至 Windows 回收站。"
 	if dialog.directory {
-		title = "删除文件夹？"
+		title = uiText("删除文件夹？")
 		message = "文件夹及其中的内容将移至 Windows 回收站。"
 	}
 	cancel := func() { m.projectDelete = nil }
@@ -46,14 +46,14 @@ func (m *editorApp) showProjectDeleteDialog(c ui.C) {
 			ui.Wrap(c, message).FillWidth().Muted().FontSize(12)
 		})
 	}, func() {
-		if ui.Button(c, "取消").Ghost().AutoFocus().Clicked() {
+		if ui.Button(c, uiText("取消")).Ghost().AutoFocus().Clicked() {
 			c.After(cancel)
 		}
-		if ui.Button(c, "确认删除").Destructive().Clicked() {
+		if ui.Button(c, uiText("确认删除")).Destructive().Clicked() {
 			c.After(func() {
 				m.projectDelete = nil
 				if err := m.deleteProjectEntry(dialog.path); err != nil {
-					m.fail(fmt.Errorf("无法删除 %s：%w", filepath.Base(dialog.path), err))
+					m.fail(fmt.Errorf(uiText("无法删除 %s：%w"), filepath.Base(dialog.path), err))
 				}
 			})
 		}
@@ -64,7 +64,7 @@ func (m *editorApp) showProjectDeleteDialog(c ui.C) {
 
 func (m *editorApp) deleteProjectEntry(path string) error {
 	if m.workspace == nil || m.projectRoot(path) == "" || filepath.Dir(path) == path {
-		return errors.New("请选择项目中的文件或文件夹")
+		return errors.New(uiText("请选择项目中的文件或文件夹"))
 	}
 	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
@@ -72,10 +72,10 @@ func (m *editorApp) deleteProjectEntry(path string) error {
 	}
 	resolved := filepath.Join(parent, filepath.Base(path))
 	if gitPathWithin(path, m.dataDirectory) {
-		return errors.New("这个目录包含 EditorX 正在使用的数据")
+		return errors.New(uiText("这个目录包含 EditorX 正在使用的数据"))
 	}
 	if data, err := filepath.EvalSymlinks(m.dataDirectory); err == nil && gitPathWithin(resolved, data) {
-		return errors.New("这个目录包含 EditorX 正在使用的数据")
+		return errors.New(uiText("这个目录包含 EditorX 正在使用的数据"))
 	}
 	if err := recycleProjectEntry(resolved); err != nil {
 		return err
@@ -88,7 +88,7 @@ func (m *editorApp) deleteProjectEntry(path string) error {
 			m.refreshProject(root, "")
 		}
 	}
-	m.status = "已删除 " + filepath.Base(path)
+	m.status = uiText("已删除 ") + filepath.Base(path)
 	return nil
 }
 
@@ -124,10 +124,10 @@ func recycleProjectEntry(path string) error {
 		flags: silent | noConfirmation | allowUndo | noErrorUI | noConnectedElements | warnPermanent}
 	result, _, _ := projectShellFileOperation.Call(uintptr(unsafe.Pointer(&operation)))
 	if result != 0 {
-		return fmt.Errorf("Windows 回收站操作失败（%#x）", result)
+		return fmt.Errorf(uiText("Windows 回收站操作失败（%#x）"), result)
 	}
 	if operation.aborted != 0 {
-		return errors.New("已取消删除")
+		return errors.New(uiText("已取消删除"))
 	}
 	return nil
 }

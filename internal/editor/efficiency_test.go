@@ -179,13 +179,16 @@ func TestEfficiencySaveAllStopsOnCancelAndConflict(t *testing.T) {
 func TestEfficiencyShortcutPresets(t *testing.T) {
 	for _, name := range shortcutPresetNames {
 		bindings := shortcutPreset(name)
-		if shortcutPresetName(bindings) != name {
+		if shortcutPresetName(bindings, name) != name {
 			t.Fatalf("preset recognition: %s", name)
 		}
 		seen := map[keymap.Chord]bool{}
 		for action := shortcutNewFile; action < editorShortcutCount; action++ {
 			chord := bindings.chord(action)
 			if !chord.Valid() {
+				if name == "EditorX" {
+					t.Fatalf("EditorX default is unbound for %s", editorShortcutSpecs[action].id)
+				}
 				continue
 			}
 			if seen[chord] || !assignableEditorShortcut(action, chord) {

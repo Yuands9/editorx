@@ -60,7 +60,7 @@ func (settings aiSettings) findOtherCLI() (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("未找到 %s，请安装后填写 CLI 路径", aiProviderLabel(settings.Provider))
+	return "", fmt.Errorf(uiText("未找到 %s，请安装后填写 CLI 路径"), aiProviderLabel(settings.Provider))
 }
 
 func newAITextCommand(ctx context.Context, executable, job string, args []string) (*exec.Cmd, error) {
@@ -68,7 +68,7 @@ func newAITextCommand(ctx context.Context, executable, job string, args []string
 	if ext != ".exe" {
 		node, err := exec.LookPath("node.exe")
 		if err != nil {
-			return nil, errors.New("运行此 CLI 需要 Node.js")
+			return nil, errors.New(uiText("运行此 CLI 需要 Node.js"))
 		}
 		args = append([]string{executable}, args...)
 		executable = node
@@ -151,7 +151,7 @@ func (settings aiSettings) runTextCLI(ctx context.Context, system string, messag
 		args = []string{"--mode", "json", "--print", "--no-session", "--no-tools", "--no-extensions",
 			"--no-skills", "--no-prompt-templates", "--no-context-files", "--no-approve"}
 	default:
-		return aiCompletion{}, errors.New("无法识别此 CLI 服务商")
+		return aiCompletion{}, errors.New(uiText("无法识别此 CLI 服务商"))
 	}
 	if settings.Model != "" {
 		args = append(args, "--model", settings.Model)
@@ -196,7 +196,7 @@ func (settings aiSettings) runTextCLI(ctx context.Context, system string, messag
 		if ctx.Err() != nil {
 			return aiCompletion{}, ctx.Err()
 		}
-		return aiCompletion{}, fmt.Errorf("%s 执行失败，请检查 CLI 登录状态、版本和模型 ID", aiProviderLabel(settings.Provider))
+		return aiCompletion{}, fmt.Errorf(uiText("%s 执行失败，请检查 CLI 登录状态、版本和模型 ID"), aiProviderLabel(settings.Provider))
 	}
 	reply.Model = settings.modelLabel(settings.Model)
 	return reply, nil
@@ -228,7 +228,7 @@ func readCLIText(provider string, source io.Reader, onDelta func(string)) (aiCom
 			continue
 		}
 		if event.IsError || event.Type == "error" {
-			return aiCompletion{}, fmt.Errorf("%s 返回了错误，请检查登录状态和模型 ID", aiProviderLabel(provider))
+			return aiCompletion{}, fmt.Errorf(uiText("%s 返回了错误，请检查登录状态和模型 ID"), aiProviderLabel(provider))
 		}
 		delta := ""
 		switch event.Type {
@@ -268,7 +268,7 @@ func readCLIText(provider string, source io.Reader, onDelta func(string)) (aiCom
 			}
 		}
 		if text.Len()+len(delta) > aiResponseLimit || len(final) > aiResponseLimit {
-			return aiCompletion{}, errors.New("CLI 响应超过 2 MB")
+			return aiCompletion{}, errors.New(uiText("CLI 响应超过 2 MB"))
 		}
 		if delta != "" {
 			text.WriteString(delta)
@@ -307,7 +307,7 @@ func (settings aiSettings) cliModelList(ctx context.Context) ([]string, error) {
 	output := aiCLICapture{limit: aiResponseLimit}
 	cmd.Stdout = &output
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("无法获取 %s 的模型列表，请检查 CLI 登录状态和版本", aiProviderLabel(settings.Provider))
+		return nil, fmt.Errorf(uiText("无法获取 %s 的模型列表，请检查 CLI 登录状态和版本"), aiProviderLabel(settings.Provider))
 	}
 	var models []string
 	for line := range strings.SplitSeq(output.String(), "\n") {

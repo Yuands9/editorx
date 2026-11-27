@@ -47,7 +47,7 @@ func readDirectoryDocument(ctx context.Context, path string) (document, error) {
 		return document{}, err
 	}
 	if len(data) > directorySearchFileLimit {
-		return document{}, errors.New("文件超过 64 MiB")
+		return document{}, errors.New(uiText("文件超过 64 MiB"))
 	}
 	return decodeDocument(path, data)
 }
@@ -83,7 +83,7 @@ func (m *editorApp) previewDirectoryReplacement() {
 		return
 	}
 	if s.result.partial {
-		s.problem = "搜索结果不完整，请先缩小范围再预览替换"
+		s.problem = uiText("搜索结果不完整，请先缩小范围再预览替换")
 		return
 	}
 	var paths []string
@@ -153,7 +153,7 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 		s.replaceJob = nil
 		if err == nil && job.tab != nil {
 			if !m.hasTab(job.tab) || job.tab.source.text.CommittedString() != job.before || job.tab.source.text.CompositionActive() {
-				err = errors.New("编辑内容已变化，已跳过")
+				err = errors.New(uiText("编辑内容已变化，已跳过"))
 			} else {
 				job.tab.source.syncJSONText(value, false)
 				job.tab.projectPreview = false
@@ -179,7 +179,7 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 		job := &directoryReplacementJob{file: file, tab: m.tabAtPath(file.path), index: s.replaceIndex}
 		if job.tab != nil {
 			if !historyEditableTab(job.tab) || job.tab.savingText != nil || job.tab.jsonComposing() {
-				report(file.path, errors.New("当前文件不可替换，已跳过"))
+				report(file.path, errors.New(uiText("当前文件不可替换，已跳过")))
 				continue
 			}
 			if job.tab.format() == "JSON" {
@@ -187,7 +187,7 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 			}
 			job.before = job.tab.source.text.CommittedString()
 			if sha256.Sum256([]byte(job.before)) != file.digest {
-				report(file.path, errors.New("预览后内容已变化，已跳过"))
+				report(file.path, errors.New(uiText("预览后内容已变化，已跳过")))
 				continue
 			}
 		}
@@ -197,7 +197,7 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 				value, _ := query.ReplaceAll(job.before, template)
 				start, end, replacement := trimHistoryReplacement(job.before, 0, len(job.before), value)
 				if utf8.RuneCountInString(job.before[start:end])+utf8.RuneCountInString(replacement) > historyMergeUndoRunes {
-					return "", errors.New("替换超过可撤销上限，请缩小替换范围")
+					return "", errors.New(uiText("替换超过可撤销上限，请缩小替换范围"))
 				}
 				return value, ctx.Err()
 			}
@@ -206,7 +206,7 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 				return "", err
 			}
 			if doc.diskHash != file.diskHash || sha256.Sum256([]byte(doc.saved)) != file.digest {
-				return "", errors.New("预览后磁盘文件已变化，已跳过")
+				return "", errors.New(uiText("预览后磁盘文件已变化，已跳过"))
 			}
 			value, _ := query.ReplaceAll(doc.saved, template)
 			if err := ctx.Err(); err != nil {
@@ -219,6 +219,6 @@ func (m *editorApp) updateDirectoryReplacement(c ui.C) {
 		return
 	}
 	s.replacing = false
-	s.problem = fmt.Sprintf("替换完成 · %d 个文件；已打开文件的修改尚未保存。", s.replacedFiles)
+	s.problem = fmt.Sprintf(uiText("替换完成 · %d 个文件；已打开文件的修改尚未保存。"), s.replacedFiles)
 	s.plan = nil
 }

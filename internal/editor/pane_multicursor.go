@@ -13,7 +13,7 @@ import (
 const maxEditorSelections = 2000
 
 func (p *editorPane) columnKey(event gfx.KeyEvent) gfx.EventResult {
-	if p.readOnly || event.Modifiers != ui.Alt|ui.Shift || p.text.CompositionActive() {
+	if p.readOnly || (event.Modifiers != ui.Alt|ui.Shift && event.Modifiers != ui.Ctrl|ui.Alt|ui.Shift) || p.text.CompositionActive() {
 		return gfx.EventResult{}
 	}
 	var movement components.TextareaMovement

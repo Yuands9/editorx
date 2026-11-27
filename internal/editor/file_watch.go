@@ -209,7 +209,7 @@ func (m *editorApp) acceptDiskRead(tab *editorTab, s *diskChangeState, result di
 		if s.action == "follow" && tab.largeText == nil {
 			s.followRequested = false
 		}
-		s.problem = "无法读取磁盘文件：" + err.Error()
+		s.problem = uiText("无法读取磁盘文件：") + err.Error()
 		return
 	}
 	switch s.action {
@@ -217,7 +217,7 @@ func (m *editorApp) acceptDiskRead(tab *editorTab, s *diskChangeState, result di
 		m.openTextComparison(*result.comparison, tab, tab.tabTitle()+" · 磁盘内容")
 	case "reload":
 		if tab.source.text.CommittedString() != s.before || tab.doc != s.beforeFormat || tab.hasResultDraft() || tab.source.text.CompositionActive() {
-			s.problem = "读取期间编辑内容发生变化，请确认后重新读取。"
+			s.problem = uiText("读取期间编辑内容发生变化，请确认后重新读取。")
 			return
 		}
 		caret := tab.source.text.Caret()
@@ -240,7 +240,7 @@ func (m *editorApp) acceptDiskRead(tab *editorTab, s *diskChangeState, result di
 		if s.followRequested {
 			s.followRequested = false
 			if tab.source.text.CommittedString() != s.before || tab.doc != s.beforeFormat || tab.source.text.CompositionActive() {
-				s.problem = "读取期间编辑内容变化，未开启日志跟随"
+				s.problem = uiText("读取期间编辑内容变化，未开启日志跟随")
 				return
 			}
 			if tab.largeText == nil {
@@ -268,21 +268,21 @@ func (m *editorApp) acceptDiskRead(tab *editorTab, s *diskChangeState, result di
 
 func (m *editorApp) toggleLogFollow(tab *editorTab) {
 	if !watchedTextTab(tab) || tab.modified() || tab.hasResultDraft() || tab.source.text.CompositionActive() {
-		m.status = "请先保存文件，再跟随日志"
+		m.status = uiText("请先保存文件，再跟随日志")
 		return
 	}
 	if tab.diskChange != nil && tab.diskChange.followRequested {
 		tab.diskChange.followRequested = false
-		m.status = "已暂停跟随"
+		m.status = uiText("已暂停跟随")
 		return
 	}
 	if tab.largeText != nil && tab.largeText.following {
 		tab.largeText.following = false
-		m.status = "已暂停跟随"
+		m.status = uiText("已暂停跟随")
 		return
 	}
 	if tab.largeText != nil && (tab.largeText.editing != nil || tab.largeText.busyEditing()) {
-		m.status = "请先退出完整编辑模式"
+		m.status = uiText("请先退出完整编辑模式")
 		return
 	}
 	if tab.diskChange == nil {
@@ -293,7 +293,7 @@ func (m *editorApp) toggleLogFollow(tab *editorTab) {
 	if tab.diskChange != nil {
 		tab.diskChange.pending = true
 	}
-	m.status = "正在跟随日志 · 向上翻页暂停"
+	m.status = uiText("正在跟随日志 · 向上翻页暂停")
 }
 
 func (m *editorApp) fileChangeBar(c ui.C, tab *editorTab, blocked bool) {
@@ -314,7 +314,7 @@ func (m *editorApp) fileChangeBar(c ui.C, tab *editorTab, blocked bool) {
 		}
 		ui.Wrap(c, message).FontSize(12).Muted().Grow(1).MinWidth(0)
 		busy := blocked || s.request != nil || tab.source.text.CompositionActive() || m.macro != nil
-		if ui.Button(c, "比对磁盘内容").Ghost().FontSize(12).Height(28).Disabled(busy || s.missing || !historyEditableTab(tab)).Clicked() {
+		if ui.Button(c, uiText("比对磁盘内容")).Ghost().FontSize(12).Height(28).Disabled(busy || s.missing || !historyEditableTab(tab)).Clicked() {
 			c.After(func() { m.startDiskRead(tab, "compare") })
 		}
 		label := "重新读取"
@@ -330,7 +330,7 @@ func (m *editorApp) fileChangeBar(c ui.C, tab *editorTab, blocked bool) {
 				m.startDiskRead(tab, "reload")
 			})
 		}
-		if ui.Button(c, "保留编辑内容").Ghost().FontSize(12).Height(28).Disabled(busy).Clicked() {
+		if ui.Button(c, uiText("保留编辑内容")).Ghost().FontSize(12).Height(28).Disabled(busy).Clicked() {
 			c.After(func() {
 				s.ignored, s.ignoredMissing = s.digest, s.missing
 				s.changed, s.confirmReload, s.problem = false, false, ""

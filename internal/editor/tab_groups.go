@@ -251,21 +251,21 @@ func (m *editorApp) closeTabGroup(group *tabGroup) {
 
 func (m *editorApp) groupContextMenu(c ui.C, target ui.Box, group *tabGroup) {
 	ui.ContextMenu(c, target, func(menu *ui.MenuItems) {
-		if menu.Item(group.pinLabel()).Icon(pinStateIcon(group.Pinned)).Clicked() {
+		if menu.Item(m.menuText(group.pinLabel())).Icon(pinStateIcon(group.Pinned)).Clicked() {
 			c.After(func() { m.toggleGroupPin(group) })
 		}
-		if menu.Item("重命名分组…").Clicked() {
+		if menu.Item(m.menuText("重命名分组…")).Clicked() {
 			c.After(func() { m.rename.begin(nil, group) })
 		}
-		menu.Sub("分组颜色", func(colors *ui.MenuItems) {
+		menu.Sub(m.menuText("分组颜色"), func(colors *ui.MenuItems) {
 			for index, color := range tabGroupColors {
-				if colors.Item(color.name).Checked(index == group.Color).Clicked() {
+				if colors.Item(m.menuText(color.name)).Checked(index == group.Color).Clicked() {
 					c.After(func() { group.Color = index })
 				}
 			}
 		})
 		menu.Separator()
-		if menu.Item("解散分组").Clicked() {
+		if menu.Item(m.menuText("解散分组")).Clicked() {
 			c.After(func() {
 				first, end := m.groupTabs(group)
 				if first < 0 {
@@ -281,7 +281,7 @@ func (m *editorApp) groupContextMenu(c ui.C, target ui.Box, group *tabGroup) {
 				m.tabReveal = true
 			})
 		}
-		if menu.Item("关闭整个分组").Icon(closeIcon).Clicked() {
+		if menu.Item(m.menuText("关闭整个分组")).Icon(closeIcon).Clicked() {
 			c.After(func() { m.closeTabGroup(group) })
 		}
 	})

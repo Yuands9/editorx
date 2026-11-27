@@ -43,10 +43,10 @@ func translateOffline(ctx context.Context, directory, source, target, input stri
 	var result offlineTranslationResult
 	model := offlineLanguageModel(source, target)
 	if model == nil {
-		return result, errors.New("离线整句暂支持英语与简体中文互译")
+		return result, errors.New(uiText("离线整句暂支持英语与简体中文互译"))
 	}
 	if strings.TrimSpace(input) == "" || len(input) > translationTextLimit {
-		return result, errors.New("请输入 8 KiB 以内的原文")
+		return result, errors.New(uiText("请输入 8 KiB 以内的原文"))
 	}
 	for _, component := range []offlineComponent{offlineRuntime, *model} {
 		info, err := readOfflineInstallation(directory, component)
@@ -54,7 +54,7 @@ func translateOffline(ctx context.Context, directory, source, target, input stri
 			return result, err
 		}
 		if info == nil {
-			return result, errors.New("请先下载离线运行时和当前语言包")
+			return result, errors.New(uiText("请先下载离线运行时和当前语言包"))
 		}
 	}
 	request := offlineTranslationRequest{Model: offlineComponentPath(directory, *model), Target: target}
@@ -95,14 +95,14 @@ func translateOffline(ctx context.Context, directory, source, target, input stri
 		if index := strings.LastIndexByte(detail, '\n'); index >= 0 {
 			detail = detail[index+1:]
 		}
-		return result, fmt.Errorf("离线引擎运行失败：%s（%w）", detail, err)
+		return result, fmt.Errorf(uiText("离线引擎运行失败：%s（%w）"), detail, err)
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
-		return result, errors.New("离线引擎返回了无效结果")
+		return result, errors.New(uiText("离线引擎返回了无效结果"))
 	}
 	result.ElapsedMS = float64(time.Since(started).Microseconds()) / 1000
 	if strings.TrimSpace(result.Text) == "" || len(result.Text) > translationTextLimit || strings.ContainsRune(result.Text, 0) {
-		return result, errors.New("离线译文为空或超过 8 KiB，请缩小原文范围")
+		return result, errors.New(uiText("离线译文为空或超过 8 KiB，请缩小原文范围"))
 	}
 	if err := validateTranslationMarkers(input, result.Text); err != nil {
 		return result, err

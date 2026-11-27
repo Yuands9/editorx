@@ -66,7 +66,7 @@ func decodeWordPreview(book *zip.Reader) (wordPreviewContent, error) {
 	}
 	data, err := readWordPart(reader.parts["word/document.xml"], 24<<20)
 	if err != nil {
-		return wordPreviewContent{}, fmt.Errorf("无法读取 Word 正文：%w", err)
+		return wordPreviewContent{}, fmt.Errorf(uiText("无法读取 Word 正文：%w"), err)
 	}
 	reader.readStyles()
 	reader.readImages()
@@ -78,7 +78,7 @@ func readWordPart(part *zip.File, limit int) ([]byte, error) {
 		return nil, os.ErrNotExist
 	}
 	if part.UncompressedSize64 > uint64(limit) {
-		return nil, errors.New("内容超过预览大小限制")
+		return nil, errors.New(uiText("内容超过预览大小限制"))
 	}
 	stream, err := part.Open()
 	if err != nil {
@@ -87,7 +87,7 @@ func readWordPart(part *zip.File, limit int) ([]byte, error) {
 	defer stream.Close()
 	data, err := io.ReadAll(io.LimitReader(stream, int64(limit)+1))
 	if len(data) > limit {
-		return nil, errors.New("内容超过预览大小限制")
+		return nil, errors.New(uiText("内容超过预览大小限制"))
 	}
 	return data, err
 }
@@ -212,7 +212,7 @@ func (reader *wordPreviewReader) readBody(decoder *xml.Decoder) (wordPreviewCont
 				content.Body = template.HTML(output.String())
 				return content, nil
 			}
-			return wordPreviewContent{}, fmt.Errorf("Word 正文格式无效：%w", err)
+			return wordPreviewContent{}, fmt.Errorf(uiText("Word 正文格式无效：%w"), err)
 		}
 		switch element := token.(type) {
 		case xml.StartElement:

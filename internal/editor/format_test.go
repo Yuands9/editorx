@@ -59,7 +59,7 @@ func TestOpenTextFormatPrompt(t *testing.T) {
 		}
 	}
 	check(session.Driver().QueueOpenFiles([]string{jsonPath, markdownPath}, nil))
-	check(session.ClickLabel("button:打开现有文件"))
+	check(session.ClickLabel("button:打开文件"))
 	assertChoice := func(tab *editorTab, path, source, format string) {
 		t.Helper()
 		if tab == nil || tab.doc.path != path || tab.source.text.CommittedString() != source || tab.format() != format || tab.modified() {

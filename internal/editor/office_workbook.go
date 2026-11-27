@@ -112,7 +112,7 @@ func readWorkbook(data []byte, name string) (*officeWorkbook, error) {
 	decode := func(name string, value any) error {
 		entry := parts[name]
 		if entry == nil {
-			return fmt.Errorf("缺少工作簿内容 %s", name)
+			return fmt.Errorf(uiText("缺少工作簿内容 %s"), name)
 		}
 		stream, e := entry.Open()
 		if e != nil {
@@ -378,7 +378,7 @@ func exportCellStyle(base *excelize.Style, style *officeCellStyle) *excelize.Sty
 }
 func writeWorkbook(original []byte, baseline, current *officeWorkbook) ([]byte, error) {
 	if !reflect.DeepEqual(baseline.Order, current.Order) {
-		return nil, fmt.Errorf("当前版本不支持增删或移动工作表")
+		return nil, fmt.Errorf("%s", uiText("当前版本不支持增删或移动工作表"))
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(original))
 	if err != nil {
@@ -388,7 +388,7 @@ func writeWorkbook(original []byte, baseline, current *officeWorkbook) ([]byte, 
 	for _, id := range baseline.Order {
 		before, after := baseline.Sheets[id], current.Sheets[id]
 		if after == nil || before.Name != after.Name {
-			return nil, fmt.Errorf("当前版本不支持重命名工作表")
+			return nil, fmt.Errorf("%s", uiText("当前版本不支持重命名工作表"))
 		}
 		positions := map[[2]int]bool{}
 		for r, row := range before.Cells {
@@ -415,7 +415,7 @@ func writeWorkbook(original []byte, baseline, current *officeWorkbook) ([]byte, 
 				return nil, e
 			}
 			if !reflect.DeepEqual(old.Rich, next.Rich) && len(next.Rich) > 0 && string(next.Rich) != "null" {
-				return nil, fmt.Errorf("%s!%s 含单元格内富文本，请使用普通文字编辑后保存", before.Name, axis)
+				return nil, fmt.Errorf(uiText("%s!%s 含单元格内富文本，请使用普通文字编辑后保存"), before.Name, axis)
 			}
 			valueChanged := old.Formula != next.Formula || (next.Formula == "" && (!reflect.DeepEqual(old.Value, next.Value) || old.Type != next.Type))
 			if valueChanged {
@@ -514,7 +514,7 @@ func writeWorkbook(original []byte, baseline, current *officeWorkbook) ([]byte, 
 func validateDocx(data []byte) error {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return fmt.Errorf("无效的 DOCX 文件：%w", err)
+		return fmt.Errorf(uiText("无效的 DOCX 文件：%w"), err)
 	}
 	for _, entry := range reader.File {
 		if entry.Name == "word/document.xml" {
@@ -535,5 +535,5 @@ func validateDocx(data []byte) error {
 			}
 		}
 	}
-	return fmt.Errorf("文件缺少 Word 正文 word/document.xml")
+	return fmt.Errorf("%s", uiText("文件缺少 Word 正文 word/document.xml"))
 }

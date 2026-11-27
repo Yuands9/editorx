@@ -31,11 +31,11 @@ type editorPreferences struct {
 	WrapFileTypes       []string `json:"wrapFileTypes"`
 	LegacyWrap          string   `json:"wrap,omitempty"`
 	JSONIndent          int      `json:"jsonIndent"`
-	AutomaticCompletion bool     `json:"automaticCompletion,omitempty"`
+	AutomaticCompletion bool     `json:"automaticCompletion"`
 }
 
 func defaultEditorPreferences() editorPreferences {
-	return editorPreferences{FontSize: 16, TabWidth: 4, WrapFileTypes: []string{"JSON"}, JSONIndent: 4}
+	return editorPreferences{FontSize: 16, TabWidth: 4, WrapFileTypes: []string{"JSON"}, JSONIndent: 4, AutomaticCompletion: true}
 }
 
 func (p editorPreferences) normalized() editorPreferences {

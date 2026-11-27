@@ -38,7 +38,7 @@ func (m *editorApp) chooseTranslationAI() {
 	state.problem = ""
 	profile, err := state.choose(m.dataDirectory)
 	if err != nil {
-		state.problem = "无法读取 AI 服务配置：" + err.Error()
+		state.problem = uiText("无法读取 AI 服务配置：") + err.Error()
 	}
 	if profile != nil {
 		m.startSelectionTranslation(*profile)
@@ -48,11 +48,11 @@ func (m *editorApp) chooseTranslationAI() {
 func (m *editorApp) translationAISettings(settings aiSettings) (aiSettings, error) {
 	profiles, err := readAIProfiles(m.dataDirectory)
 	if err != nil {
-		return aiSettings{}, fmt.Errorf("无法读取 AI 服务配置：%w", err)
+		return aiSettings{}, fmt.Errorf(uiText("无法读取 AI 服务配置：%w"), err)
 	}
 	index := profiles.index(settings.ID)
 	if index < 0 || !reflect.DeepEqual(settings, profiles.Profiles[index]) {
-		return aiSettings{}, errors.New("AI 服务配置已有更新，请重新选择翻译服务")
+		return aiSettings{}, errors.New(uiText("AI 服务配置已有更新，请重新选择翻译服务"))
 	}
 	if settings.usesCLI() {
 		settings.cliDirectory = m.dataDirectory
@@ -84,13 +84,13 @@ func (m *editorApp) startSelectionTranslation(settings aiSettings) {
 		system := translationInstructions(source, target, selection, false, terms)
 		output, err := settings.complete(ctx, system, []aiMessage{{Role: "user", Content: selection}}, "", nil)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", errors.New("翻译请求超时，请重试")
+			return "", errors.New(uiText("翻译请求超时，请重试"))
 		}
 		if err == nil && (len(output) > translationTextLimit || strings.ContainsRune(output, 0)) {
-			return "", errors.New("译文超过选区翻译的 8 KiB 限制，请缩小选区")
+			return "", errors.New(uiText("译文超过选区翻译的 8 KiB 限制，请缩小选区"))
 		}
 		if err == nil && strings.TrimSpace(output) == "" {
-			return "", errors.New("AI 未返回译文")
+			return "", errors.New(uiText("AI 未返回译文"))
 		}
 		return output, err
 	})
@@ -172,11 +172,11 @@ func (m *editorApp) updateSelectionTranslation(c ui.C) {
 	}
 	state.request, state.message = nil, ""
 	if selectionErr := state.validateTarget(m.active); selectionErr != nil || !state.matchesLanguages() {
-		state.problem = "选区或语言方向已变化，请重新查选区"
+		state.problem = uiText("选区或语言方向已变化，请重新查选区")
 		return
 	}
 	if err != nil {
-		state.problem = "翻译失败：" + err.Error()
+		state.problem = uiText("翻译失败：") + err.Error()
 		return
 	}
 	state.output.SetText(translated)
@@ -185,14 +185,14 @@ func (m *editorApp) updateSelectionTranslation(c ui.C) {
 
 func (m *editorApp) translationAIAction(c ui.C, state *translationPanelState, blocked bool) {
 	if state.request != nil {
-		if ui.Button(c, "取消 AI 翻译").Outline().Grow(1).Basis(0).Height(32).FontSize(12).
-			Tooltip("AI 正在翻译，点击取消").Disabled(blocked).Clicked() {
+		if ui.Button(c, uiText("取消 AI 翻译")).Outline().Grow(1).Basis(0).Height(32).FontSize(12).
+			Tooltip(uiText("AI 正在翻译，点击取消")).Disabled(blocked).Clicked() {
 			c.After(func() { state.request = nil })
 		}
 		return
 	}
-	button := ui.Button(c, "AI 翻译").Grow(1).Basis(0).Height(32).FontSize(12).
-		Tooltip("用已配置的 AI 服务翻译原文，并参考匹配的术语").Disabled(blocked || state.translating() || strings.TrimSpace(state.query.Text()) == "")
+	button := ui.Button(c, uiText("AI 翻译")).Grow(1).Basis(0).Height(32).FontSize(12).
+		Tooltip(uiText("用已配置的 AI 服务翻译原文，并参考匹配的术语")).Disabled(blocked || state.translating() || strings.TrimSpace(state.query.Text()) == "")
 	if button.Clicked() {
 		c.After(m.chooseTranslationAI)
 	}
@@ -206,13 +206,13 @@ func (m *editorApp) translationAIMenu(c ui.C, button ui.Box, choice *translation
 	ui.Menu(c, button, &choice.aiMenu, func(menu *ui.MenuItems) {
 		menu.WidthRange(168, 270)
 		if len(choice.aiServices) == 0 {
-			menu.Label("未配置 AI 服务")
-			if menu.Item("打开 AI 设置…").Clicked() {
+			menu.Label(m.menuText("未配置 AI 服务"))
+			if menu.Item(m.menuText("打开 AI 设置…")).Clicked() {
 				c.After(m.openAISettings)
 			}
 			return
 		}
-		menu.Label("选择翻译服务")
+		menu.Label(m.menuText("选择翻译服务"))
 		for _, profile := range choice.aiServices {
 			if menu.Item(aiServiceModelLabel(profile)).Clicked() {
 				c.After(func() { start(profile) })

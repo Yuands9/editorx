@@ -67,20 +67,20 @@ func (entry *translationEntry) validate() error {
 	entry.sourceLang, entry.targetLang = languageCode(entry.sourceLang), languageCode(entry.targetLang)
 	entry.context = strings.TrimSpace(entry.context)
 	if !validLanguageCode(entry.sourceLang) || !validLanguageCode(entry.targetLang) || entry.sourceLang == entry.targetLang {
-		return errors.New("请输入不同的语言代码，如 en 和 zh-CN")
+		return errors.New(uiText("请输入不同的语言代码，如 en 和 zh-CN"))
 	}
 	if entry.kind != translationTerm && entry.kind != translationSentence {
-		return errors.New("词条类型须为 term 或 sentence")
+		return errors.New(uiText("词条类型须为 term 或 sentence"))
 	}
 	if strings.TrimSpace(entry.source) == "" || strings.TrimSpace(entry.target) == "" {
-		return errors.New("请填写原文和译文")
+		return errors.New(uiText("请填写原文和译文"))
 	}
 	if len(entry.source) > translationTextLimit || len(entry.target) > translationTextLimit || len(entry.context) > 400 {
-		return errors.New("原文和译文各限 8 KiB，用法备注限 400 字节")
+		return errors.New(uiText("原文和译文各限 8 KiB，用法备注限 400 字节"))
 	}
 	for _, value := range []string{entry.source, entry.target, entry.context} {
 		if !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
-			return errors.New("词条须为 UTF-8 文本")
+			return errors.New(uiText("词条须为 UTF-8 文本"))
 		}
 	}
 	return nil
@@ -111,10 +111,10 @@ func scanTranslationLibrary(path string, allowMissing bool, visit func(translati
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("翻译库须为普通 CSV 文件")
+		return errors.New(uiText("翻译库须为普通 CSV 文件"))
 	}
 	if info.Size() > translationLibraryLimit {
-		return errors.New("翻译库超过 2 MiB")
+		return errors.New(uiText("翻译库超过 2 MiB"))
 	}
 	bounded := &io.LimitedReader{R: file, N: translationLibraryLimit + 1}
 	buffer := bufio.NewReader(bounded)
@@ -126,12 +126,12 @@ func scanTranslationLibrary(path string, allowMissing bool, visit func(translati
 	reader.ReuseRecord = true
 	columns, err := reader.Read()
 	if err != nil || !slices.Equal(columns, translationColumns[:]) {
-		return fmt.Errorf("CSV 表头须为 %s", strings.Join(translationColumns[:], ","))
+		return fmt.Errorf(uiText("CSV 表头须为 %s"), strings.Join(translationColumns[:], ","))
 	}
 	for {
 		record, err := reader.Read()
 		if bounded.N == 0 {
-			return errors.New("翻译库超过 2 MiB")
+			return errors.New(uiText("翻译库超过 2 MiB"))
 		}
 		if errors.Is(err, io.EOF) {
 			return nil
@@ -142,7 +142,7 @@ func scanTranslationLibrary(path string, allowMissing bool, visit func(translati
 		entry := translationEntry{record[0], record[1], record[2], record[3], record[4], record[5]}
 		if err := entry.validate(); err != nil {
 			row, _ := reader.FieldPos(0)
-			return fmt.Errorf("CSV 第 %d 行：%w", row, err)
+			return fmt.Errorf(uiText("CSV 第 %d 行：%w"), row, err)
 		}
 		visit(entry)
 	}
@@ -178,7 +178,7 @@ func mergeTranslationLibrary(path string, additions []translationEntry) (added, 
 		}
 		if target, ok := existing[entry.key()]; ok {
 			if target != entry.target {
-				return 0, 0, errors.New("库中已有相同语言、原文和用法的不同译文，请在库文件中核对或填写不同的用法备注")
+				return 0, 0, errors.New(uiText("库中已有相同语言、原文和用法的不同译文，请在库文件中核对或填写不同的用法备注"))
 			}
 			duplicates++
 			continue
@@ -243,13 +243,13 @@ func validateTranslationMarkers(source, translated string) error {
 	}
 	for _, marker := range result {
 		if counts[marker] == 0 {
-			return fmt.Errorf("译文包含额外或重复的标记 %s", marker)
+			return fmt.Errorf(uiText("译文包含额外或重复的标记 %s"), marker)
 		}
 		counts[marker]--
 	}
 	for _, marker := range original {
 		if counts[marker] != 0 {
-			return fmt.Errorf("译文缺少原文标记 %s", marker)
+			return fmt.Errorf(uiText("译文缺少原文标记 %s"), marker)
 		}
 	}
 	orderedPrintf := func(markers []string) []string {
@@ -263,7 +263,7 @@ func validateTranslationMarkers(source, translated string) error {
 		return ordered
 	}
 	if !slices.Equal(orderedPrintf(original), orderedPrintf(result)) {
-		return errors.New("未编号的格式参数顺序已改变")
+		return errors.New(uiText("未编号的格式参数顺序已改变"))
 	}
 	return nil
 }
@@ -292,5 +292,5 @@ func jsonTranslationReplacement(value string, start, end int, translated string)
 			return string(encoded[1 : len(encoded)-1]), nil
 		}
 	}
-	return "", errors.New("JSON 中请选择单个字符串值内的普通文本。仍可复制译文")
+	return "", errors.New(uiText("JSON 中请选择单个字符串值内的普通文本。仍可复制译文"))
 }

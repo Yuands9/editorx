@@ -46,7 +46,7 @@ func unescapeJSON(source string, indent int) (string, error) {
 		// Some logs and clipboard tools omit the enclosing string quotes.
 		var decoded string
 		if decodeErr := json.Unmarshal([]byte("\""+source+"\""), &decoded); decodeErr != nil {
-			return "", fmt.Errorf("需要 JSON 对象、数组，或包含 JSON 的转义文本：%w", err)
+			return "", fmt.Errorf(uiText("需要 JSON 对象、数组，或包含 JSON 的转义文本：%w"), err)
 		}
 		return formatUnescapedJSON(decoded, indent)
 	}
@@ -63,7 +63,7 @@ func unescapeJSON(source string, indent int) (string, error) {
 		formatted, _, err := transformJSON(source, "格式化", indent)
 		return formatted, err
 	default:
-		return "", errors.New("需要 JSON 对象、数组，或包含 JSON 的转义文本")
+		return "", errors.New(uiText("需要 JSON 对象、数组，或包含 JSON 的转义文本"))
 	}
 }
 
@@ -77,7 +77,7 @@ func formatUnescapedJSON(source string, indent int) (string, error) {
 			return value, nil
 		}
 	}
-	return "", fmt.Errorf("去转义后不是有效 JSON：%w", err)
+	return "", fmt.Errorf(uiText("去转义后不是有效 JSON：%w"), err)
 }
 
 func expandJSONStringFields(value *jsonValue, layers int) bool {

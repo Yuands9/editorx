@@ -13,22 +13,26 @@ import (
 	"github.com/vivaui/viva/window"
 )
 
-func (state *historyCompareState) windowConfig() app.Config {
-	owner := state.owner
-	title := "比对历史"
+func (state *historyCompareState) windowTitle() string {
+	title := uiText("比对历史")
 	if state.generic {
-		title = "文件对比"
+		title = uiText("文件对比")
 	}
 	if state.source != "" {
 		title += " · " + filepath.Base(state.source)
 	}
+	return title
+}
+
+func (state *historyCompareState) windowConfig() app.Config {
+	owner := state.owner
 	const width, height = 1240, 780
 	var origin *gfx.Point
 	if bounds, ok := owner.nativeWindow.Frame(); ok {
 		origin = &gfx.Point{X: bounds.X + (bounds.Width-width)/2, Y: bounds.Y + (bounds.Height-height)/2}
 	}
 	return app.Config{
-		Title: title, Icon: themedApplicationIcon(owner.light), Width: width, Height: height,
+		Title: state.windowTitle(), Icon: themedApplicationIcon(owner.light), Width: width, Height: height,
 		MinWidth: 760, MinHeight: 440, Origin: origin, Invalidator: &state.invalidator,
 		ClearColor: app.Color{Red: float64(owner.theme.Card.Red), Green: float64(owner.theme.Card.Green), Blue: float64(owner.theme.Card.Blue), Alpha: 1},
 		OnActivate: state.invalidator.Invalidate,
@@ -161,7 +165,7 @@ func (state *historyCompareState) attachCurrentTab() bool {
 		current = tab.doc
 		current.saved = tab.source.text.CommittedString()
 	} else {
-		state.problem = "当前文件的编辑区不可用，可另存历史副本。"
+		state.problem = uiText("当前文件的编辑区不可用，可另存历史副本。")
 		return false
 	}
 	if err != nil || current.saved != comparison.current.saved || current.eol != comparison.current.eol {
@@ -269,15 +273,15 @@ func (state *historyCompareState) shortcut(event gfx.KeyEvent) gfx.EventResult {
 	switch chord {
 	case keymap.Chord{Modifiers: ui.Ctrl, Char: 'z'}:
 		if editor != nil && editor.Undo() {
-			state.notice, changed = "已撤销", true
+			state.notice, changed = uiText("已撤销"), true
 		}
 	case keymap.Chord{Modifiers: ui.Ctrl, Char: 'y'}, keymap.Chord{Modifiers: ui.Ctrl | ui.Shift, Char: 'z'}:
 		if editor != nil && editor.Redo() {
-			state.notice, changed = "已重做", true
+			state.notice, changed = uiText("已重做"), true
 		}
 	case state.owner.keyBindings.chord(shortcutSave):
 		if tab != nil && state.owner.saveTab(tab, false) {
-			state.notice = "已保存当前版本"
+			state.notice = uiText("已保存当前版本")
 		} else if state.owner.showError && state.owner.nativeWindow != nil {
 			state.owner.nativeWindow.Show()
 		}

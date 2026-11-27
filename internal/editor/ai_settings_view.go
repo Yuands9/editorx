@@ -12,7 +12,7 @@ import (
 func (m *editorApp) aiSettingsContent(c ui.C, submitted *bool) {
 	a, e := &m.ai, &m.ai.settings
 	if e.removePending {
-		ui.Wrap(c, "移除「"+e.original.Name+"」及其在本机保存的凭据。").FontSize(14).FillWidth()
+		ui.Wrap(c, uiText("移除「")+e.original.Name+uiText("」及其在本机保存的凭据。")).FontSize(14).FillWidth()
 		if e.problem != "" {
 			ui.Wrap(c, e.problem).Color(m.theme.Danger).FillWidth().FontSize(12)
 		}
@@ -29,25 +29,25 @@ func (m *editorApp) aiSettingsContent(c ui.C, submitted *bool) {
 func (m *editorApp) aiSettingsActions(c ui.C) {
 	e := &m.ai.settings
 	if e.removePending {
-		if ui.Button(c, "取消删除").Outline().Clicked() {
+		if ui.Button(c, uiText("取消删除")).Outline().Clicked() {
 			c.After(func() { e.removePending, e.problem = false, "" })
 		}
-		if ui.Button(c, "确认删除配置").Destructive().Clicked() {
+		if ui.Button(c, uiText("确认删除配置")).Destructive().Clicked() {
 			c.After(m.removeAISettings)
 		}
 		return
 	}
 	if e.probe != nil {
-		if ui.Button(c, "停止检测").Outline().Clicked() {
+		if ui.Button(c, uiText("停止检测")).Outline().Clicked() {
 			c.After(func() {
 				e.probe = nil
-				e.message = "已停止检测"
+				e.message = uiText("已停止检测")
 			})
 		}
 		return
 	}
 	canSave := e.original.ID == 0 || e.dirty()
-	if ui.Button(c.Part("save-profile"), "保存配置").Height(34).Disabled(!canSave).Clicked() {
+	if ui.Button(c.Part("save-profile"), uiText("保存配置")).Height(34).Disabled(!canSave).Clicked() {
 		c.After(m.finishAIProfile)
 	}
 }
@@ -57,11 +57,11 @@ func (m *editorApp) aiDiscardDraftDialog(c ui.C) {
 	if !m.appSettings.open || m.appSettings.section != settingsAI || !editor.discardPending {
 		return
 	}
-	ui.ModalWith(c, &editor.discardPending, "放弃未保存的模型配置？", ui.ModalSpec{Width: 410}, nil, func() {
-		if ui.Button(c, "继续编辑").Outline().Clicked() {
+	ui.ModalWith(c, &editor.discardPending, uiText("放弃未保存的模型配置？"), ui.ModalSpec{Width: 410}, nil, func() {
+		if ui.Button(c, uiText("继续编辑")).Outline().Clicked() {
 			editor.discardPending = false
 		}
-		if ui.Button(c, "放弃修改").Destructive().Clicked() {
+		if ui.Button(c, uiText("放弃修改")).Destructive().Clicked() {
 			c.After(m.reloadAISettingsPage)
 		}
 	})
@@ -71,15 +71,15 @@ func (m *editorApp) aiSettingsOverview(c ui.C) {
 	a, e := &m.ai, &m.ai.settings
 	ui.Column(c).FillWidth().PadRight(6).Gap(12).Children(func() {
 		ui.Row(c).FillWidth().Height(36).Items(ui.Center).Gap(10).Children(func() {
-			ui.Text(c, "模型配置").Bold().FontSize(18).Grow(1)
-			if ui.Button(c, "新增配置").Icon(plusIcon).Height(32).Clicked() {
+			ui.Text(c, uiText("模型配置")).Bold().FontSize(18).Grow(1)
+			if ui.Button(c, uiText("新增配置")).Icon(plusIcon).Height(32).Clicked() {
 				c.After(func() {
 					m.editAISettings(aiSettings{Name: a.profiles.availableName("新配置"), Provider: "custom", Protocol: aiChat})
 				})
 			}
 		})
 		if len(a.profiles.Profiles) == 0 {
-			ui.Wrap(c, "添加服务商配置后，即可问答、起草文档和生成修改。").
+			ui.Wrap(c, uiText("添加服务商配置后，即可问答、起草文档和生成修改。")).
 				FillWidth().Pad(18).Radius(13).Border(1, m.theme.Border).Color(m.theme.MutedForeground).FontSize(13)
 		}
 		for _, profile := range a.profiles.Profiles {
@@ -111,7 +111,7 @@ func (m *editorApp) aiProfileCard(c ui.C, profile aiSettings) {
 			ui.Row(c).FillWidth().Gap(8).Items(ui.Center).Children(func() {
 				ui.Text(c, profile.Name).FontSize(14).Bold().MinWidth(0).Ellipsis()
 				if isDefault {
-					ui.Text(c, "默认").FontSize(11).Color(m.theme.Ring).PadX(7).PadY(2).Radius(7).
+					ui.Text(c, uiText("默认")).FontSize(11).Color(m.theme.Ring).PadX(7).PadY(2).Radius(7).
 						Background(tint.Over(background)).Shrink(0)
 				}
 			})
@@ -146,19 +146,19 @@ func (m *editorApp) aiProfileAction(c ui.C, label, accessibleLabel string, color
 func (m *editorApp) aiChatPreferences(c ui.C) {
 	a := &m.ai
 	ui.Column(c).FillWidth().MaxWidth(338).Pad(12).Gap(8).Radius(12).Background(m.theme.Background).Children(func() {
-		ui.Text(c, "对话偏好").FontSize(14).Bold()
+		ui.Text(c, uiText("对话偏好")).FontSize(14).Bold()
 		mode, size := a.profiles.DefaultMode, a.profiles.chatFontSize()
 		ui.Row(c).FillWidth().Gap(12).Children(func() {
 			ui.Column(c).Width(172).MinWidth(0).Gap(4).Children(func() {
-				ui.Text(c, "新对话的默认模式").Muted().FontSize(12)
-				if ui.Select(c, &mode, aiModes, aiModeLabel).Label("新对话的默认模式").FillWidth().Height(34).Changed() {
+				ui.Text(c, uiText("新对话的默认模式")).Muted().FontSize(12)
+				if ui.Select(c, &mode, aiModes, aiModeLabel).Label(uiText("新对话的默认模式")).FillWidth().Height(34).Changed() {
 					c.After(func() { m.saveAIChatPreferences(mode, size) })
 				}
 			})
 			ui.Column(c).Width(108).Gap(4).Children(func() {
-				ui.Text(c, "对话字号").Muted().FontSize(12)
+				ui.Text(c, uiText("对话字号")).Muted().FontSize(12)
 				if ui.Select(c, &size, aiFontSizes, func(value int) string { return fmt.Sprintf("%d px", value) }).
-					Label("对话字号").FillWidth().Height(34).Changed() {
+					Label(uiText("对话字号")).FillWidth().Height(34).Changed() {
 					c.After(func() { m.saveAIChatPreferences(mode, size) })
 				}
 			})
@@ -171,7 +171,7 @@ func (m *editorApp) aiProviderPicker(c ui.C, disabled bool) {
 	m.aiSettingsRow(c, "服务商", func() {
 		trigger := ui.Row(c).Width(222).Height(36).PadX(10).Gap(7).Items(ui.Center).
 			Radius(9).Border(1, m.theme.Border).Background(m.theme.Card)
-		trigger.HitWith(ui.ID(c), "服务商预设", gfx.HitOptions{
+		trigger.HitWith(ui.ID(c), uiText("服务商预设"), gfx.HitOptions{
 			Role: gfx.RoleCombobox, Value: aiProviderLabel(e.provider), Expandable: true, Expanded: e.providersOpen, Disabled: disabled,
 		}).Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Border(m.theme.Ring))
 		trigger.Children(func() {
@@ -193,10 +193,10 @@ func (m *editorApp) aiProviderPicker(c ui.C, disabled bool) {
 			list.Draw(func(d *ui.DrawContext) { d.Canvas.TrapFocus(scope) })
 			list.Children(func() {
 				ui.Column(c).FillWidth().PadRight(4).Gap(1).Children(func() {
-					ui.Text(c, "API 服务").Muted().FontSize(11).PadX(9).Height(22)
+					ui.Text(c, uiText("API 服务")).Muted().FontSize(11).PadX(9).Height(22)
 					for _, id := range aiPresetIDs {
 						if id == aiClaudeCLI {
-							ui.Text(c, "命令行").Muted().FontSize(11).PadX(9).Height(22)
+							ui.Text(c, uiText("命令行")).Muted().FontSize(11).PadX(9).Height(22)
 						} else if id == "custom" {
 							ui.Slot(c).FillWidth().MarginY(2).Height(1).Background(m.theme.Border)
 						}
@@ -247,14 +247,14 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 		} else {
 			m.aiSettingsRow(c.Part("credential"), "API 密钥", func() {
 				keyDisabled := disabled || e.auth == aiAuthNone
-				placeholder := "输入 API 密钥"
+				placeholder := uiText("输入 API 密钥")
 				hasSavedKey := len(e.original.Key) != 0 && e.provider == e.original.Provider
 				if hasSavedKey && !e.clearKey && e.key.Secure {
 					placeholder = strings.Repeat("•", 24)
 				}
-				icon, title := showSecretIcon, "显示密钥"
+				icon, title := showSecretIcon, uiText("显示密钥")
 				if !e.key.Secure {
-					icon, title = hideSecretIcon, "隐藏密钥"
+					icon, title = hideSecretIcon, uiText("隐藏密钥")
 				}
 				ui.Row(c.Part("key-actions")).FillWidth().Gap(6).Items(ui.Center).Children(func() {
 					key := m.aiSettingsField(c.Part("key-input"), "API 密钥", placeholder, &e.key, keyDisabled, submitted).
@@ -270,8 +270,8 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 						return
 					}
 					canCopy := !keyDisabled && e.key.Text() != ""
-					copyKey := ui.Button(c.Part("copy-key"), "复制 API 密钥").Icon(copyIcon).IconOnly().Ghost().
-						Size(36, 36).Shrink(0).Tooltip("复制 API 密钥").Disabled(!canCopy)
+					copyKey := ui.Button(c.Part("copy-key"), uiText("复制 API 密钥")).Icon(copyIcon).IconOnly().Ghost().
+						Size(36, 36).Shrink(0).Tooltip(uiText("复制 API 密钥")).Disabled(!canCopy)
 					copyRequested := copyKey.Clicked()
 					if canCopy && e.viewingSavedKey {
 						if key.Shortcut(ui.Primary, "a") {
@@ -284,12 +284,12 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 					if copyRequested {
 						c.After(func() {
 							if err := app.SetClipboardText(e.key.Text()); err != nil {
-								e.problem = "无法复制 API 密钥：" + err.Error()
+								e.problem = uiText("无法复制 API 密钥：") + err.Error()
 							}
 						})
 					}
 				})
-				if hasSavedKey && ui.Checkbox(c.Part("clear-key"), &e.clearKey, "清除已保存的密钥").FontSize(12).Disabled(disabled).Changed() {
+				if hasSavedKey && ui.Checkbox(c.Part("clear-key"), &e.clearKey, uiText("清除已保存的密钥")).FontSize(12).Disabled(disabled).Changed() {
 					if e.clearKey && e.viewingSavedKey {
 						e.toggleKeyVisibility()
 					}
@@ -306,14 +306,14 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 					e.suggestName(a.profiles)
 					e.clearProbe(false)
 				}
-				if profile.canListModels() && ui.Button(c.Part("fetch"), "获取模型").Icon(refreshIcon).Outline().Height(36).FontSize(12).
+				if profile.canListModels() && ui.Button(c.Part("fetch"), uiText("获取模型")).Icon(refreshIcon).Outline().Height(36).FontSize(12).
 					Disabled(disabled || !cli && strings.TrimSpace(e.baseURL.Text()) == "").Clicked() {
 					c.After(func() { m.startAISettingsProbe(true) })
 				}
 			})
 			ui.Row(c.Part("model-actions")).FillWidth().Items(ui.Center).Gap(8).Children(func() {
 				if len(e.models) > 0 {
-					picker := ui.Button(c, "选择模型").Icon(chevronDownIcon).Outline().Height(30).FontSize(12).Disabled(disabled)
+					picker := ui.Button(c, uiText("选择模型")).Icon(chevronDownIcon).Outline().Height(30).FontSize(12).Disabled(disabled)
 					if picker.Clicked() {
 						e.modelsOpen = !e.modelsOpen
 					}
@@ -331,11 +331,11 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 					})
 				}
 				canProbe := cli || strings.TrimSpace(e.baseURL.Text()) != "" && strings.TrimSpace(e.model.Text()) != ""
-				if ui.Button(c, "测试连接").Outline().Height(30).FontSize(12).Disabled(disabled || !canProbe).Clicked() {
+				if ui.Button(c, uiText("测试连接")).Outline().Height(30).FontSize(12).Disabled(disabled || !canProbe).Clicked() {
 					c.After(func() { m.startAISettingsProbe(false) })
 				}
 				if cli {
-					ui.Text(c, "使用已登录的 CLI").FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
+					ui.Text(c, uiText("使用已登录的 CLI")).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
 				}
 			})
 			message, color := e.message, m.theme.MutedForeground
@@ -358,7 +358,7 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 			if e.advanced {
 				advancedIcon = chevronDownIcon
 			}
-			if ui.Button(c, "高级设置").Icon(advancedIcon).Ghost().Height(28).FontSize(12).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText("高级设置")).Icon(advancedIcon).Ghost().Height(28).FontSize(12).Disabled(disabled).Clicked() {
 				e.advanced = !e.advanced
 			}
 			if e.advanced {
@@ -371,29 +371,29 @@ func (m *editorApp) aiProfileForm(c ui.C, disabled bool, submitted *bool) {
 func (m *editorApp) aiAdvancedSettings(c ui.C, disabled bool, submitted *bool) {
 	e := &m.ai.settings
 	m.aiSettingsRow(c.Part("protocol"), "API 协议", func() {
-		if ui.Select(c, &e.protocol, aiProtocols, aiProtocolLabel).Label("API 协议").Width(240).Height(34).Disabled(disabled).Changed() {
+		if ui.Select(c, &e.protocol, aiProtocols, aiProtocolLabel).Label(uiText("API 协议")).Width(240).Height(34).Disabled(disabled).Changed() {
 			e.clearProbe(true)
 		}
 	})
 	m.aiSettingsRow(c.Part("auth"), "认证方式", func() {
-		if ui.Select(c, &e.auth, aiAuthOptions, aiAuthLabel).Label("认证方式").Width(240).Height(34).Disabled(disabled).Changed() {
+		if ui.Select(c, &e.auth, aiAuthOptions, aiAuthLabel).Label(uiText("认证方式")).Width(240).Height(34).Disabled(disabled).Changed() {
 			e.clearProbe(true)
 		}
 	})
 	m.aiSettingsRow(c.Part("network"), "网络直连", func() {
-		if ui.Switch(c, &e.direct, "").Label("网络直连").Tooltip("不使用环境代理").Disabled(disabled).Changed() {
+		if ui.Switch(c, &e.direct, "").Label(uiText("网络直连")).Tooltip(uiText("不使用环境代理")).Disabled(disabled).Changed() {
 			e.clearProbe(true)
 		}
 	})
 	m.aiSettingsRow(c.Part("headers-row"), "自定义请求头", func() {
 		placeholder := `{"X-Tenant":"example"}`
 		if len(e.original.Headers) != 0 {
-			placeholder = "已加密保存，留空则沿用"
+			placeholder = uiText("已加密保存，留空则沿用")
 		}
 		if m.aiSettingsField(c.Part("headers"), "自定义请求头 · JSON", placeholder, &e.headers, disabled, submitted).Changed() {
 			e.clearProbe(true)
 		}
-		if len(e.original.Headers) != 0 && ui.Checkbox(c, &e.clearHeaders, "清除已保存的请求头").FontSize(12).Disabled(disabled).Changed() {
+		if len(e.original.Headers) != 0 && ui.Checkbox(c, &e.clearHeaders, uiText("清除已保存的请求头")).FontSize(12).Disabled(disabled).Changed() {
 			e.clearProbe(true)
 		}
 	})

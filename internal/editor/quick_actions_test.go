@@ -19,7 +19,7 @@ func TestQuickActionsOpenSaveAndFind(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "中文配置.txt")
 	check(os.WriteFile(path, []byte("已有内容"), 0600))
 	check(s.Driver().QueueOpenFiles([]string{path}, nil))
-	check(s.ClickLabel("打开现有文件"))
+	check(s.ClickLabel("打开文件"))
 	if m.active.doc.path != path || m.active.source.text.String() != "已有内容" {
 		t.Fatal("empty document open action failed")
 	}

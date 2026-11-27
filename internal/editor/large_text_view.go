@@ -200,7 +200,7 @@ func (t *editorTab) findInLargeText(direction int) {
 		return
 	}
 	if len(query) > largeTextQueryLimit {
-		state.problem = "查找内容过长"
+		state.problem = uiText("查找内容过长")
 		return
 	}
 	needle, err := encodeText(query, t.doc.encoding)
@@ -339,7 +339,7 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			case err != nil:
 				state.problem = err.Error()
 			case offset < 0:
-				state.problem = "此方向没有更多匹配"
+				state.problem = uiText("此方向没有更多匹配")
 			default:
 				page, err := readLargeTextPage(tab.doc.path, state.index, offset, state.lastQuery, tab.doc.encoding)
 				if err != nil {
@@ -364,47 +364,47 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 			if state.following {
 				heading = "日志跟随"
 			}
-			ui.Text(c, heading).Bold().FontSize(13)
-			ui.Text(c, fmt.Sprintf("%d / %d 页", state.index+1, total)).Muted().FontSize(12).MarginX(5)
-			if ui.Button(c, "上一页").Ghost().FontSize(12).Height(28).Disabled(disabled || state.index == 0).Clicked() {
+			ui.Text(c, uiText(heading)).Bold().FontSize(13)
+			ui.Text(c, fmt.Sprintf(uiText("%d / %d 页"), state.index+1, total)).Muted().FontSize(12).MarginX(5)
+			if ui.Button(c, uiText("上一页")).Ghost().FontSize(12).Height(28).Disabled(disabled || state.index == 0).Clicked() {
 				c.After(func() { tab.stepLargeText(-1, false) })
 			}
-			if ui.Button(c, "下一页").Ghost().FontSize(12).Height(28).Disabled(disabled || state.index+1 >= total).Clicked() {
+			if ui.Button(c, uiText("下一页")).Ghost().FontSize(12).Height(28).Disabled(disabled || state.index+1 >= total).Clicked() {
 				c.After(func() { tab.stepLargeText(1, false) })
 			}
-			if ui.Button(c, "到末尾").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText("到末尾")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { tab.moveLargeText(-1, true) })
 			}
-			if ui.Button(c, "重新读取").Icon(refreshIcon).IconOnly().Ghost().Size(25, 26).Disabled(disabled).Tooltip("重新读取当前页").Clicked() {
+			if ui.Button(c, uiText("重新读取")).Icon(refreshIcon).IconOnly().Ghost().Size(25, 26).Disabled(disabled).Tooltip(uiText("重新读取当前页")).Clicked() {
 				c.After(func() { tab.moveLargeText(state.index, false) })
 			}
 			ui.Slot(c).Grow(1)
-			if ui.Button(c, "查找").Icon(searchIcon).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText("查找")).Icon(searchIcon).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(tab.openSearch)
 			}
 			followLabel := "跟随日志"
 			if state.following {
 				followLabel = "暂停跟随"
 			}
-			if ui.Button(c, followLabel).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText(followLabel)).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { m.toggleLogFollow(tab) })
 			}
 			label := "打开完整编辑"
 			if state.edit != nil {
 				label = "正在打开…"
 			}
-			if ui.Button(c, label).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText(label)).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { state.following = false; m.startLargeTextEdit(tab, tab.doc.encoding) })
 			}
 			if state.editSession.hasChanges() &&
-				ui.Button(c, "导出未保存改动…").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+				ui.Button(c, uiText("导出未保存改动…")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 				c.After(func() { m.exportLargeEditDraft(tab) })
 			}
 		})
 	}
 	if state.searchOpen {
 		ui.Row(c.Part("search")).FillWidth().PadX(12).Gap(5).Items(ui.Center).Children(func() {
-			field := ui.TextField(c.Part("query"), &state.query, "在大文件中查找", "区分大小写 · 查找全文").
+			field := ui.TextField(c.Part("query"), &state.query, uiText("在大文件中查找"), uiText("区分大小写 · 查找全文")).
 				Grow(1).MinWidth(0).Height(30).Disabled(disabled)
 			if state.focus {
 				field.AutoFocus()
@@ -417,24 +417,24 @@ func (m *editorApp) largeTextView(c ui.C, tab *editorTab, blocked bool) {
 				label string
 				value int
 			}{{"上一个", -1}, {"下一个", 1}} {
-				if ui.Button(c, direction.label).Ghost().Height(28).FontSize(12).Disabled(disabled).Clicked() {
+				if ui.Button(c, uiText(direction.label)).Ghost().Height(28).FontSize(12).Disabled(disabled).Clicked() {
 					c.After(func() { m.stepLargeSearch(tab, direction.value) })
 				}
 			}
-			if ui.Button(c, "查找全部").Secondary().Height(28).FontSize(12).Disabled(disabled || state.allMatches != nil || state.query.Text() == "").Clicked() {
+			if ui.Button(c, uiText("查找全部")).Secondary().Height(28).FontSize(12).Disabled(disabled || state.allMatches != nil || state.query.Text() == "").Clicked() {
 				c.After(tab.findAllLargeText)
 			}
-			if ui.Button(c, "关闭查找").Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Disabled(disabled).Clicked() {
+			if ui.Button(c, uiText("关闭查找")).Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Disabled(disabled).Clicked() {
 				c.After(tab.closeLargeTextSearch)
 			}
 		})
 	}
 	if state.saving != nil {
-		ui.Text(c, "正在保存…").Muted().FontSize(12).PadX(12)
+		ui.Text(c, uiText("正在保存…")).Muted().FontSize(12).PadX(12)
 	} else if state.replacing != nil {
-		ui.Text(c, "正在替换…").Muted().FontSize(12).PadX(12)
+		ui.Text(c, uiText("正在替换…")).Muted().FontSize(12).PadX(12)
 	} else if state.search != nil || state.allMatches != nil {
-		ui.Text(c, "正在查找…").Muted().FontSize(12).PadX(12)
+		ui.Text(c, uiText("正在查找…")).Muted().FontSize(12).PadX(12)
 	} else if state.problem != "" {
 		ui.Wrap(c, state.problem).FillWidth().PadX(12).FontSize(12).Color(m.theme.Danger)
 	}

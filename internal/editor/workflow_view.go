@@ -20,9 +20,9 @@ func (m *editorApp) workflowEnabled(id string) bool {
 	case "follow":
 		return m.active != nil && watchedTextTab(m.active) && !m.active.modified() && !m.active.hasResultDraft()
 	case "record":
-		return m.macro != nil || historyEditableTab(m.active) && !m.vaultActive()
+		return m.macro != nil || historyEditableTab(m.active)
 	}
-	return !m.vaultActive()
+	return true
 }
 func (m *editorApp) runWorkflow(id string) {
 	if m.macro != nil && id != "record" {
@@ -38,7 +38,7 @@ func (m *editorApp) runWorkflow(id string) {
 		m.toggleLogFollow(m.active)
 	case "check-disk":
 		m.checkFiles = true
-		m.status = "正在检查磁盘文件"
+		m.status = uiText("正在检查磁盘文件")
 		m.invalidator.Invalidate()
 	case "record":
 		if m.macro == nil {
@@ -144,7 +144,7 @@ func (m *editorApp) saveWorkflowItem(remove bool) {
 		index := slices.IndexFunc(latest.Macros, func(item editorMacro) bool { return item.Name == oldName })
 		duplicate := slices.IndexFunc(latest.Macros, func(item editorMacro) bool { return item.Name == name })
 		if !remove && duplicate >= 0 && duplicate != index {
-			s.problem = "已有同名宏，请更换名称"
+			s.problem = uiText("已有同名宏，请更换名称")
 			return
 		}
 		if remove {
@@ -171,7 +171,7 @@ func (m *editorApp) saveWorkflowItem(remove bool) {
 		index := slices.IndexFunc(latest.Tools, func(item customEditorTool) bool { return item.Name == oldName })
 		duplicate := slices.IndexFunc(latest.Tools, func(item customEditorTool) bool { return item.Name == name })
 		if !remove && duplicate >= 0 && duplicate != index {
-			s.problem = "已有同名工具，请更换名称"
+			s.problem = uiText("已有同名工具，请更换名称")
 			return
 		}
 		if remove {
@@ -196,7 +196,7 @@ func (m *editorApp) saveWorkflowItem(remove bool) {
 	}
 	s.preferences = latest
 	s.selectItem()
-	s.notice = "已保存"
+	s.notice = uiText("已保存")
 }
 
 func (m *editorApp) runWorkflowTool() {
@@ -211,12 +211,12 @@ func (m *editorApp) runWorkflowTool() {
 	}
 	values := m.currentToolContext()
 	if len(values.selection) > toolOutputLimit {
-		s.problem = "选区超过 1 MiB，请缩小工具输入"
+		s.problem = uiText("选区超过 1 MiB，请缩小工具输入")
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
-	s.problem, s.notice = "", "正在运行…"
+	s.problem, s.notice = "", uiText("正在运行…")
 	s.output.SetText("")
 	s.toolOutput = ""
 	s.run = ui.NewEffect[toolRunResult, int](func(effectCtx context.Context) (toolRunResult, error) {
@@ -247,12 +247,12 @@ func (m *editorApp) workflowDialogView(c ui.C) {
 			}
 			s.output.SetText(preview)
 			s.output.GetEditor().MoveTo(0, false)
-			s.notice = "运行完成"
+			s.notice = uiText("运行完成")
 			if result.truncated {
-				s.notice += " · 仅保留前 1 MiB 输出"
+				s.notice += uiText(" · 仅保留前 1 MiB 输出")
 			}
 			if err != nil {
-				s.problem = "运行结束：" + err.Error()
+				s.problem = uiText("运行结束：") + err.Error()
 			}
 		}
 	}
@@ -287,52 +287,52 @@ func (m *editorApp) workflowDialogView(c ui.C) {
 						return s.preferences.Macros[index].Name
 					}
 					return s.preferences.Tools[index].Name
-				}).Label("已保存的" + s.section).FillWidth().Height(32).Disabled(busy).Changed() {
+				}).Label(uiText("已保存的") + s.section).FillWidth().Height(32).Disabled(busy).Changed() {
 					s.selectItem()
 				}
 				ui.Row(c.Part("name-row")).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "名称").FontSize(12).Width(64).Shrink(0)
-					ui.TextField(c.Part("name"), &s.name, "名称", "名称").Grow(1).MinWidth(0).Height(32).Disabled(busy)
+					ui.Text(c, uiText("名称")).FontSize(12).Width(64).Shrink(0)
+					ui.TextField(c.Part("name"), &s.name, uiText("名称"), uiText("名称")).Grow(1).MinWidth(0).Height(32).Disabled(busy)
 				})
 				if s.section == "宏" {
-					ui.Wrap(c, fmt.Sprintf("%d 步 · 录制键盘输入、粘贴、删除、缩进与光标移动。使用单光标；上下移动按逻辑行执行，鼠标选区按相对位置重放。", len(s.macro.Steps))).FontSize(12).Muted()
+					ui.Wrap(c, fmt.Sprintf(uiText("%d 步 · 录制键盘输入、粘贴、删除、缩进与光标移动。使用单光标；上下移动按逻辑行执行，鼠标选区按相对位置重放。"), len(s.macro.Steps))).FontSize(12).Muted()
 					ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, "重复次数").FontSize(12)
-						ui.TextField(c.Part("repeat"), &s.repeat, "重复次数", "1–100").Width(90).Height(32)
+						ui.Text(c, uiText("重复次数")).FontSize(12)
+						ui.TextField(c.Part("repeat"), &s.repeat, uiText("重复次数"), "1–100").Width(90).Height(32)
 						ui.Slot(c).Grow(1)
-						if ui.Button(c, "开始录制").Ghost().Disabled(busy || !historyEditableTab(m.active) || m.macro != nil).Clicked() {
+						if ui.Button(c, uiText("开始录制")).Ghost().Disabled(busy || !historyEditableTab(m.active) || m.macro != nil).Clicked() {
 							c.After(func() { m.workflow = nil; m.startMacroRecording() })
 						}
-						if ui.Button(c, "重放宏").Disabled(busy || len(s.macro.Steps) == 0 || !historyEditableTab(m.active) || m.macro != nil).Clicked() {
+						if ui.Button(c, uiText("重放宏")).Disabled(busy || len(s.macro.Steps) == 0 || !historyEditableTab(m.active) || m.macro != nil).Clicked() {
 							c.After(m.startMacroReplay)
 						}
 					})
 				} else {
 					ui.Row(c.Part("executable-row")).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, "程序").FontSize(12).Width(64).Shrink(0)
-						ui.TextField(c.Part("executable"), &s.executable, "程序", "程序名或完整可执行文件路径").Grow(1).MinWidth(0).Height(32).Disabled(busy)
+						ui.Text(c, uiText("程序")).FontSize(12).Width(64).Shrink(0)
+						ui.TextField(c.Part("executable"), &s.executable, uiText("程序"), uiText("程序名或完整可执行文件路径")).Grow(1).MinWidth(0).Height(32).Disabled(busy)
 					})
-					ui.Text(c, "参数 · 每行一个，无需给路径加引号").FontSize(12).Muted()
-					ui.TextArea(c.Part("arguments"), &s.arguments, "参数（每行一个）", "参数，每行一个").FillWidth().Height(80).Disabled(busy)
+					ui.Text(c, uiText("参数 · 每行一个，无需给路径加引号")).FontSize(12).Muted()
+					ui.TextArea(c.Part("arguments"), &s.arguments, uiText("参数（每行一个）"), uiText("参数，每行一个")).FillWidth().Height(80).Disabled(busy)
 					ui.Row(c.Part("directory-row")).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-						ui.Text(c, "工作目录").FontSize(12).Width(64).Shrink(0)
-						ui.TextField(c.Part("directory"), &s.directory, "工作目录", "留空使用当前文件或项目目录").Grow(1).MinWidth(0).Height(32).Disabled(busy)
+						ui.Text(c, uiText("工作目录")).FontSize(12).Width(64).Shrink(0)
+						ui.TextField(c.Part("directory"), &s.directory, uiText("工作目录"), uiText("留空使用当前文件或项目目录")).Grow(1).MinWidth(0).Height(32).Disabled(busy)
 					})
-					ui.Wrap(c, "变量：{file} 文件路径、{dir} 所在目录、{project} 首个项目、{selection} 选区。仅点击运行时执行；管道或脚本请显式指定解释器。").FontSize(11).Muted()
+					ui.Wrap(c, uiText("变量：{file} 文件路径、{dir} 所在目录、{project} 首个项目、{selection} 选区。仅点击运行时执行；管道或脚本请显式指定解释器。")).FontSize(11).Muted()
 					ui.Row(c).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-						ui.Checkbox(c, &s.selectionInput, "将选区作为标准输入").Disabled(busy)
+						ui.Checkbox(c, &s.selectionInput, uiText("将选区作为标准输入")).Disabled(busy)
 						ui.Slot(c).Grow(1)
 						if busy {
-							if ui.Button(c, "停止工具").Clicked() && s.cancel != nil {
+							if ui.Button(c, uiText("停止工具")).Clicked() && s.cancel != nil {
 								s.cancel()
 							}
-						} else if ui.Button(c, "运行工具").Clicked() {
+						} else if ui.Button(c, uiText("运行工具")).Clicked() {
 							c.After(m.runWorkflowTool)
 						}
 					})
 					if s.output.Text() != "" {
-						ui.TextArea(c.Part("output"), &s.output, "工具输出", "").FillWidth().Height(min(130, max(50, c.Bounds().Height-555)))
-						if ui.Button(c, "将输出打开为新标签").Ghost().Clicked() {
+						ui.TextArea(c.Part("output"), &s.output, uiText("工具输出"), "").FillWidth().Height(min(130, max(50, c.Bounds().Height-555)))
+						if ui.Button(c, uiText("将输出打开为新标签")).Ghost().Clicked() {
 							c.After(func() {
 								tab := m.addTab(document{}, "工具输出.txt")
 								tab.source.replace(s.toolOutput)
@@ -349,10 +349,10 @@ func (m *editorApp) workflowDialogView(c ui.C) {
 			})
 		})
 	}, func() {
-		if ui.Button(c, "删除此"+s.section).Ghost().Disabled(busy || s.selected < 0).Clicked() {
+		if ui.Button(c, uiText("删除此")+s.section).Ghost().Disabled(busy || s.selected < 0).Clicked() {
 			c.After(func() { m.saveWorkflowItem(true) })
 		}
-		if ui.Button(c, "保存"+s.section).Disabled(busy || s.section == "宏" && len(s.macro.Steps) == 0).Clicked() {
+		if ui.Button(c, uiText("保存")+s.section).Disabled(busy || s.section == "宏" && len(s.macro.Steps) == 0).Clicked() {
 			c.After(func() { m.saveWorkflowItem(false) })
 		}
 	})

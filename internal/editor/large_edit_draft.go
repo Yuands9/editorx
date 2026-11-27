@@ -90,7 +90,7 @@ func largeDraftPath(directory, id string) string {
 
 func persistLargeEditDraft(directory string, current *largeEditRevision, spans []largeEditSpan) (string, string, error) {
 	if directory == "" {
-		return "", "", errors.New("找不到 EditorX 会话目录")
+		return "", "", errors.New(uiText("找不到 EditorX 会话目录"))
 	}
 	id := rand.Text()
 	path := largeDraftPath(directory, id)
@@ -141,7 +141,7 @@ func applyLargeEditDraft(ctx context.Context, r *largeEditRevision, path string)
 	reader := bufio.NewReaderSize(largeEditContextReader{ctx, stream}, largeTextPageBytes)
 	magic := make([]byte, len(largeDraftMagic))
 	if _, err := io.ReadFull(reader, magic); err != nil || string(magic) != largeDraftMagic {
-		return nil, errors.New("无法读取大文件草稿")
+		return nil, errors.New(uiText("无法读取大文件草稿"))
 	}
 	next := &largeEditRevision{store: r.store}
 	var offset int64
@@ -158,7 +158,7 @@ func applyLargeEditDraft(ctx context.Context, r *largeEditRevision, path string)
 		end := int64(binary.LittleEndian.Uint64(header[8:16]))
 		length := int64(binary.LittleEndian.Uint64(header[16:]))
 		if start < offset || end < start || length < 0 || !r.boundary(start) || !r.boundary(end) {
-			return nil, errors.New("大文件草稿位置无效")
+			return nil, errors.New(uiText("大文件草稿位置无效"))
 		}
 		if err := r.copyPieces(next, offset, start); err != nil {
 			return nil, err
@@ -253,7 +253,7 @@ func importLargeEditDrafts(archive *zip.ReadCloser, saved savedSession, director
 	sources := make(map[string]string)
 	for _, draft := range saved.largeDrafts() {
 		if !validLargeDraftID(draft.Patch) || directory == "" {
-			return errors.New("备份中的大文件草稿无效")
+			return errors.New(uiText("备份中的大文件草稿无效"))
 		}
 		if id := sources[draft.Patch]; id != "" {
 			draft.Patch, draft.patchPath = id, largeDraftPath(directory, id)
@@ -261,7 +261,7 @@ func importLargeEditDrafts(archive *zip.ReadCloser, saved savedSession, director
 		}
 		entry, err := archive.Open(largeDraftDirectory + "/" + draft.Patch + ".patch.gz")
 		if err != nil {
-			return fmt.Errorf("备份中缺少大文件草稿：%w", err)
+			return fmt.Errorf(uiText("备份中缺少大文件草稿：%w"), err)
 		}
 		id := rand.Text()
 		path := largeDraftPath(directory, id)

@@ -109,7 +109,7 @@ func detectTextEncoding(sample []byte, complete bool, requested textEncoding) (t
 	for _, enc := range []textEncoding{utf8Encoding, utf16LEEncoding, utf16BEEncoding} {
 		if bytes.HasPrefix(sample, enc.bomPrefix()) {
 			if requested != "" && requested != enc {
-				return "", false, fmt.Errorf("文件头指定了 %s", enc.label(true))
+				return "", false, fmt.Errorf(uiText("文件头指定了 %s"), enc.label(true))
 			}
 			return enc, true, nil
 		}
@@ -191,7 +191,7 @@ func encodeText(value string, enc textEncoding) ([]byte, error) {
 	if codec := enc.charset(); codec != nil {
 		encoded, err := codec.NewEncoder().Bytes([]byte(value))
 		if err != nil {
-			return nil, fmt.Errorf("内容包含 %s 无法保存的字符", enc)
+			return nil, fmt.Errorf(uiText("内容包含 %s 无法保存的字符"), enc)
 		}
 		return encoded, nil
 	}

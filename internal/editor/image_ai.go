@@ -38,7 +38,7 @@ func (buffer *aiImageBuffer) Write(data []byte) (int, error) {
 
 func aiImageUpload(ctx context.Context, bitmap gfx.Bitmap) (mediaType, data string, err error) {
 	if !validImageBitmap(bitmap) {
-		return "", "", errors.New("图片像素数据不完整")
+		return "", "", errors.New(uiText("图片像素数据不完整"))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -124,7 +124,7 @@ type aiVisionClaudeBlock struct {
 
 func (settings aiSettings) recognizeImageWithAI(ctx context.Context, prompt string, bitmap gfx.Bitmap) (string, error) {
 	if settings.usesCLI() || !validAIModelID(settings.Model) {
-		return "", errors.New("请选择支持图片输入的 API 模型")
+		return "", errors.New(uiText("请选择支持图片输入的 API 模型"))
 	}
 	protocol := settings.Protocol
 	if protocol == "" {
@@ -174,7 +174,7 @@ func (settings aiSettings) recognizeImageWithAI(ctx context.Context, prompt stri
 			MaxTokens: 8192,
 		}
 	default:
-		return "", errors.New("无法识别此配置的 API 协议")
+		return "", errors.New(uiText("无法识别此配置的 API 协议"))
 	}
 
 	reply, err := settings.requestAICompletion(ctx, protocol, payload, nil)
@@ -183,17 +183,17 @@ func (settings aiSettings) recognizeImageWithAI(ctx context.Context, prompt stri
 		if errors.As(err, &responseErr) {
 			switch responseErr.status {
 			case 400, 415, 422:
-				return "", fmt.Errorf("%w。请确认模型和接口支持图片输入", err)
+				return "", fmt.Errorf(uiText("%w。请确认模型和接口支持图片输入"), err)
 			}
 		}
 		return "", err
 	}
 	if reply.Truncated {
-		return "", errors.New("识图结果未完整返回，请尝试较小的图片")
+		return "", errors.New(uiText("识图结果未完整返回，请尝试较小的图片"))
 	}
 	result := strings.Trim(reply.Text, "\r\n")
 	if strings.TrimSpace(result) == "" || strings.ContainsRune(result, 0) {
-		return "", errors.New("模型未返回可用的识图结果")
+		return "", errors.New(uiText("模型未返回可用的识图结果"))
 	}
 	return result, nil
 }

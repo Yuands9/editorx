@@ -156,8 +156,8 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 	click("menuitem:工具与模板")
 	click("menuitem:密码本")
 	v := m.passwordVault
-	if v == nil || !m.vaultActive() || !s.HasText("创建本机密码本") || !s.HasText("请选择至少 8 个字符的主密码。忘记主密码将无法解锁。") {
-		t.Fatal("vault menu did not show the eight-character creation policy")
+	if v == nil || !m.vaultActive() || !s.HasText("创建本机密码本") || !s.HasText("请选择至少 8 个字符") {
+		t.Fatal("vault menu did not show the eight-character creation policy", s.Texts())
 	}
 	expectPasswordEye := func(label string, masked bool, visibleValue string) {
 		t.Helper()
@@ -284,6 +284,7 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 		t.Fatal("new entry from all items did not select the default group")
 	}
 	click("button:取消")
+	click("button:所有分组")
 	newChild := func(parent, name string) int {
 		t.Helper()
 		check(s.RightClickLabel(parent))
@@ -342,8 +343,8 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 	}
 	click("button:保存 2 条")
 	siteLabel := "deploy.example.com · 2 个账号"
-	if textBounds("运维 · sample-ops").X != textBounds("只读 · sample-readonly").X ||
-		textBounds("运维 · sample-ops").X <= textBounds(siteLabel).X {
+	if textBounds("运维").X != textBounds("只读").X || textBounds("sample-ops").X != textBounds("运维").X ||
+		textBounds("运维").X <= textBounds(siteLabel).X {
 		t.Fatal("account labels did not align within their site")
 	}
 	click("button:" + siteLabel)
@@ -357,11 +358,19 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 	if len(v.store.data.Entries) != 2 || len(passwordSiteBuckets(v.store.data.Entries)) != 1 {
 		t.Fatal("same-site accounts were not kept as two credentials")
 	}
+	click("button:运维 · sample-ops")
+	if !v.detailOpen {
+		t.Fatal("clicking the credential did not open details", s.Texts())
+	}
+	if _, err := s.Locate("button:添加同站点账号"); err != nil {
+		t.Fatalf("%v, selected entry %d, viewport %v, controls %v", err, v.selected, s.Texts(), s.Tree("detail"))
+	}
 	click("button:添加同站点账号")
 	if v.dialog.site.Text() != "https://deploy.example.com/test" || v.dialog.group != testGroup || v.dialog.account.Text() != "" || v.dialog.secret.Text() != "" {
 		t.Fatal("same-site action did not prefill only the website and group")
 	}
 	click("button:取消")
+	click("button:返回条目列表")
 	check(s.RightClickLabel("正式服务器"))
 	click("menuitem:新建条目…")
 	if v.dialog.group != productionGroup {
@@ -395,7 +404,12 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 	for _, width := range []int{1440, 900} {
 		check(s.Resize(width, 720))
 		eye, err := s.Locate("button:显示密码")
-		check(err)
+		if err != nil {
+			if output := os.Getenv("VIVA_PREVIEW_DIR"); output != "" {
+				check(s.Screenshot(filepath.Join(output, "password-vault-detail-diagnostic.png")))
+			}
+			t.Fatalf("width %d, credential actions %v: %v", width, s.Tree("密码"), err)
+		}
 		if !eye.SkipTab {
 			t.Fatal("the credential details visibility button received a Tab stop")
 		}
@@ -422,6 +436,23 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 		}
 	}
 	check(s.Resize(1080, 720))
+	click("button:返回条目列表")
+	click("button:新建条目")
+	entryDraft := v.dialog
+	entryDraft.name.SetText("草稿条目")
+	entryDraft.secret.SetText("test-draft-secret")
+	click("button:新建分组")
+	click("button:取消")
+	if v.dialog != entryDraft || entryDraft.name.Text() != "草稿条目" {
+		t.Fatal("canceling group creation discarded the entry draft")
+	}
+	click("button:新建分组")
+	v.dialog.name.SetText("条目内创建的分组")
+	click("button:保存分组")
+	if v.dialog != entryDraft || v.store.data.group(entryDraft.group).Name != "条目内创建的分组" || entryDraft.secret.Text() != "test-draft-secret" {
+		t.Fatal("new group was not selected automatically or the draft changed")
+	}
+	click("button:取消")
 	click("button:新建分组")
 	v.dialog.name.SetText("自定义演示分组")
 	click("button:保存分组")
@@ -429,6 +460,7 @@ func TestPasswordVaultThroughUI(t *testing.T) {
 		t.Fatal("new group was not saved")
 	}
 	click("正式服务器")
+	click("button:正式账号 · sample-production")
 	click("button:复制密码")
 	if s.Driver().Clipboard() != "sample-live-secret" {
 		t.Fatal("copy did not use the selected credential")
@@ -545,6 +577,7 @@ func TestPasswordVaultTimingOptions(t *testing.T) {
 	v.password.SetText(testVaultMaster)
 	check(s.Frame())
 	click("button:解锁")
+	click("button:示例账户 · example-user · 默认分组")
 	click("button:复制密码")
 	pending := v.clipboardCleanup
 	if pending == nil || s.Driver().Clipboard() != secret || !strings.Contains(v.message, "3 秒") {
@@ -572,6 +605,7 @@ func TestPasswordVaultTimingOptions(t *testing.T) {
 	if v.store == nil || !v.store.data.DisableIdleLock || !v.store.data.DisableClipboardCleanup {
 		t.Fatal("timer settings did not survive reopening the encrypted vault")
 	}
+	click("button:示例账户 · example-user · 默认分组")
 	click("button:复制密码")
 	if s.Driver().Clipboard() != secret || v.clipboardCleanup != nil || v.clipboardTimer != nil {
 		t.Fatal("copy scheduled cleanup while the setting was off")
@@ -668,7 +702,7 @@ func TestPasswordVaultOptionalMasterPassword(t *testing.T) {
 	if v.dialog != nil || v.windowsProtected || passwordVaultUsesWindows(v.store.header) {
 		t.Fatal("enabling master password did not change the protection mode")
 	}
-	click("button:关闭密码本标签")
+	click("button:关闭密码本")
 	click("button:密码本")
 	v = m.passwordVault
 	if v.store != nil || v.windowsProtected {
@@ -690,7 +724,7 @@ func TestPasswordVaultOptionalMasterPassword(t *testing.T) {
 	if !v.windowsProtected {
 		t.Fatal("disabling master password did not switch to Windows protection")
 	}
-	click("button:关闭密码本标签")
+	click("button:关闭密码本")
 	click("button:密码本")
 	v = m.passwordVault
 	assertEntry()
@@ -773,6 +807,7 @@ func TestPasswordVaultDeleteFromContextMenu(t *testing.T) {
 		check(s.RightClickLabel(label))
 		click("menuitem:" + action + "…")
 	}
+	click("button:所有分组")
 	click("默认分组")
 	openDelete("button:删除目标", "删除条目")
 	if _, ok := v.store.data.entry(7); !ok || !s.HasText("删除「删除目标」？") {
@@ -787,6 +822,7 @@ func TestPasswordVaultDeleteFromContextMenu(t *testing.T) {
 	if _, ok := v.store.data.entry(7); ok || v.selected != 6 {
 		t.Fatal("confirmed deletion did not remove only the right-clicked entry")
 	}
+	click("button:保留条目")
 	click("button:编辑条目")
 	click("button:删除条目")
 	click("button:取消")
@@ -794,6 +830,7 @@ func TestPasswordVaultDeleteFromContextMenu(t *testing.T) {
 		t.Fatal("cancelling deletion from edit did not return to the entry form")
 	}
 	click("button:取消")
+	click("button:返回条目列表")
 
 	click("子组")
 	check(s.RightClickLabel("测试组"))
@@ -867,37 +904,24 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 		t.Fatal("sidebar did not open the password vault")
 	}
 	opened := m.passwordVault
-	label, err := s.Locate("button:密码本")
+	closeButton, err := s.Locate("button:关闭密码本")
 	check(err)
-	const tabSelector = "id:vault-tab/select"
-	closeButton, err := s.Locate("button:关闭密码本标签")
-	check(err)
-	if gap := closeButton.Bounds.X - (label.Bounds.X + label.Bounds.Width); gap < 0 || gap > 2 || closeButton.Bounds.Y != label.Bounds.Y {
-		t.Fatal("the vault title and its close button are not adjacent")
+	if closeButton.Bounds.X <= 800 {
+		t.Fatal("the vault did not open in the right sidebar")
 	}
 	if output := os.Getenv("VIVA_PREVIEW_DIR"); output != "" {
 		check(s.Screenshot(filepath.Join(output, "password-vault-tab-active.png")))
 	}
-	click(tabSelector)
-	if m.vaultActive() || m.passwordVault != opened {
-		t.Fatal("clicking the title did not return to the editor while keeping the vault tab")
-	}
-	click(tabSelector)
-	if !m.vaultActive() || m.passwordVault != opened {
-		t.Fatal("clicking the inactive title did not reopen the same vault tab")
-	}
-	click("关闭密码本标签")
-	if m.vaultActive() || m.passwordVault != nil {
-		t.Fatal("the close button did not remove the vault tab")
-	}
-	click(railSelector)
 	click("关闭密码本")
 	if m.passwordVault != nil {
-		t.Fatal("clicking the active sidebar key did not close the vault")
+		t.Fatal("the close button did not remove the vault sidebar")
 	}
 
 	click(railSelector)
 	vault := m.passwordVault
+	if vault == opened {
+		t.Fatal("the closed vault view was reused")
+	}
 	vault.password.SetText(testVaultMaster)
 	vault.confirmation.SetText(testVaultMaster)
 	click("创建密码本")
@@ -906,7 +930,7 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	}
 	for _, tool := range []struct{ button, visible string }{
 		{"AI 助手", "新对话"}, {"翻译", "关闭翻译"}, {"模板库", "关闭模板库"},
-		{"Git", "收起底部面板"}, {"终端", "收起底部面板"},
+		{"Git", "关闭 Git 侧栏"}, {"终端", "收起底部面板"},
 	} {
 		for range 2 {
 			if !m.vaultActive() {
@@ -919,15 +943,15 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 			if _, err := s.Locate("button:" + tool.visible); err != nil {
 				t.Fatalf("%s did not show its panel: %v", tool.button, err)
 			}
-			if (tool.button == "Git" || tool.button == "终端") && m.tools.active != tool.button {
-				t.Fatalf("selected %s but opened %q", tool.button, m.tools.active)
+			if tool.button == "Git" && !m.tools.gitOpen || tool.button == "终端" && !m.tools.terminalOpen {
+				t.Fatalf("%s did not open", tool.button)
 			}
 		}
 	}
 	click("收起底部面板")
-	click(tabSelector)
+	click(railSelector)
 	if !m.vaultActive() || !s.HasText("密码本已锁定") {
-		t.Fatal("the inactive password tab did not reopen at its lock screen")
+		t.Fatal("the password sidebar did not reopen at its lock screen")
 	}
 	for _, label := range []string{"保存文件", "查找内容", "自动折行"} {
 		hit, err := s.Locate("button:" + label)
@@ -956,11 +980,9 @@ func TestPasswordVaultSidebarNavigation(t *testing.T) {
 	if vault.store == nil {
 		t.Fatal("could not unlock the vault before switching tabs")
 	}
-	click(tabSelector)
-	if m.active != tab || m.vaultActive() || m.passwordVault != vault || vault.store != nil || tab.source.text.String() != content {
-		t.Fatal("clicking the vault title did not lock it and return to the last document")
+	if _, err := s.Locate("textfield:代码编辑区"); err != nil || m.active != tab || tab.source.text.String() != content {
+		t.Fatal("the editor did not remain available next to the vault", err)
 	}
-	click(tabSelector)
 	wrapped := tab.source.view.Snapshot.Wrap
 	click("自动折行")
 	if m.vaultActive() || m.active != tab || tab.source.view.Snapshot.Wrap == wrapped {

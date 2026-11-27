@@ -69,7 +69,7 @@ func (t *editorTab) snapshotLargeEdit(directory string) *largeEditSession {
 			draft.Changes, err = inlineLargeEditChanges(edit.revision, spans)
 		}
 		if err != nil {
-			draft.patchError = fmt.Sprintf("记录大文件草稿失败：%v", err)
+			draft.patchError = fmt.Sprintf(uiText("记录大文件草稿失败：%v"), err)
 			state.problem = draft.patchError
 		} else {
 			edit.draftRevision = edit.revision
@@ -147,7 +147,7 @@ func (m *editorApp) exitLargeTextEdit(t *editorTab) {
 		return
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		state.problem = "请先完成中文选词，再退出完整编辑"
+		state.problem = uiText("请先完成中文选词，再退出完整编辑")
 		t.source.focus = true
 		return
 	}
@@ -168,7 +168,7 @@ func (m *editorApp) resumeLargeTextBrowsing(t *editorTab) {
 	state := t.largeText
 	page, err := readLargeTextPage(t.doc.path, state.index, -1, "", t.doc.encoding)
 	if err != nil {
-		m.fail(fmt.Errorf("返回大文件浏览失败：%w", err))
+		m.fail(fmt.Errorf(uiText("返回大文件浏览失败：%w"), err))
 		return
 	}
 	edit := state.editing
@@ -189,7 +189,7 @@ func (m *editorApp) resumeLargeTextBrowsing(t *editorTab) {
 	t.startLargeText(page)
 	if t == m.active {
 		t.source.focus = true
-		m.status = "已返回大文件浏览"
+		m.status = uiText("已返回大文件浏览")
 	}
 	m.releaseClosedTabText(t)
 }
@@ -219,7 +219,7 @@ func restoreLargeEditOpening(ctx context.Context, loaded largeEditLoad, draft *l
 			next, err = loaded.revision.apply(ctx, draft.Changes)
 		}
 		if err != nil {
-			return largeEditOpening{}, fmt.Errorf("无法恢复大文件草稿：%w", err)
+			return largeEditOpening{}, fmt.Errorf(uiText("无法恢复大文件草稿：%w"), err)
 		}
 		result.loaded.revision = next
 	}
@@ -244,7 +244,7 @@ func (t *editorTab) finishLargeEditOpen(result largeEditOpening, err error) erro
 			expected = state.editSession.BasePath
 		}
 		if result.loaded.doc.path != expected {
-			err = errors.New("文件已改名，请重新打开编辑")
+			err = errors.New(uiText("文件已改名，请重新打开编辑"))
 		}
 	}
 	if err != nil {
@@ -290,7 +290,7 @@ func (m *editorApp) updateLargeTextEdit(c ui.C, t *editorTab) func() {
 				state.problem = err.Error()
 			} else if t == m.active {
 				t.source.focus = true
-				m.status = "已打开完整编辑"
+				m.status = uiText("已打开完整编辑")
 			}
 			if after != nil {
 				return func() { after(err == nil) }
@@ -317,7 +317,7 @@ func (m *editorApp) updateLargeTextEdit(c ui.C, t *editorTab) func() {
 			state.saving, state.savePath = nil, ""
 			edit := state.editing
 			if err != nil {
-				m.fail(fmt.Errorf("保存 %s 失败\n%w", t.title(), err))
+				m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), t.title(), err))
 			} else {
 				t.doc = doc
 				edit.basePath = doc.path
@@ -325,7 +325,7 @@ func (m *editorApp) updateLargeTextEdit(c ui.C, t *editorTab) func() {
 				edit.draftRevision, edit.draft = nil, largeEditSession{}
 				state.problem = ""
 				m.rememberPath(doc.path, false)
-				m.status = "已保存 " + filepath.Base(doc.path)
+				m.status = uiText("已保存 ") + filepath.Base(doc.path)
 				if t == m.active {
 					t.source.focus = true
 				}
@@ -353,12 +353,12 @@ func (m *editorApp) startLargeEditSave(t *editorTab, saveAs bool, after func(boo
 		}
 	}
 	if state.busyEditing() {
-		m.status = "请等待当前大文件操作完成"
+		m.status = uiText("请等待当前大文件操作完成")
 		complete(false)
 		return
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		m.fail(errors.New("请先完成中文选词，再保存文件"))
+		m.fail(errors.New(uiText("请先完成中文选词，再保存文件")))
 		complete(false)
 		return
 	}
@@ -385,14 +385,14 @@ func (m *editorApp) exportLargeEditDraft(t *editorTab) {
 		return
 	}
 	path, err := app.SaveFile(app.SaveFileOptions{
-		Title: "导出未保存改动", SuggestedName: t.title() + ".editorx-backup.zip",
-		Filters: []app.FileFilter{{Name: "EditorX 压缩备份", Pattern: "*.zip"}},
+		Title: uiText("导出未保存改动"), SuggestedName: t.title() + ".editorx-backup.zip",
+		Filters: []app.FileFilter{{Name: uiText("EditorX 压缩备份"), Pattern: "*.zip"}},
 	})
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
 	if err == nil && strings.EqualFold(filepath.Clean(path), filepath.Clean(t.doc.path)) {
-		err = errors.New("请选择不同于原文件的导出位置")
+		err = errors.New(uiText("请选择不同于原文件的导出位置"))
 	}
 	if err == nil {
 		saved := savedSession{Version: editorSessionVersion, Windows: []windowSession{m.snapshotWorkspace([]*editorTab{t}, false)}}
@@ -401,14 +401,14 @@ func (m *editorApp) exportLargeEditDraft(t *editorTab) {
 	if err != nil {
 		m.fail(err)
 	} else {
-		m.status = "已导出未保存改动"
+		m.status = uiText("已导出未保存改动")
 	}
 }
 
 func (m *editorApp) largeEditOperationPending() bool {
 	for _, t := range m.tabs {
 		if t.savingText != nil || t.largeText != nil && t.largeText.saving != nil {
-			m.status = "请等待大文件保存完成"
+			m.status = uiText("请等待大文件保存完成")
 			return true
 		}
 	}
@@ -427,7 +427,7 @@ func (tab *editorTab) restoreLargeTextTab(page largeTextPage, item tabSession, i
 		state.editSession, state.resumeEdit = &draft, true
 	}
 	if readErr != nil {
-		state.problem = "原文件暂时无法读取：" + readErr.Error()
+		state.problem = uiText("原文件暂时无法读取：") + readErr.Error()
 	}
 }
 

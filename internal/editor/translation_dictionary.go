@@ -72,7 +72,7 @@ func readDictionaryInfo(directory string) (*dictionaryInfo, error) {
 		return nil, err
 	}
 	if info.Entries <= 0 || info.Bytes <= 0 {
-		return nil, errors.New("词库信息损坏，请移除后重新下载")
+		return nil, errors.New(uiText("词库信息损坏，请移除后重新下载"))
 	}
 	return &info, nil
 }
@@ -92,10 +92,10 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return info, fmt.Errorf("词库下载返回 HTTP %d", response.StatusCode)
+		return info, fmt.Errorf(uiText("词库下载返回 HTTP %d"), response.StatusCode)
 	}
 	if response.ContentLength > spec.size {
-		return info, errors.New("词库大小与发布版本不符")
+		return info, errors.New(uiText("词库大小与发布版本不符"))
 	}
 	progress.total.Store(response.ContentLength)
 	transfer := &io.LimitedReader{R: response.Body, N: spec.size + 1}
@@ -103,12 +103,12 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 	if response.Header.Get("Content-Encoding") == "gzip" {
 		compressed, err := gzip.NewReader(source)
 		if err != nil {
-			return info, fmt.Errorf("压缩词库无效：%w", err)
+			return info, fmt.Errorf(uiText("压缩词库无效：%w"), err)
 		}
 		defer compressed.Close()
 		source = compressed
 	} else if encoding := response.Header.Get("Content-Encoding"); encoding != "" {
-		return info, fmt.Errorf("词库使用不支持的压缩方式：%s", encoding)
+		return info, fmt.Errorf(uiText("词库使用不支持的压缩方式：%s"), encoding)
 	}
 	parent := filepath.Dir(destination)
 	if err := os.MkdirAll(parent, 0700); err != nil {
@@ -134,7 +134,7 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 	reader.ReuseRecord = true
 	columns, err := reader.Read()
 	if err != nil || len(columns) < 11 || columns[0] != "word" || columns[3] != "translation" || columns[8] != "bnc" || columns[9] != "frq" {
-		return info, errors.New("下载文件不是 ECDICT 词库")
+		return info, errors.New(uiText("下载文件不是 ECDICT 词库"))
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -142,13 +142,13 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 		}
 		record, err := reader.Read()
 		if bounded.N == 0 {
-			return info, errors.New("词库超过下载大小限制")
+			return info, errors.New(uiText("词库超过下载大小限制"))
 		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return info, fmt.Errorf("词库数据不完整：%w", err)
+			return info, fmt.Errorf(uiText("词库数据不完整：%w"), err)
 		}
 		bnc, _ := strconv.Atoi(record[8])
 		frequency, _ := strconv.Atoi(record[9])
@@ -205,7 +205,7 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 		}
 	}
 	if transfer.N == 0 || spec.size+1-bounded.N != spec.size || hex.EncodeToString(digest.Sum(nil)) != spec.checksum {
-		return info, errors.New("词库校验失败，请重试下载")
+		return info, errors.New(uiText("词库校验失败，请重试下载"))
 	}
 	for index, file := range files {
 		if file == nil {
@@ -220,7 +220,7 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 			return info, err
 		}
 		if stat.Size() > translationLibraryLimit {
-			return info, errors.New("词库分片超过 2 MiB，未安装")
+			return info, errors.New(uiText("词库分片超过 2 MiB，未安装"))
 		}
 		info.Bytes += stat.Size()
 		if err := file.Close(); err != nil {
@@ -229,7 +229,7 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 		files[index] = nil
 	}
 	if info.Entries == 0 {
-		return info, errors.New("下载文件没有可用词条")
+		return info, errors.New(uiText("下载文件没有可用词条"))
 	}
 	info.Source = spec.url
 	info.DownloadBytes = progress.received.Load()
@@ -248,7 +248,7 @@ func installTranslationDictionary(ctx context.Context, client *http.Client, spec
 	}
 	// An existing install (including another window's completed download) is never overwritten.
 	if err := os.Rename(temporary, destination); err != nil {
-		return info, fmt.Errorf("无法安装词库（已有词库时请先移除）：%w", err)
+		return info, fmt.Errorf(uiText("无法安装词库（已有词库时请先移除）：%w"), err)
 	}
 	return info, nil
 }
@@ -262,7 +262,7 @@ func removeTranslationDictionary(directory string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return errors.New("词库目录不是普通文件夹，请先检查路径")
+		return errors.New(uiText("词库目录不是普通文件夹，请先检查路径"))
 	}
 	// Remove only files owned by this dictionary; never recurse through user files.
 	names := []string{"manifest.json", "LICENSE.txt"}

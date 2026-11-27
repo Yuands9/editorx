@@ -26,14 +26,14 @@ func (m *editorApp) translationEntriesPreview(c ui.C, state *translationPanelSta
 				})
 			}
 			if err != nil {
-				state.problem = "读取我的译文失败：" + err.Error()
+				state.problem = uiText("读取我的译文失败：") + err.Error()
 			}
 		})
 		return
 	}
-	ui.Text(c, fmt.Sprintf("已保存的译文 · %d 条", state.libraryCount)).Bold().FontSize(13)
+	ui.Text(c, fmt.Sprintf(uiText("已保存的译文 · %d 条"), state.libraryCount)).Bold().FontSize(13)
 	if state.libraryCount == 0 {
-		ui.Wrap(c, "这里还没有保存的译文。查词或翻译后点「保存到库」，也可以直接添加词条。").FillWidth().Pad(12).Radius(10).Background(m.theme.Muted).Muted().FontSize(12)
+		ui.Wrap(c, uiText("这里还没有保存的译文。查词或翻译后点「保存到库」，也可以直接添加词条。")).FillWidth().Pad(12).Radius(10).Background(m.theme.Muted).Muted().FontSize(12)
 		return
 	}
 	for i, entry := range state.libraryPreview {
@@ -44,7 +44,7 @@ func (m *editorApp) translationEntriesPreview(c ui.C, state *translationPanelSta
 			}
 			ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
 				m.assetBadge(c, kind+" · "+entry.sourceLang+" → "+entry.targetLang)
-				if ui.Button(c, "使用").Outline().FontSize(12).Disabled(blocked).Clicked() {
+				if ui.Button(c, uiText("使用")).Outline().FontSize(12).Disabled(blocked).Clicked() {
 					c.After(func() {
 						state.managing = false
 						state.target = translationSelection{}
@@ -62,7 +62,7 @@ func (m *editorApp) translationEntriesPreview(c ui.C, state *translationPanelSta
 		})
 	}
 	if state.libraryCount > len(state.libraryPreview) {
-		ui.Wrap(c, "显示前 8 条；可在翻译页查找原文，或打开库文件查看全部。").FillWidth().Muted().FontSize(11)
+		ui.Wrap(c, uiText("显示前 8 条；可在翻译页查找原文，或打开库文件查看全部。")).FillWidth().Muted().FontSize(11)
 	}
 }
 

@@ -2,14 +2,17 @@ import * as pdfjs from "pdfjs-dist";
 import "./pdf-view.css";
 import { bindDocumentOutline } from "./document-outline.js";
 import { readPDFOutline } from "./pdf-outline.js";
+import { setText, text } from "./i18n.js";
 
 const element = (name) => document.getElementById(name);
 const send = (kind, text = "") => window.viva?.postMessage(JSON.stringify({kind, text}));
 const name = element("name");
 const options = new URLSearchParams(location.search);
-const title = options.get("title") || name.textContent;
+const title = options.get("title") || text("PDF 预览", "PDF Preview");
 name.textContent = name.title = document.title = title;
 const message = element("message");
+setText(message, "正在加载 PDF…", "Loading PDF…");
+setText(element("fit"), "适合宽度", "Fit to Width");
 const page = element("page");
 const container = element("viewer-container");
 const find = element("find");
@@ -34,7 +37,11 @@ const task = pdfjs.getDocument({
 let unlock, viewer, disposed = false;
 task.onPassword = (update, reason) => {
   unlock = update;
-  message.textContent = reason === pdfjs.PasswordResponses.INCORRECT_PASSWORD ? "密码有误，请重试" : "此 PDF 需要打开密码";
+  if (reason === pdfjs.PasswordResponses.INCORRECT_PASSWORD) {
+    setText(message, "密码有误，请重试", "Incorrect password. Try again.");
+  } else {
+    setText(message, "此 PDF 需要打开密码", "This PDF requires a password.");
+  }
   passwordForm.hidden = false;
   password.focus();
 };
@@ -93,7 +100,7 @@ try {
       }
       bindDocumentOutline(() => readPDFOutline(documentPDF),
         (destination) => links.goToDestination(destination),
-        "这份 PDF 没有书签或已标记的标题。");
+        () => text("这份 PDF 没有书签或已标记的标题。", "This PDF has no bookmarks or tagged headings."));
     });
     events.on("pagechanging", ({pageNumber}) => {
       page.value = pageNumber;
@@ -101,12 +108,12 @@ try {
       element("forward").disabled = pageNumber >= documentPDF.numPages;
     });
     events.on("scalechanging", ({scale}) => {
-      element("fit").textContent = Math.round(scale * 100) + "%";
+      setText(element("fit"), Math.round(scale * 100) + "%");
     });
     events.on("pagerendered", ({error, cssTransform}) => {
       if (error) {
         message.hidden = false;
-        message.textContent = error.message;
+        setText(message, error.message);
         send("error", error.message);
       } else if (!cssTransform && !message.hidden) {
         message.hidden = true;
@@ -140,12 +147,12 @@ try {
       }
     };
     const showCount = ({current, total}) => {
-      count.textContent = total ? current + " / " + total : "";
+      setText(count, total ? current + " / " + total : "");
     };
     events.on("updatefindmatchescount", ({matchesCount}) => showCount(matchesCount));
     events.on("updatefindcontrolstate", ({state, matchesCount}) => {
       if (state === FindState.NOT_FOUND) {
-        count.textContent = "无匹配";
+        setText(count, "无匹配", "No matches");
       } else {
         showCount(matchesCount);
       }
@@ -162,7 +169,7 @@ try {
   }
 } catch (error) {
   if (!disposed) {
-    message.textContent = error?.message || String(error);
+    setText(message, error?.message || String(error));
     send("error", message.textContent);
   }
 }

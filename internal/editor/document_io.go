@@ -53,13 +53,13 @@ func (m *editorApp) loadTextFile(path string, enc textEncoding, complete func(*e
 	// content detection run sequentially off the UI thread, including multi-drop.
 	info, err := os.Stat(path)
 	if err != nil {
-		m.fail(fmt.Errorf("打开 %s 失败\n%w", path, err))
+		m.fail(fmt.Errorf(uiText("打开 %s 失败\n%w"), path, err))
 		return
 	}
 	if (info.Size() < backgroundTextBytes || largeTextFile(path)) && len(m.textOpens) == 0 {
 		file, err := readEditorFile(path, enc)
 		if err != nil {
-			m.fail(fmt.Errorf("打开 %s 失败\n%w", path, err))
+			m.fail(fmt.Errorf(uiText("打开 %s 失败\n%w"), path, err))
 			return
 		}
 		tab := m.openLoadedFile(file)
@@ -84,7 +84,7 @@ func (m *editorApp) loadTextFile(path string, enc textEncoding, complete func(*e
 	})
 	m.textOpens = append(m.textOpens, job)
 	m.invalidator.Invalidate()
-	m.status = "正在打开 " + filepath.Base(path) + "…"
+	m.status = uiText("正在打开 ") + filepath.Base(path) + "…"
 }
 
 func (m *editorApp) saveTextTabWithCallback(t *editorTab, saveAs bool, complete func(bool)) bool {
@@ -104,7 +104,7 @@ func (m *editorApp) saveTextTabWithCallback(t *editorTab, saveAs bool, complete 
 	value := t.source.text.String()
 	if max(len(value), len(t.doc.saved)) < backgroundTextBytes {
 		if err := t.doc.save(path, value, m.documentHistory()); err != nil {
-			m.fail(fmt.Errorf("保存 %s 失败\n%w", path, err))
+			m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), path, err))
 			return finish(false)
 		}
 		m.finishTextSave(t, path)
@@ -121,7 +121,7 @@ func (m *editorApp) saveTextTabWithCallback(t *editorTab, saveAs bool, complete 
 	})
 	t.savingText = job
 	m.invalidator.Invalidate()
-	m.status = "正在保存 " + filepath.Base(path) + "…"
+	m.status = uiText("正在保存 ") + filepath.Base(path) + "…"
 	return false
 }
 
@@ -130,7 +130,7 @@ func (m *editorApp) finishTextSave(t *editorTab, path string) {
 	if t.html.view != nil {
 		m.refreshHTML(t)
 	}
-	m.status = "已保存 " + filepath.Base(path)
+	m.status = uiText("已保存 ") + filepath.Base(path)
 }
 
 func (m *editorApp) updateTextIO(c ui.C) {
@@ -142,7 +142,7 @@ func (m *editorApp) updateTextIO(c ui.C) {
 			m.textOpens[0] = nil
 			m.textOpens = m.textOpens[1:]
 			if err != nil {
-				m.fail(fmt.Errorf("打开 %s 失败\n%w", job.path, err))
+				m.fail(fmt.Errorf(uiText("打开 %s 失败\n%w"), job.path, err))
 			} else if !m.windowClosed {
 				tab := m.tabAtPath(file.doc.path)
 				if tab == nil {
@@ -165,7 +165,7 @@ func (m *editorApp) updateTextIO(c ui.C) {
 		if doc, err, done := job.request.Take(); done {
 			tab.savingText = nil
 			if err != nil {
-				m.fail(fmt.Errorf("保存 %s 失败\n%w", job.path, err))
+				m.fail(fmt.Errorf(uiText("保存 %s 失败\n%w"), job.path, err))
 			} else {
 				// Edits made during the write remain dirty against the saved snapshot.
 				tab.doc.path, tab.doc.saved, tab.doc.diskHash = doc.path, doc.saved, doc.diskHash

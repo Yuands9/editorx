@@ -14,7 +14,7 @@ func (m *editorApp) openHTML(t *editorTab) {
 		return
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		m.fail(errors.New("请先完成中文选词，再打开页面"))
+		m.fail(errors.New(uiText("请先完成中文选词，再打开页面")))
 		return
 	}
 	if t.doc.path == "" || t.modified() {
@@ -43,6 +43,6 @@ func (m *editorApp) browserUpdate(c ui.C) {
 			m.fail(err)
 			return
 		}
-		m.status = "已在浏览器打开 " + filepath.Base(path)
+		m.status = uiText("已在浏览器打开 ") + filepath.Base(path)
 	}
 }

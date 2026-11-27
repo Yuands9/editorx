@@ -130,7 +130,7 @@ func chooseHistoryCopyPath(store *localHistoryStore, source string, version loca
 	}
 	ext := filepath.Ext(name)
 	name = strings.TrimSuffix(name, ext) + "（历史 " + version.at.Local().Format("20060102-150405") + "）" + ext
-	path, err := app.SaveFile(app.SaveFileOptions{Title: "另存历史版本", SuggestedName: name})
+	path, err := app.SaveFile(app.SaveFileOptions{Title: uiText("另存历史版本"), SuggestedName: name})
 	if err != nil {
 		return "", err
 	}
@@ -139,11 +139,11 @@ func chooseHistoryCopyPath(store *localHistoryStore, source string, version loca
 		return "", err
 	}
 	if gitPathWithin(store.directory, path) {
-		return "", errors.New("请选择本地历史目录之外的位置")
+		return "", errors.New(uiText("请选择本地历史目录之外的位置"))
 	}
 	if source != "" && strings.EqualFold(filepath.Clean(path), filepath.Clean(source)) {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			return "", errors.New("请选择一个新文件名保存副本")
+			return "", errors.New(uiText("请选择一个新文件名保存副本"))
 		}
 	}
 	return path, nil

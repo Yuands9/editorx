@@ -186,3 +186,9 @@ var wordIcon = gfx.Icon{ViewBox: 24, Stroke: 1.5, Cap: gfx.CapRound, Join: gfx.J
 	gfx.MoveTo(5, 3), gfx.LineTo(15, 3), gfx.LineTo(20, 8), gfx.LineTo(20, 21), gfx.LineTo(5, 21), gfx.LineTo(5, 3),
 	gfx.MoveTo(15, 3), gfx.LineTo(15, 8), gfx.LineTo(20, 8), gfx.MoveTo(8, 12), gfx.LineTo(17, 12), gfx.MoveTo(8, 16), gfx.LineTo(15, 16),
 }}
+
+var passwordRecognizeIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(3, 8), gfx.LineTo(3, 3), gfx.LineTo(8, 3), gfx.MoveTo(16, 3), gfx.LineTo(21, 3), gfx.LineTo(21, 8),
+	gfx.MoveTo(3, 16), gfx.LineTo(3, 21), gfx.LineTo(8, 21), gfx.MoveTo(16, 21), gfx.LineTo(21, 21), gfx.LineTo(21, 16),
+	gfx.MoveTo(7, 8), gfx.LineTo(17, 8), gfx.MoveTo(7, 12), gfx.LineTo(17, 12), gfx.MoveTo(7, 16), gfx.LineTo(13, 16),
+}}

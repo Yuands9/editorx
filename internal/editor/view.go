@@ -92,7 +92,7 @@ func (m *editorApp) page(c ui.C) {
 		}
 	})
 	if !m.appSettings.open {
-		if !m.vaultActive() && m.active != nil && !blocked {
+		if m.active != nil && !blocked {
 			m.searchDialog(c, m.active)
 		}
 		m.historyDialog(c)
@@ -112,6 +112,7 @@ func (m *editorApp) page(c ui.C) {
 	m.showProjectRenameDialog(c.Part("project-rename-dialog"))
 	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
+	m.gitStashDialog(c.Part("git-stash-dialog"))
 	m.gitReviewDialog(c.Part("git-review-dialog"))
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
 	m.fileFormatDialog(c.Part("file-format-dialog"))
@@ -124,21 +125,6 @@ func (m *editorApp) page(c ui.C) {
 }
 
 func (m *editorApp) editorPage(c ui.C, blocked bool) {
-	if m.vaultActive() {
-		if !blocked {
-			m.editorShortcuts(c)
-			if ui.Shortcut(c, 0, "escape") {
-				c.After(func() {
-					if v := m.passwordVault; v != nil {
-						v.revealed = false
-						v.password.Secure, v.confirmation.Secure = true, true
-					}
-				})
-			}
-		}
-		m.passwordVaultPage(c, blocked)
-		return
-	}
 	t := m.active
 	if t != nil {
 		isJSON := t.format() == "JSON"
@@ -149,8 +135,18 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 	}
 	if !blocked {
 		m.editorShortcuts(c)
-		if t != nil && t.search.open && ui.Shortcut(c, 0, "escape") {
-			c.After(t.search.close)
+		if ui.Shortcut(c, 0, "escape") {
+			if t != nil && t.search.open {
+				c.After(t.search.close)
+			}
+			if m.vaultActive() {
+				c.After(func() {
+					if v := m.passwordVault; v != nil {
+						v.revealed = false
+						v.password.Secure, v.confirmation.Secure = true, true
+					}
+				})
+			}
 		}
 	}
 
@@ -160,7 +156,7 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 	}
 	page.Children(func() {
 		upper := ui.Row(c).FillWidth().MinHeight(0).PadY(workspaceInset).PadLeft(workspaceInset)
-		if m.tools.active != "" {
+		if m.tools.terminalOpen {
 			upper.Height(m.tools.split.Pos).Shrink(0)
 		} else {
 			upper.Grow(1).Basis(0)
@@ -209,11 +205,11 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 				}
 			})
 		})
-		if m.tools.active != "" {
-			ui.Splitter(c.Part("tools-split"), &m.tools.split).Mins(150, 150).SplitterThickness(7).Label("调整底部面板高度")
-			m.projectToolsPanel(c.Part("tools"), blocked)
+		if m.tools.terminalOpen {
+			ui.Splitter(c.Part("tools-split"), &m.tools.split).Mins(150, 150).SplitterThickness(7).Label(uiText("调整底部面板高度"))
+			m.terminalPanel(c.Part("terminal"), blocked)
 		}
-		if m.tools.active == "" {
+		if !m.tools.terminalOpen {
 			m.directoryResultsPanel(c.Part("directory-results"), blocked)
 		}
 		if t != nil {
@@ -223,7 +219,11 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 }
 
 func (m *editorApp) sideToolPanel(c ui.C, blocked bool) {
-	if m.ai.open {
+	if m.vaultActive() {
+		m.passwordVaultPage(c.Part("vault"), blocked)
+	} else if m.tools.gitOpen {
+		m.gitSidebar(c.Part("git"), blocked)
+	} else if m.ai.open {
 		m.aiPanel(c.Part("assistant"), blocked)
 	} else if m.translation != nil {
 		m.translationPanel(c.Part("translation"), blocked)
@@ -233,7 +233,7 @@ func (m *editorApp) sideToolPanel(c ui.C, blocked bool) {
 }
 
 func (m *editorApp) toolPanelDivider(c ui.C, split *ui.SplitterState, left bool) {
-	divider := ui.Splitter(c, split).SplitterThickness(workspaceInset).Label("调整侧栏宽度")
+	divider := ui.Splitter(c, split).SplitterThickness(workspaceInset).Label(uiText("调整侧栏宽度"))
 	panelMin := float32(300)
 	if m.ai.open && c.Bounds().Width >= 1040 {
 		panelMin = 350
@@ -244,16 +244,16 @@ func (m *editorApp) toolPanelDivider(c ui.C, split *ui.SplitterState, left bool)
 		divider.Mins(230, panelMin)
 	}
 	if m.ai.open {
-		divider.SplitterThickness(12).Label("调整编辑区与 AI 助手宽度").DrawOver(func(d *ui.DrawContext) { m.drawAIResizeGrip(d, split, true) })
+		divider.SplitterThickness(12).Label(uiText("调整编辑区与 AI 助手宽度")).DrawOver(func(d *ui.DrawContext) { m.drawAIResizeGrip(d, split, true) })
 	}
 }
 
 func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 	ui.Row(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
-		if t.format() == "Markdown" && m.showOutline && !t.showingDocumentTranslation() && !m.ai.open && m.translation == nil && m.templatePanel == nil {
+		if t.format() == "Markdown" && m.showOutline && !t.showingDocumentTranslation() && !m.ai.open && m.activeAssetSplit() == nil {
 			ui.Column(c.Part("outline")).Width(m.outlineSplit.Pos).Shrink(0).FillHeight().Clip().
 				Children(func() { m.outlinePanel(c, t) })
-			ui.Splitter(c, &m.outlineSplit).Mins(160, 420).SplitterThickness(workspaceInset).Label("调整大纲宽度")
+			ui.Splitter(c, &m.outlineSplit).Mins(160, 420).SplitterThickness(workspaceInset).Label(uiText("调整大纲宽度"))
 		}
 		ui.Column(c.Part("document-content")).Grow(1).MinWidth(0).FillHeight().Children(func() {
 			body := ui.Column(c.Part("editor-body")).FillWidth().MinHeight(0)
@@ -282,7 +282,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 		t := m.active
 		vaultActive := m.vaultActive()
 		if !preferences.HideSave {
-			save := ui.Button(c, "保存文件").Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint("保存文件", shortcutSave))
+			save := ui.Button(c, m.menuText("保存文件")).Icon(saveIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || t.readOnlyPreview() || blocked).Tooltip(m.shortcutHint(uiText("保存文件"), shortcutSave))
 			if t != nil && t.modified() {
 				save.Secondary().ButtonRecipe(m.pinButtonRecipe)
 			}
@@ -296,11 +296,11 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if !preferences.HideSearch {
-			searchHint := m.shortcutHint("查找", shortcutFind) + " / " + m.shortcutHint("替换", shortcutReplace)
+			searchHint := m.shortcutHint(uiText("查找"), shortcutFind) + " / " + m.shortcutHint(uiText("替换"), shortcutReplace)
 			if t != nil && t.office != nil {
-				searchHint = "Office 文档请使用文档内的查找功能"
+				searchHint = m.menuText("Office 文档请使用文档内的查找功能")
 			}
-			if ui.Button(c, "查找内容").Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || !t.canFind() || blocked).Tooltip(searchHint).Clicked() {
+			if ui.Button(c, m.menuText("查找内容")).Icon(searchIcon).IconOnly().Ghost().Width(32).Height(34).Radius(11).Disabled(t == nil || !t.canFind() || blocked).Tooltip(searchHint).Clicked() {
 				c.After(func() {
 					m.closeSettings()
 					m.leavePasswordVault()
@@ -309,7 +309,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if !preferences.HideWrap {
-			wrap := ui.Button(c, "自动折行").Icon(wrapIcon).IconOnly().Ghost().Width(32).Height(34).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint("自动折行", shortcutWrap))
+			wrap := ui.Button(c, m.menuText("自动折行")).Icon(wrapIcon).IconOnly().Ghost().Width(32).Height(34).Disabled(t == nil || t.readOnlyPreview() || t.office != nil || blocked).Tooltip(m.shortcutHint(uiText("自动折行"), shortcutWrap))
 			if t != nil && !t.readOnlyPreview() && t.source.view.Snapshot.Wrap {
 				wrap.Secondary()
 			}
@@ -323,7 +323,8 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if !preferences.HideAI {
-			assistant := ui.Button(c, "AI 助手").Icon(aiIcon).IconOnly().Ghost().Width(32).Height(34).Tooltip("AI 助手").Disabled(blocked)
+			label := m.menuText("AI 助手")
+			assistant := ui.Button(c, label).Icon(aiIcon).IconOnly().Ghost().Width(32).Height(34).Tooltip(label).Disabled(blocked)
 			if !vaultActive && (m.ai.open || m.ai.hasPendingRequest()) {
 				assistant.Secondary()
 			}
@@ -338,8 +339,9 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			if tool.name == "Git" && preferences.HideGit || tool.name == "终端" && preferences.HideTerminal {
 				continue
 			}
-			entry := ui.Button(c.Key(tool.name), tool.name).Icon(tool.icon).IconOnly().Ghost().Width(32).Height(34).Tooltip(tool.name).Disabled(blocked)
-			if !vaultActive && m.tools.active == tool.name {
+			label := m.menuText(tool.name)
+			entry := ui.Button(c.Key(tool.name), label).Icon(tool.icon).IconOnly().Ghost().Width(32).Height(34).Tooltip(label).Disabled(blocked)
+			if tool.name == "Git" && m.tools.gitOpen || tool.name == "终端" && m.tools.terminalOpen {
 				entry.Secondary()
 			}
 			if entry.Clicked() {
@@ -347,8 +349,9 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if m.translationEnabled {
-			button := ui.Button(c.Part("translation"), "翻译").Icon(translationIcon).IconOnly().Ghost().Size(32, 34).
-				Tooltip("翻译").Disabled(blocked)
+			label := m.menuText("翻译")
+			button := ui.Button(c.Part("translation"), label).Icon(translationIcon).IconOnly().Ghost().Size(32, 34).
+				Tooltip(label).Disabled(blocked)
 			if !vaultActive && m.translation != nil {
 				button.Secondary()
 			}
@@ -357,11 +360,11 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if preferences.PasswordVault {
-			label := "密码本"
+			hint := uiText("密码本")
 			if vaultActive {
-				label = "关闭密码本"
+				hint = uiText("关闭密码本")
 			}
-			button := ui.Button(c.Part("password-vault"), label).Icon(passwordVaultIcon).IconOnly().Ghost().Size(32, 34).Tooltip(label).Disabled(blocked)
+			button := ui.Button(c.Part("password-vault"), uiText("密码本")).Icon(passwordVaultIcon).IconOnly().Ghost().Size(32, 34).Tooltip(hint).Disabled(blocked)
 			if vaultActive {
 				button.Secondary()
 			}
@@ -370,7 +373,8 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 			}
 		}
 		if preferences.Templates {
-			button := ui.Button(c.Part("templates"), "模板库").Icon(templateIcon).IconOnly().Ghost().Size(32, 34).Tooltip("模板库").Disabled(blocked)
+			label := m.menuText("模板库")
+			button := ui.Button(c.Part("templates"), label).Icon(templateIcon).IconOnly().Ghost().Size(32, 34).Tooltip(label).Disabled(blocked)
 			if !vaultActive && m.templatePanel != nil {
 				button.Secondary()
 			}
@@ -390,7 +394,7 @@ func (m *editorApp) toolRail(c ui.C, blocked bool) {
 		if m.appSettings.open {
 			label = "关闭设置"
 		}
-		gear := ui.Button(c.Part("settings-toggle"), label).Icon(settingsIcon).IconOnly().Ghost().Size(32, 34).
+		gear := ui.Button(c.Part("settings-toggle"), m.menuText(label)).Icon(settingsIcon).IconOnly().Ghost().Size(32, 34).
 			Disabled(blocked).Tooltip(m.shortcutHint(label, shortcutOpenSettings))
 		if m.appSettings.open {
 			gear.Secondary()
@@ -448,9 +452,9 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 		blocked = m.handleGroupDoubleClick(c)
 	}
 	ui.Row(c).FillWidth().Height(tabStripHeight + 4).PadX(4).Items(ui.Center).Children(func() {
-		if !m.showFiles || m.vaultActive() {
+		if !m.showFiles {
 			m.mainMenu(c, m.active, blocked)
-			if !m.vaultActive() && ui.Button(c, "展开文件栏").Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip(m.shortcutHint("显示左侧主菜单", shortcutFiles)).Disabled(blocked).Clicked() {
+			if ui.Button(c, m.menuText("展开文件栏")).Icon(leftPanelIcon).IconOnly().Ghost().Width(32).Height(32).Tooltip(m.shortcutHint(uiText("显示左侧主菜单"), shortcutFiles)).Disabled(blocked).Clicked() {
 				c.After(m.toggleFiles)
 			}
 			for _, action := range []struct {
@@ -460,44 +464,20 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 			}{
 				{"打开文件", fileIcon, m.open}, {"添加项目", folderIcon, m.openFolder},
 			} {
-				if ui.Button(c, action.label).Icon(action.icon).IconOnly().Ghost().Width(30).Height(32).Tooltip(action.label).Disabled(m.confirm || m.showError).Clicked() {
+				label := m.menuText(action.label)
+				if ui.Button(c, label).Icon(action.icon).IconOnly().Ghost().Width(30).Height(32).Tooltip(label).Disabled(m.confirm || m.showError).Clicked() {
 					c.After(action.run)
 				}
 			}
 		}
 		scroll := ui.Scroll(c).Sideways().Scrollbars().Grow(1).MinWidth(0).FillHeight()
 		m.tabStrip(c, scroll, blocked)
-		if m.passwordVault != nil {
-			vaultTab := ui.Row(c.Part("vault-tab")).Height(34).PadX(3).Shrink(0).Items(ui.Center).Radius(11).
-				Background(m.theme.Background).Border(1, m.theme.Border)
-			hint := "打开密码本"
-			if m.vaultActive() {
-				vaultTab.Background(m.theme.CardElevated)
-				hint = "返回编辑区"
-			}
-			vaultTab.Children(func() {
-				if ui.Button(c.Part("select"), "密码本").Icon(passwordVaultIcon).Ghost().Height(28).Radius(8).
-					Tooltip(hint).Disabled(blocked).Clicked() {
-					c.After(func() {
-						if m.leavePasswordVault() {
-							m.focusActiveSource()
-							return
-						}
-						m.openPasswordVault()
-					})
-				}
-				if ui.Button(c.Part("close"), "关闭密码本标签").Icon(closeIcon).IconOnly().Ghost().Size(26, 28).Radius(8).
-					Tooltip("关闭密码本标签").Disabled(blocked).Clicked() {
-					c.After(m.closePasswordVault)
-				}
-			})
-		}
-		if ui.Button(c, "新建标签").Icon(plusIcon).IconOnly().Ghost().Size(30, 30).MarginX(5).
-			Shrink(0).Radius(10).Tooltip(m.shortcutHint("新建标签", shortcutNewFile)).Disabled(blocked).Clicked() {
+		if ui.Button(c, m.menuText("新建标签")).Icon(plusIcon).IconOnly().Ghost().Size(30, 30).MarginX(5).
+			Shrink(0).Radius(10).Tooltip(m.shortcutHint(uiText("新建标签"), shortcutNewFile)).Disabled(blocked).Clicked() {
 			c.After(m.newDocument)
 		}
-		options := ui.Button(c.Part("new-options"), "新建选项").Icon(chevronDownIcon).IconOnly().Ghost().Size(24, 30).
-			Shrink(0).Tooltip("新建格式与模板").Disabled(blocked)
+		options := ui.Button(c.Part("new-options"), m.menuText("新建选项")).Icon(chevronDownIcon).IconOnly().Ghost().Size(24, 30).
+			Shrink(0).Tooltip(m.menuText("新建格式与模板")).Disabled(blocked)
 		if options.Clicked() {
 			m.newFileMenu = !m.newFileMenu
 		}
@@ -515,7 +495,7 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 		return
 	}
 	ui.Row(c).FillWidth().Height(34).PadX(10).Gap(4).Items(ui.Center).Children(func() {
-		if format == "Markdown" && !showTranslation {
+		if format == "Markdown" && !showTranslation && !m.ai.open && m.activeAssetSplit() == nil {
 			label := "展开大纲"
 			if m.showOutline {
 				label = "收起大纲"
@@ -582,7 +562,7 @@ func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
 			})
 		}
 		if !showTranslation && (format == "JSON" || format == "Markdown") {
-			button := ui.Button(c, "同步滚动").Ghost().Height(28).FontSize(12).Tooltip("左右面板同步滚动；点击切换")
+			button := ui.Button(c, uiText("同步滚动")).Ghost().Height(28).FontSize(12).Tooltip(uiText("左右面板同步滚动；点击切换"))
 			if t.scroll.enabled {
 				button.Secondary()
 			}
@@ -639,7 +619,7 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 						column.Grow(1)
 					}
 					column.Children(func() {
-						ui.Text(c, "源文件").Muted().FontSize(12).Height(36).PadX(14).PadY(9)
+						ui.Text(c, uiText("源文件")).Muted().FontSize(12).Height(36).PadX(14).PadY(9)
 						m.sourceEditor(c, t, blocked).FillWidth().Grow(1)
 					})
 				}
@@ -651,15 +631,14 @@ func (m *editorApp) documentView(c ui.C, t *editorTab, blocked bool) {
 				}
 			})
 		default:
-			t.source.view.Snapshot.Placeholder = ""
+			t.source.placeholder = ""
 			if t.doc.path != "" {
-				t.source.view.Snapshot.Placeholder = "文件为空，输入开始编辑"
+				t.source.placeholder = "文件为空，输入开始编辑"
 			}
 			ui.Stack(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
 				m.sourceEditor(c, t, blocked).Fill()
-				_, composing := t.source.text.Composition()
-				if t.doc.path == "" && t.source.text.RuneCount() == 0 && !composing {
-					m.openingPage(c, blocked)
+				if t.doc.path == "" && t.source.text.RuneCount() == 0 && !t.source.text.CompositionActive() {
+					m.openingPage(c.Part("blank-home"), blocked)
 				}
 			})
 		}
@@ -680,9 +659,9 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 				offset := t.source.text.ByteOffset(t.source.text.Caret())
 				line := state.lines.breaks[state.index] + strings.Count(value[:offset], "\n") + 1
 				total := state.lines.breaks[len(state.lines.breaks)-1] + 1
-				ui.Text(c, fmt.Sprintf("行 %d · 共 %d 行", line, total)).Muted().FontSize(12)
+				ui.Text(c, fmt.Sprintf(uiText("行 %d · 共 %d 行"), line, total)).Muted().FontSize(12)
 			}
-			ui.Text(c, fmt.Sprintf("只读 · %.1f MiB", float64(state.size)/(1<<20))).Muted().FontSize(12)
+			ui.Text(c, fmt.Sprintf(uiText("只读 · %.1f MiB"), float64(state.size)/(1<<20))).Muted().FontSize(12)
 			m.encodingPicker(c, t, blocked)
 		})
 		return
@@ -690,21 +669,21 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 	if t.office != nil {
 		status := m.status
 		if t.modified() {
-			status = "未保存"
+			status = uiText("未保存")
 		}
 		if t.office.errorText != "" {
 			status = t.office.errorText
 		}
 		ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
 			ui.Text(c, status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
-			ui.Text(c, "本地编辑 · "+t.format()).Muted().FontSize(12)
+			ui.Text(c, uiText("本地编辑 · ")+t.format()).Muted().FontSize(12)
 		})
 		return
 	}
 	if t.preview != nil {
 		ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
 			ui.Text(c, m.status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
-			ui.Text(c, t.preview.kind+" · 只读预览").Muted().FontSize(12)
+			ui.Text(c, t.preview.kind+uiText(" · 只读预览")).Muted().FontSize(12)
 		})
 		return
 	}
@@ -719,17 +698,21 @@ func (m *editorApp) statusBar(c ui.C, t *editorTab, blocked bool) {
 
 	status, color := m.status, m.theme.MutedForeground
 	if t.modified() {
-		status, color = "未保存", m.theme.Ring
+		status, color = uiText("未保存"), m.theme.Ring
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		status, color = "正在输入", m.theme.Ring
+		status, color = uiText("正在输入"), m.theme.Ring
 	}
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
 		ui.Text(c, "●").FontSize(7).Color(color)
 		ui.Text(c, status).Color(color).FontSize(12).Grow(1).MinWidth(0).Ellipsis()
-		ui.Text(c, fmt.Sprintf("%d 个文件", len(m.tabs))).Muted().FontSize(12)
-		ui.Text(c, fmt.Sprintf("行 %d，列 %d", line, column)).Muted().FontSize(12)
+		files := fmt.Sprintf(uiText("%d 个文件"), len(m.tabs))
+		if len(m.tabs) == 1 && englishInterface.Load() {
+			files = "1 file"
+		}
+		ui.Text(c, files).Muted().FontSize(12)
+		ui.Text(c, fmt.Sprintf(uiText("行 %d，列 %d"), line, column)).Muted().FontSize(12)
 		m.encodingPicker(c, t, blocked)
 		m.eolPicker(c, t, blocked)
 		m.languagePicker(c, t, blocked)
@@ -740,7 +723,7 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 	if blocked {
 		m.languageMenu = false
 	}
-	button := ui.Button(c, t.format()).Icon(chevronDownIcon).Ghost().Height(24).FontSize(12).PadX(7).Tooltip("切换文件类型").Disabled(blocked)
+	button := ui.Button(c, m.menuText(t.format())).Icon(chevronDownIcon).Ghost().Height(24).FontSize(12).PadX(7).Tooltip(m.menuText("切换文件类型")).Disabled(blocked)
 	if button.Clicked() {
 		m.languageMenu = !m.languageMenu
 	}
@@ -748,13 +731,13 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 		menu.Above()
 		menu.WidthRange(160, 190)
 		menu.RowHeight(28)
-		menu.Label("文件类型")
-		if menu.Item("自动识别").Checked(t.languageOverride == "").Clicked() {
+		menu.Label(m.menuText("文件类型"))
+		if menu.Item(m.menuText("自动识别")).Checked(t.languageOverride == "").Clicked() {
 			c.After(func() { m.selectLanguage(t, "") })
 		}
 		menu.Separator()
 		addLanguage := func(items *ui.MenuItems, language string) {
-			if items.Item(language).Checked(t.languageOverride == language).Clicked() {
+			if items.Item(m.menuText(language)).Checked(t.languageOverride == language).Clicked() {
 				c.After(func() { m.selectLanguage(t, language) })
 			}
 		}
@@ -762,12 +745,12 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 			addLanguage(menu, language)
 		}
 		menu.Separator()
-		menu.Sub("代码与脚本", func(items *ui.MenuItems) {
+		menu.Sub(m.menuText("代码与脚本"), func(items *ui.MenuItems) {
 			for _, syntax := range codeSyntaxes {
 				addLanguage(items, syntax.name)
 			}
 		})
-		menu.Sub("数据与日志", func(items *ui.MenuItems) {
+		menu.Sub(m.menuText("数据与日志"), func(items *ui.MenuItems) {
 			for _, language := range dataSyntaxLanguages {
 				addLanguage(items, language)
 			}
@@ -778,12 +761,12 @@ func (m *editorApp) languagePicker(c ui.C, t *editorTab, blocked bool) {
 func (m *editorApp) dialogs(c ui.C) {
 	description := ""
 	if m.confirmTab != nil {
-		description = m.confirmTab.title() + " 有未保存的修改。"
+		description = m.confirmTab.title() + uiText(" 有未保存的修改。")
 	}
-	dismissed := ui.ModalWith(c, &m.confirm, "保存当前修改？", ui.ModalSpec{Description: description, Width: 480, NoClose: true}, func() {
-		ui.Checkbox(c.Part("save-confirmation-choice"), &m.dontAskToSave, "不再询问").Height(28)
+	dismissed := ui.ModalWith(c, &m.confirm, uiText("保存当前修改？"), ui.ModalSpec{Description: description, Width: 480, NoClose: true}, func() {
+		ui.Checkbox(c.Part("save-confirmation-choice"), &m.dontAskToSave, uiText("不再询问")).Height(28)
 	}, func() {
-		if ui.Button(c, "取消").Outline().Clicked() {
+		if ui.Button(c, uiText("取消")).Outline().Clicked() {
 			c.After(m.cancelSaveConfirmation)
 		}
 		var state *largeTextView
@@ -791,10 +774,10 @@ func (m *editorApp) dialogs(c ui.C) {
 			state = m.confirmTab.largeText
 		}
 		saving := state != nil && state.saving != nil
-		if ui.Button(c, "放弃修改").Outline().Disabled(saving).Clicked() {
+		if ui.Button(c, uiText("放弃修改")).Outline().Disabled(saving).Clicked() {
 			c.After(m.finishSaveConfirmation)
 		}
-		save := ui.Button(c, "保存并继续").Disabled(saving || state != nil && state.editing == nil)
+		save := ui.Button(c, uiText("保存并继续")).Disabled(saving || state != nil && state.editing == nil)
 		if m.confirmFocus {
 			save.AutoFocus()
 			m.confirmFocus = false
@@ -813,8 +796,8 @@ func (m *editorApp) dialogs(c ui.C) {
 	if dismissed {
 		c.After(m.cancelSaveConfirmation)
 	}
-	ui.ModalWith(c, &m.showError, "操作未完成", ui.ModalSpec{Description: m.errorText, Width: 640, NoClose: true}, nil, func() {
-		if ui.Button(c, "确定").Clicked() {
+	ui.ModalWith(c, &m.showError, uiText("操作未完成"), ui.ModalSpec{Description: m.errorText, Width: 640, NoClose: true}, nil, func() {
+		if ui.Button(c, uiText("确定")).Clicked() {
 			m.showError = false
 			m.focusActiveSource()
 		}

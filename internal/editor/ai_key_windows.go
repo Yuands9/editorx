@@ -22,7 +22,7 @@ var (
 func windowsAIKey(value []byte, encrypt bool) ([]byte, error) {
 	result, err := windowsUserData(value, encrypt)
 	if err != nil {
-		return nil, errors.New("Windows 无法保护或解锁 API 密钥，请在 AI 设置中重新输入")
+		return nil, errors.New(uiText("Windows 无法保护或解锁 API 密钥，请在 AI 设置中重新输入"))
 	}
 	return result, nil
 }

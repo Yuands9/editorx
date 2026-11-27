@@ -64,7 +64,7 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 		return
 	}
 	preview.server = server
-	options := url.Values{"title": {t.title()}}
+	options := url.Values{"title": {t.title()}, "lang": {string(currentUILanguage())}}
 	if t.doc.path == "" {
 		options.Set("temporary", "1")
 	}
@@ -91,7 +91,8 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 			case "ready":
 				preview.ready = true
 				preview.view.Eval(previewThemeJS(m.light))
-				m.status = "PDF 预览已就绪"
+				preview.view.Eval(previewLanguageJS(currentUILanguage()))
+				m.status = uiText("PDF 预览已就绪")
 			case "error":
 				preview.issue = message.Text
 				m.status = "PDF：" + message.Text
@@ -108,7 +109,7 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 	})
 	if err != nil {
 		preview.close()
-		preview.issue = "无法打开 PDF 预览：" + err.Error()
+		preview.issue = uiText("无法打开 PDF 预览：") + err.Error()
 		return
 	}
 	preview.view = view
@@ -117,7 +118,7 @@ func (m *editorApp) openPDFPreview(t *editorTab) {
 
 func (m *editorApp) savePDFCopy(t *editorTab, source io.ReaderAt, size int64) {
 	path, err := app.SaveFile(app.SaveFileOptions{
-		Title: "另存 PDF 原件", SuggestedName: t.title(), Filters: []app.FileFilter{{Name: "PDF 文档", Pattern: "*.pdf"}},
+		Title: uiText("另存 PDF 原件"), SuggestedName: t.title(), Filters: []app.FileFilter{{Name: uiText("PDF 文档"), Pattern: "*.pdf"}},
 	})
 	if errors.Is(err, app.ErrCanceled) {
 		return
@@ -130,12 +131,12 @@ func (m *editorApp) savePDFCopy(t *editorTab, source io.ReaderAt, size int64) {
 		path += ".pdf"
 	}
 	if strings.EqualFold(filepath.Clean(path), t.doc.path) {
-		m.status = "PDF 已在原位置"
+		m.status = uiText("PDF 已在原位置")
 		return
 	}
 	if err := writeFileFrom(path, io.NewSectionReader(source, 0, size), size); err != nil {
-		m.fail(fmt.Errorf("无法保存 PDF 原件：%w", err))
+		m.fail(fmt.Errorf(uiText("无法保存 PDF 原件：%w"), err))
 		return
 	}
-	m.status = "已保存 " + filepath.Base(path)
+	m.status = uiText("已保存 ") + filepath.Base(path)
 }

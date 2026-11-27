@@ -50,7 +50,7 @@ func (r *searchResults) summary() string {
 		mode = "正则"
 	}
 	pattern := strings.ReplaceAll(strings.ReplaceAll(r.query, "\r\n", "\n"), "\n", "↵")
-	summary := fmt.Sprintf("搜索 “%s”  ·  %d 个文件匹配 %s 次  ·  共搜索 %d 个文件  ·  %s",
+	summary := fmt.Sprintf(uiText("搜索 “%s”  ·  %d 个文件匹配 %s 次  ·  共搜索 %d 个文件  ·  %s"),
 		pattern, r.files, searchResultCount(r.total), len(r.groups), mode)
 	if r.truncated {
 		summary += "  ·  仅显示前 10,000 处"
@@ -71,18 +71,18 @@ func (m *editorApp) searchResultsView(c ui.C) {
 			}
 		}).Children(func() {
 		ui.Row(c.Part("toolbar")).FillWidth().Height(29).PadX(10).Gap(6).Items(ui.Center).Background(m.theme.CardElevated).Children(func() {
-			ui.Text(c, "搜索结果").Bold().FontSize(12)
-			ui.Text(c, searchResultCount(r.total)+" 处匹配").FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
-			if ui.Button(c, "复制搜索结果").Icon(copyIcon).IconOnly().Ghost().Size(24, 24).Tooltip("复制搜索结果").Clicked() {
+			ui.Text(c, uiText("搜索结果")).Bold().FontSize(12)
+			ui.Text(c, searchResultCount(r.total)+uiText(" 处匹配")).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
+			if ui.Button(c, uiText("复制搜索结果")).Icon(copyIcon).IconOnly().Ghost().Size(24, 24).Tooltip(uiText("复制搜索结果")).Clicked() {
 				c.After(m.copySearchResults)
 			}
-			if ui.Button(c, "清空搜索结果").Ghost().Height(24).FontSize(11).Clicked() {
+			if ui.Button(c, uiText("清空搜索结果")).Ghost().Height(24).FontSize(11).Clicked() {
 				c.After(func() {
 					*r = searchResults{split: r.split}
 					m.focusActiveSource()
 				})
 			}
-			if ui.Button(c, "关闭搜索结果").Icon(closeIcon).IconOnly().Ghost().Size(24, 24).Tooltip("关闭结果面板").Clicked() {
+			if ui.Button(c, uiText("关闭搜索结果")).Icon(closeIcon).IconOnly().Ghost().Size(24, 24).Tooltip(uiText("关闭结果面板")).Clicked() {
 				r.open = false
 				m.focusActiveSource()
 			}
@@ -91,7 +91,7 @@ func (m *editorApp) searchResultsView(c ui.C) {
 			ui.Row(c).FillWidth().Height(22).PadX(10).Items(ui.Center).Background(colors.query).Children(func() {
 				ui.Text(c, r.summary()).Color(colors.queryText).Bold().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 			})
-			ui.Text(c, "没有找到匹配内容").FontSize(12).Muted().Pad(10)
+			ui.Text(c, uiText("没有找到匹配内容")).FontSize(12).Muted().Pad(10)
 			return
 		}
 		cell := r.cellWidth
@@ -134,7 +134,7 @@ func (m *editorApp) searchResultsView(c ui.C) {
 				})
 			}
 		}).FillWidth().Grow(1).MinHeight(0).Sideways().AlwaysScrollbars().ScrollbarSize(7).
-			ScrollbarLabels("纵向滚动搜索结果", "横向滚动搜索结果").Label("搜索结果列表")
+			ScrollbarLabels("纵向滚动搜索结果", "横向滚动搜索结果").Label(uiText("搜索结果列表"))
 		if r.resetHorizontal {
 			list.ScrollState().ScrollToX(0)
 			r.resetHorizontal = false

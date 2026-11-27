@@ -142,7 +142,7 @@ func (m *editorApp) updateProjectDirectories(c ui.C) {
 	node.pendingExpanded = nil
 	if err != nil {
 		node.loadError = err.Error()
-		m.status = "无法读取目录：" + node.path + " · " + err.Error()
+		m.status = uiText("无法读取目录：") + node.path + " · " + err.Error()
 		if job.newProject {
 			tree.roots = slices.DeleteFunc(tree.roots, func(root *fileNode) bool { return root == node })
 			tree.flatten()

@@ -24,19 +24,19 @@ func compareJSON(left, right string) ([]jsonDifference, error) {
 	a, err := parseJSON(left)
 	if err != nil {
 		message, _ := jsonErrorMessage(left, err)
-		return nil, fmt.Errorf("左侧 JSON：%s", message)
+		return nil, fmt.Errorf(uiText("左侧 JSON：%s"), message)
 	}
 	b, err := parseJSON(right)
 	if err != nil {
 		message, _ := jsonErrorMessage(right, err)
-		return nil, fmt.Errorf("右侧 JSON：%s", message)
+		return nil, fmt.Errorf(uiText("右侧 JSON：%s"), message)
 	}
 	// 重复键没有唯一的字段路径，明确报错，避免把某个值静默覆盖后比较。
 	if err := uniqueJSONKeys(a, ""); err != nil {
-		return nil, fmt.Errorf("左侧 JSON：%w", err)
+		return nil, fmt.Errorf(uiText("左侧 JSON：%w"), err)
 	}
 	if err := uniqueJSONKeys(b, ""); err != nil {
-		return nil, fmt.Errorf("右侧 JSON：%w", err)
+		return nil, fmt.Errorf(uiText("右侧 JSON：%w"), err)
 	}
 	var differences []jsonDifference
 	compareJSONValues(a, b, "", &differences)
@@ -47,7 +47,7 @@ func uniqueJSONKeys(value *jsonValue, path string) error {
 	seen := map[string]bool{}
 	for _, member := range value.members {
 		if seen[member.name] {
-			return fmt.Errorf("路径 %s 存在重复键 %q，无法唯一对比", jsonDisplayPath(path), member.name)
+			return fmt.Errorf(uiText("路径 %s 存在重复键 %q，无法唯一对比"), jsonDisplayPath(path), member.name)
 		}
 		seen[member.name] = true
 		if err := uniqueJSONKeys(member.value, jsonChildPath(path, member.name)); err != nil {
@@ -215,7 +215,7 @@ func (m *editorApp) copyDiff(t *editorTab) {
 		m.fail(err)
 		return
 	}
-	m.status = "已复制完整差异报告"
+	m.status = uiText("已复制完整差异报告")
 }
 
 func (t *editorTab) locateDifference(difference jsonDifference) {

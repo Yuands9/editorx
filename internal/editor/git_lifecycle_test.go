@@ -77,7 +77,7 @@ func TestGitWatchAndConflictResolution(t *testing.T) {
 	if err := s.WaitFor(func(app.Snapshot) bool { return len(m.tools.git.snapshot.changes) > 0 && m.tools.git.request == nil }, 10*time.Second); err != nil {
 		t.Fatal("working change not refreshed:", err)
 	}
-	m.tools.active = ""
+	m.tools.gitOpen = false
 	s.Frame()
 	if m.tools.git.watch.working != nil || m.tools.git.watch.metadata != nil {
 		t.Fatal("hidden Git panel retained watches")

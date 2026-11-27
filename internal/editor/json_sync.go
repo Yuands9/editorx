@@ -96,7 +96,7 @@ func isJSONExtraAction(action string) bool {
 
 func (m *editorApp) jsonAction(t *editorTab, action string) {
 	if t.jsonComposing() {
-		m.status = "请先完成中文选词，再处理 JSON"
+		m.status = uiText("请先完成中文选词，再处理 JSON")
 		return
 	}
 	t.updateResult()
@@ -141,7 +141,7 @@ func (m *editorApp) jsonAction(t *editorTab, action string) {
 		t.result.text.ClearHistory()
 	}
 	if cancel {
-		m.status = "已取消 JSON 转换"
+		m.status = uiText("已取消 JSON 转换")
 	} else {
 		m.status = "JSON · " + action
 	}

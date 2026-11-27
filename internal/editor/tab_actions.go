@@ -11,46 +11,46 @@ import (
 
 func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editorTab) {
 	ui.ContextMenu(c, target, func(menu *ui.MenuItems) {
-		if historyEditableTab(tab) && menu.Item("在普通分屏中打开").Icon(blankMenuIcon).Clicked() {
+		if historyEditableTab(tab) && menu.Item(m.menuText("在普通分屏中打开")).Icon(blankMenuIcon).Clicked() {
 			c.After(func() { m.openEditorSplit(tab) })
 		}
-		if tab.projectPreview && menu.Item("保留此标签").Icon(pinStateIcon(false)).Clicked() {
+		if tab.projectPreview && menu.Item(m.menuText("保留此标签")).Icon(pinStateIcon(false)).Clicked() {
 			c.After(func() { tab.projectPreview = false })
 		}
 		if tab.doc.path != "" {
 			m.projectPathActions(c, menu, tab.doc.path)
-			if m.shortcutMenu(menu.Item("在项目中定位").Icon(searchIcon).Disabled(m.projectRoot(tab.doc.path) == ""), shortcutRevealProjectFile).Clicked() {
+			if m.shortcutMenu(menu.Item(m.menuText("在项目中定位")).Icon(searchIcon).Disabled(m.projectRoot(tab.doc.path) == ""), shortcutRevealProjectFile).Clicked() {
 				c.After(func() { m.revealProjectFile(tab.doc.path) })
 			}
 			menu.Separator()
 		}
-		if menu.Item("重命名标签…").Icon(modelEditIcon).Clicked() {
+		if menu.Item(m.menuText("重命名标签…")).Icon(modelEditIcon).Clicked() {
 			c.After(func() { m.rename.begin(tab, nil) })
 		}
 		label := "固定标签"
 		if tab.pinned {
 			label = "取消固定标签"
 		}
-		if menu.Item(label).Icon(pinStateIcon(tab.pinned)).Clicked() {
+		if menu.Item(m.menuText(label)).Icon(pinStateIcon(tab.pinned)).Clicked() {
 			c.After(func() { m.togglePin(tab) })
 		}
-		if menu.Item("关闭标签").Icon(closeIcon).Clicked() {
+		if menu.Item(m.menuText("关闭标签")).Icon(closeIcon).Clicked() {
 			c.After(func() { m.closeTab(tab) })
 		}
-		if m.shortcutMenu(menu.Item("恢复关闭标签").Icon(blankMenuIcon).Disabled(len(m.closedTabs) == 0), shortcutReopenTab).Clicked() {
+		if m.shortcutMenu(menu.Item(m.menuText("恢复关闭标签")).Icon(blankMenuIcon).Disabled(len(m.closedTabs) == 0), shortcutReopenTab).Clicked() {
 			c.After(m.reopenClosedTab)
 		}
-		if aiTextTab(tab) && menu.Item("在 AI 助手中打开").Icon(aiIcon).Clicked() {
+		if aiTextTab(tab) && menu.Item(m.menuText("在 AI 助手中打开")).Icon(aiIcon).Clicked() {
 			c.After(func() { m.openAIAt(tab, "", false) })
 		}
-		if menu.Item("打开所在文件夹").Icon(folderOpenIcon).Disabled(tab.doc.path == "").Clicked() {
+		if menu.Item(m.menuText("打开所在文件夹")).Icon(folderOpenIcon).Disabled(tab.doc.path == "").Clicked() {
 			c.After(func() { m.openExplorerFolder(filepath.Dir(tab.doc.path)) })
 		}
-		if tab.doc.path != "" && !tab.readOnlyPreview() && menu.Item("比对历史…").Icon(historyCompareIcon).Clicked() {
+		if tab.doc.path != "" && !tab.readOnlyPreview() && menu.Item(m.menuText("比对历史…")).Icon(historyCompareIcon).Clicked() {
 			c.After(func() { m.openHistoryComparison(tab.doc.path, localHistoryVersion{}) })
 		}
 		menu.Separator()
-		if menu.Item("添加到新分组").Icon(plusIcon).Clicked() {
+		if menu.Item(m.menuText("添加到新分组")).Icon(plusIcon).Clicked() {
 			c.After(func() { m.newTabGroup(tab) })
 		}
 		var groups []*tabGroup
@@ -60,7 +60,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 			}
 		}
 		if len(groups) > 0 {
-			menu.Sub("移到已有分组", func(groupsMenu *ui.MenuItems) {
+			menu.Sub(m.menuText("移到已有分组"), func(groupsMenu *ui.MenuItems) {
 				for _, group := range groups {
 					if groupsMenu.Item(group.Name).Clicked() {
 						c.After(func() { m.moveToGroup(tab, group) })
@@ -68,7 +68,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 				}
 			}).Icon(blankMenuIcon)
 		}
-		if tab.group != nil && menu.Item("移出分组").Icon(blankMenuIcon).Clicked() {
+		if tab.group != nil && menu.Item(m.menuText("移出分组")).Icon(blankMenuIcon).Clicked() {
 			c.After(func() { m.moveToGroup(tab, nil) })
 		}
 		menu.Separator()
@@ -80,7 +80,7 @@ func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editor
 			{"关闭左侧全部标签页", m.tabs[:index]},
 			{"关闭右侧全部标签页", m.tabs[index+1:]},
 		} {
-			if menu.Item(action.label).Icon(blankMenuIcon).Disabled(!hasUnpinnedTab(action.tabs)).Clicked() {
+			if menu.Item(m.menuText(action.label)).Icon(blankMenuIcon).Disabled(!hasUnpinnedTab(action.tabs)).Clicked() {
 				tabs := slices.Clone(action.tabs)
 				c.After(func() { m.closeTabs(tabs, true) })
 			}

@@ -304,7 +304,7 @@ func (r *searchResults) rowLabel(index int) string {
 		return "结果分组 " + group.tab.title()
 	}
 	line := group.lines[row.line]
-	return fmt.Sprintf("结果 %s 行 %d 列 %d", group.tab.title(), line.number, line.column)
+	return fmt.Sprintf(uiText("结果 %s 行 %d 列 %d"), group.tab.title(), line.number, line.column)
 }
 
 func (m *editorApp) chooseSearchResult(index int) {
@@ -332,9 +332,9 @@ func (m *editorApp) chooseSearchResult(index int) {
 	if !slices.Contains(m.tabs, group.tab) || group.source != group.pane.text.String() {
 		r.refresh(m)
 		if r.fixed {
-			m.status = "内容已变化，请重新查找"
+			m.status = uiText("内容已变化，请重新查找")
 		} else {
-			m.status = "搜索内容已更新，请重新选择结果"
+			m.status = uiText("搜索内容已更新，请重新选择结果")
 		}
 		return
 	}
@@ -357,7 +357,7 @@ func (m *editorApp) chooseSearchResult(index int) {
 	group.pane.view.Snapshot.Marks = group.matches
 	group.pane.focus = true
 	tab.source.focus = group.pane == tab.source
-	m.status = fmt.Sprintf("已定位 %s · 行 %d，列 %d", tab.title(), line.number, line.column)
+	m.status = fmt.Sprintf(uiText("已定位 %s · 行 %d，列 %d"), tab.title(), line.number, line.column)
 }
 
 func (m *editorApp) copySearchResults() {
@@ -392,7 +392,7 @@ func (m *editorApp) copySearchResults() {
 		m.fail(err)
 		return
 	}
-	m.status = "已复制搜索结果"
+	m.status = uiText("已复制搜索结果")
 }
 
 // 结果面板即使隐藏，也不能继续引用已关闭文档和其大段原文。

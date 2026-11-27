@@ -14,6 +14,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/keymap"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -59,7 +60,7 @@ func (shell *localShell) flushOutput() {
 }
 
 func (m *editorApp) openLocalShell(directory string) {
-	m.tools.active = "终端"
+	m.tools.terminalOpen = true
 	if directory == "" {
 		directory = m.toolDirectory()
 	}
@@ -118,8 +119,13 @@ func (m *editorApp) mountShell(shell *localShell) {
 		Scheme:   &app.WebScheme{Name: "terminal", Serve: serveTerminalAsset},
 		Navigate: func(nav app.WebNavigation) bool { return nav.URL == location },
 		LetterShortcut: func(letter rune, modifiers gfx.Modifiers) func() {
-			if letter == 't' && modifiers == gfx.ModifierControl|gfx.ModifierAlt {
-				return func() { m.useTool("终端"); m.invalidator.Invalidate() }
+			chord, _ := keymap.FromEvent(gfx.KeyEvent{Text: string(letter), Modifiers: modifiers})
+			if chord == m.keyBindings.chord(shortcutTerminal) && !m.appSettings.open && !m.interactionBlocked() {
+				return func() {
+					if m.runEditorShortcut(shortcutTerminal) {
+						m.invalidator.Invalidate()
+					}
+				}
 			}
 			return m.openLinkWebShortcut(letter, modifiers)
 		},
@@ -128,10 +134,23 @@ func (m *editorApp) mountShell(shell *localShell) {
 		},
 	})
 	if err != nil {
-		shell.issue = "无法打开本地终端界面：" + err.Error()
+		shell.issue = uiText("无法打开本地终端界面：") + err.Error()
 		return
 	}
 	shell.view = view
+}
+
+func (shell *localShell) setToggleShortcut(chord keymap.Chord) {
+	if shell.view == nil || !shell.viewReady.Load() {
+		return
+	}
+	key := strings.ReplaceAll(chord.Name(), "_", "")
+	switch chord.Key {
+	case gfx.KeyLeft, gfx.KeyRight, gfx.KeyUp, gfx.KeyDown:
+		key = "arrow" + key
+	}
+	shell.view.Eval(fmt.Sprintf("window.vivaTerminal?.setToggleShortcut(%q, %q, %t, %t, %t)", key, chord.Label(),
+		chord.Modifiers&ui.Ctrl != 0, chord.Modifiers&ui.Alt != 0, chord.Modifiers&ui.Shift != 0))
 }
 
 func serveTerminalAsset(path string) (string, []byte, bool) {
@@ -188,7 +207,7 @@ func (m *editorApp) startShellProcess(shell *localShell) {
 			m.post(func() {
 				if shell.process == process {
 					shell.exited, shell.process = true, nil
-					shell.appendOutput([]byte("\r\n[PowerShell 已退出]\r\n"))
+					shell.appendOutput([]byte("\r\n" + uiText("[PowerShell 已退出]") + "\r\n"))
 					m.invalidator.Invalidate()
 				}
 			})
@@ -212,6 +231,8 @@ func (m *editorApp) handleShellMessage(shell *localShell, raw string) {
 		if message.Kind == "ready" {
 			shell.viewReady.Store(true)
 			shell.view.Eval(previewThemeJS(m.light))
+			shell.view.Eval(previewLanguageJS(currentUILanguage()))
+			shell.setToggleShortcut(m.keyBindings.chord(shortcutTerminal))
 			shell.flushOutput()
 			m.invalidator.Invalidate()
 		}
@@ -229,6 +250,11 @@ func (m *editorApp) handleShellMessage(shell *localShell, raw string) {
 				m.invalidator.Invalidate()
 			}
 		}
+	case "toggle":
+		if m.tools.terminal == shell && m.tools.terminalOpen && message.Text != "" &&
+			message.Text == m.keyBindings.chord(shortcutTerminal).Label() && m.runEditorShortcut(shortcutTerminal) {
+			m.invalidator.Invalidate()
+		}
 	case "copy":
 		if message.Text != "" {
 			_ = app.SetClipboardText(message.Text)
@@ -243,7 +269,7 @@ func (m *editorApp) handleShellMessage(shell *localShell, raw string) {
 
 func (m *editorApp) updateLocalShell() {
 	shell := m.tools.terminal
-	if shell == nil || m.tools.active != "终端" {
+	if shell == nil || !m.tools.terminalOpen {
 		return
 	}
 	shell.flushOutput()
@@ -259,7 +285,7 @@ func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 		return
 	}
 	if shell.view == nil {
-		ui.Text(c, "正在准备本地终端…").Pad(10).Muted().FontSize(12)
+		ui.Text(c, uiText("正在准备本地终端…")).Pad(10).Muted().FontSize(12)
 		return
 	}
 	if !blocked {
@@ -269,7 +295,7 @@ func (m *editorApp) shellPanel(c ui.C, blocked bool) {
 			view := shell.view
 			// The native host applies the view's visibility after this render.
 			m.post(func() {
-				if m.tools.active == "终端" && m.tools.terminal == shell && shell.view == view && !m.appSettings.open && !m.vaultActive() && !m.interactionBlocked() {
+				if m.tools.terminalOpen && m.tools.terminal == shell && shell.view == view && !m.appSettings.open && !m.interactionBlocked() {
 					view.Focus()
 				}
 			})
@@ -288,25 +314,25 @@ func (m *editorApp) shellActions(c ui.C, blocked bool) {
 		for _, session := range m.tools.terminals {
 			paths = append(paths, session.directory)
 		}
-		if ui.Select(c, &selected, paths, filepath.Base).Label("终端会话").Width(150).Height(26).Disabled(blocked).Changed() {
+		if ui.Select(c, &selected, paths, filepath.Base).Label(uiText("终端会话")).Width(150).Height(26).Disabled(blocked).Changed() {
 			c.After(func() { m.openLocalShell(selected) })
 		}
 	} else {
 		ui.Text(c, fmt.Sprintf("PowerShell · %s", shell.directory)).Grow(1).MinWidth(0).Ellipsis().Muted().FontSize(11)
 	}
 	if shell.exited || shell.issue != "" {
-		if ui.Button(c, "重启终端").Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Tooltip("重启终端").Disabled(blocked).Clicked() {
+		if ui.Button(c, uiText("重启终端")).Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("重启终端")).Disabled(blocked).Clicked() {
 			c.After(func() {
 				m.closeLocalShell(shell)
 				m.openLocalShell(shell.directory)
 			})
 		}
 	}
-	if ui.Button(c, "结束终端").Icon(aiStopIcon).IconOnly().Ghost().Size(28, 28).Tooltip("结束终端").Disabled(blocked).Clicked() {
+	if ui.Button(c, uiText("结束终端")).Icon(aiStopIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("结束终端")).Disabled(blocked).Clicked() {
 		c.After(func() {
 			m.closeLocalShell(shell)
 			if m.tools.terminal == nil {
-				m.tools.active = ""
+				m.tools.terminalOpen = false
 				m.focusActiveSource()
 			}
 		})

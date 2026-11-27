@@ -29,7 +29,7 @@ func (m *editorApp) startMacroReplay() {
 	editor := m.active.source.text
 	count, _ := strconv.Atoi(s.repeat.Text())
 	if count < 1 || count > 100 || editor.CompositionActive() || editor.SelectionCount() != 1 || len(editor.String()) > macroDocumentLimit {
-		s.problem = "请选择 1–100 次重复，并使用 4 MiB 以内的单光标文本"
+		s.problem = uiText("请选择 1–100 次重复，并使用 4 MiB 以内的单光标文本")
 		return
 	}
 	selection := editor.Selection()
@@ -52,7 +52,7 @@ func (m *editorApp) startMacroReplay() {
 		}
 		return macroReplayResult{value: work.String(), selection: selection}, ctx.Err()
 	})
-	s.replay, s.problem, s.notice = job, "", "正在重放宏…"
+	s.replay, s.problem, s.notice = job, "", uiText("正在重放宏…")
 }
 
 func (m *editorApp) updateMacroReplay(c ui.C, s *workflowDialog) {
@@ -67,7 +67,7 @@ func (m *editorApp) updateMacroReplay(c ui.C, s *workflowDialog) {
 	}
 	s.replay = nil
 	if err != nil {
-		s.problem = fmt.Sprintf("宏未应用：%v", err)
+		s.problem = fmt.Sprintf(uiText("宏未应用：%v"), err)
 		return
 	}
 	editor := job.editor
@@ -76,7 +76,7 @@ func (m *editorApp) updateMacroReplay(c ui.C, s *workflowDialog) {
 		selection.Start, selection.End = selection.End, selection.Start
 	}
 	if !m.hasTab(job.tab) || job.tab.source.text != editor || editor.String() != job.before || selection != job.selection || editor.CompositionActive() {
-		s.problem = "编辑内容已变化，宏结果未应用，请重新执行"
+		s.problem = uiText("编辑内容已变化，宏结果未应用，请重新执行")
 		return
 	}
 	start, end, value := trimHistoryReplacement(job.before, 0, len(job.before), result.value)
@@ -87,5 +87,5 @@ func (m *editorApp) updateMacroReplay(c ui.C, s *workflowDialog) {
 	m.workflow = nil
 	m.activate(job.tab)
 	m.focusActiveSource()
-	m.status = "宏已重放 · Ctrl+Z 撤销整次操作"
+	m.status = uiText("宏已重放 · Ctrl+Z 撤销整次操作")
 }

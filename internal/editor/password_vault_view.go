@@ -21,6 +21,16 @@ var passwordLockIcon = gfx.Icon{ViewBox: 24, Stroke: 1.7, Cap: gfx.CapRound, Joi
 	gfx.MoveTo(8, 10), gfx.LineTo(8, 7), gfx.QuadTo(8, 3, 12, 3), gfx.QuadTo(16, 3, 16, 7), gfx.LineTo(16, 10), gfx.MoveTo(12, 14), gfx.LineTo(12, 17),
 }}
 
+var passwordCopiedIcon = gfx.Icon{ViewBox: 24, Stroke: 1.8, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(5, 12), gfx.LineTo(10, 17), gfx.LineTo(19, 7),
+}}
+
+var passwordFavoriteIcon = gfx.Icon{ViewBox: 24, Stroke: 1.6, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+	gfx.MoveTo(12, 3), gfx.LineTo(14.9, 8.9), gfx.LineTo(21.4, 9.8), gfx.LineTo(16.7, 14.4),
+	gfx.LineTo(17.8, 20.9), gfx.LineTo(12, 17.8), gfx.LineTo(6.2, 20.9), gfx.LineTo(7.3, 14.4),
+	gfx.LineTo(2.6, 9.8), gfx.LineTo(9.1, 8.9), gfx.ClosePath(),
+}}
+
 func passwordKindLabel(kind string) string {
 	switch kind {
 	case vaultKey:
@@ -35,39 +45,52 @@ func passwordKindLabel(kind string) string {
 func (m *editorApp) passwordVaultPage(c ui.C, blocked bool) {
 	v := m.passwordVault
 	v.expire(time.Now())
-	ui.Column(c).Grow(1).FillHeight().MinWidth(0).Pad(workspaceInset).Children(func() {
-		m.workspacePanel(c.Part("vault-workspace")).Grow(1).PadX(4).PadBottom(6).Children(func() {
-			m.tabBar(c, blocked)
-			if v.store == nil {
-				m.passwordGate(c.Part("gate"), v, blocked)
-				return
+	m.workspacePanel(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+		ui.Row(c.Part("heading")).FillWidth().Height(36).PadX(10).Gap(6).Items(ui.Center).Children(func() {
+			ui.Icon(c, passwordVaultIcon).Size(16, 16).Color(m.theme.MutedForeground)
+			ui.Text(c, uiText("密码本")).Bold().FontSize(13).Grow(1)
+			if v.store != nil && ui.Button(c, uiText("锁定密码本")).Icon(passwordLockIcon).IconOnly().Ghost().Size(27, 28).
+				Tooltip(uiText("锁定密码本")).Disabled(blocked).Clicked() {
+				c.After(v.lock)
 			}
-			m.passwordVaultContent(c.Part("contents"), v, blocked)
+			if ui.Button(c, uiText("关闭密码本")).Icon(closeIcon).IconOnly().Ghost().Size(27, 28).
+				Tooltip(uiText("关闭密码本")).Disabled(blocked).Clicked() {
+				c.After(m.closePasswordVault)
+			}
 		})
+		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
+		if v.store == nil {
+			m.passwordGate(c.Part("gate"), v, blocked)
+			return
+		}
+		m.passwordVaultContent(c.Part("contents"), v, blocked)
 	})
 }
 
 func (m *editorApp) passwordGate(c ui.C, v *passwordVaultView, blocked bool) {
 	creating := !v.exists && v.backupSource == ""
-	title, hint, submit := "密码本已锁定", "解锁后查看本机密码库。", "解锁"
+	title, hint, submit := uiText("密码本已锁定"), uiText("解锁后查看本机密码库。"), uiText("解锁")
 	if creating {
-		title, submit = "创建本机密码本", "创建密码本"
+		title, submit = uiText("创建本机密码本"), uiText("创建密码本")
 		if v.useMaster {
-			hint = fmt.Sprintf("请选择至少 %d 个字符的主密码。忘记主密码将无法解锁。", passwordVaultMinMasterLength)
+			hint = fmt.Sprintf(uiText("请选择至少 %d 个字符的主密码。忘记主密码将无法解锁。"), passwordVaultMinMasterLength)
 		} else {
-			hint = "由当前 Windows 账户保护，打开时直接进入。"
+			hint = uiText("由当前 Windows 账户保护，打开时直接进入。")
 		}
 	} else if v.backupSource != "" {
-		title, hint, submit = "恢复加密备份", filepath.Base(v.backupSource), "恢复密码本"
+		title, hint, submit = uiText("恢复加密备份"), filepath.Base(v.backupSource), uiText("恢复密码本")
 	} else if v.windowsProtected {
-		hint, submit = "", "打开密码本"
+		hint, submit = "", uiText("打开密码本")
 	}
-	ui.Column(c).FillWidth().Grow(1).Center().Pad(14).Children(func() {
-		m.assetCard(c.Part("unlock")).Width(420).Gap(11).Children(func() {
-			m.assetHeading(c, passwordLockIcon, title, hint)
+	ui.Scroll(c).FillWidth().Grow(1).MinHeight(0).Pad(9).Scrollbars().Children(func() {
+		m.assetCard(c.Part("unlock")).FillWidth().MaxWidth(460).Gap(10).Children(func() {
+			if v.backupSource == "" {
+				hint = uiText(hint)
+			}
+			m.assetHeading(c, passwordLockIcon, uiText(title), hint)
 			if creating {
 				enabled := v.useMaster
-				if settingsSwitchRow(c.Part("master-switch"), "使用主密码", &enabled) && !blocked {
+				if settingsSwitchRow(c.Part("master-switch"), uiText("使用主密码"), &enabled) && !blocked {
 					c.After(func() {
 						v.useMaster, v.problem = enabled, ""
 						v.password, v.confirmation = ui.Field{Secure: true}, ui.Field{Secure: true}
@@ -84,35 +107,34 @@ func (m *editorApp) passwordGate(c ui.C, v *passwordVaultView, blocked bool) {
 				submitted = m.passwordInput(c.Part("unlock-password"), &v.password, "主密码", "输入主密码", 36, blocked).AutoFocus().Submitted()
 			}
 			if v.backupSource == "" && (v.exists && !v.windowsProtected || len(v.archives) > 0) {
-				ui.Row(c.Part("vault-recovery")).FillWidth().Gap(6).Children(func() {
-					if v.exists && !v.windowsProtected && ui.Button(c, "忘记主密码？创建新密码本").Ghost().
+				ui.Flow(c.Part("vault-recovery")).FillWidth().Gap(4).LineGap(4).Children(func() {
+					if v.exists && !v.windowsProtected && ui.Button(c, uiText("忘记主密码？创建新密码本")).Ghost().
 						Height(26).FontSize(12).Disabled(blocked).Clicked() {
 						c.After(func() { v.dialog = &passwordVaultDialog{open: true, mode: passwordArchiveResetMode} })
 					}
-					if len(v.archives) > 0 && ui.Button(c, "恢复旧密码本…").Ghost().
+					if len(v.archives) > 0 && ui.Button(c, uiText("恢复旧密码本…")).Ghost().
 						Height(26).FontSize(12).Disabled(blocked).Clicked() {
 						c.After(m.openPasswordArchiveRestore)
 					}
 				})
 			}
 			if v.pendingSource != "" {
-				ui.Text(c, "打开后继续识别选区").Muted().FontSize(12)
+				ui.Text(c, uiText("打开后继续识别选区")).Muted().FontSize(12)
 			}
 			if v.problem != "" {
 				ui.Wrap(c, v.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 			}
-			ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
-				if creating && ui.Button(c, "从加密备份恢复…").Ghost().Disabled(blocked).Clicked() {
+			ui.Flow(c).FillWidth().Gap(6).LineGap(5).Children(func() {
+				if creating && ui.Button(c, uiText("从加密备份恢复…")).Ghost().Disabled(blocked).Clicked() {
 					c.After(m.choosePasswordVaultBackup)
 				}
-				if v.backupSource != "" && ui.Button(c, "返回创建").Ghost().Disabled(blocked).Clicked() {
+				if v.backupSource != "" && ui.Button(c, uiText("返回创建")).Ghost().Disabled(blocked).Clicked() {
 					c.After(func() {
 						v.backupSource, v.problem = "", ""
 						v.password, v.confirmation = ui.Field{Secure: true}, ui.Field{Secure: true}
 					})
 				}
-				ui.Slot(c).Grow(1)
-				if ui.Button(c, submit).Disabled(blocked).Clicked() || submitted && !blocked {
+				if ui.Button(c, uiText(submit)).Disabled(blocked).Clicked() || submitted && !blocked {
 					c.After(m.submitPasswordVault)
 				}
 			})
@@ -121,17 +143,18 @@ func (m *editorApp) passwordGate(c ui.C, v *passwordVaultView, blocked bool) {
 }
 
 func (m *editorApp) passwordPair(c ui.C, field, confirmation *ui.Field, label string, blocked bool) bool {
-	first := m.passwordInput(c.Part("password"), field, label, "输入"+label, 36, blocked).AutoFocus()
-	second := m.passwordInput(c.Part("confirmation"), confirmation, "确认"+label, "再次输入"+label, 36, blocked)
+	label = uiText(label)
+	first := m.passwordInput(c.Part("password"), field, label, fmt.Sprintf(uiText("输入%s"), label), 36, blocked).AutoFocus()
+	second := m.passwordInput(c.Part("confirmation"), confirmation, fmt.Sprintf(uiText("确认%s"), label), fmt.Sprintf(uiText("再次输入%s"), label), 36, blocked)
 	return first.Submitted() || second.Submitted()
 }
 
 func (m *editorApp) passwordInput(c ui.C, field *ui.Field, label, placeholder string, height float32, blocked bool) ui.Box {
-	icon, caption := showSecretIcon, "显示"+label
+	icon, caption := showSecretIcon, fmt.Sprintf(uiText("显示%s"), uiText(label))
 	if !field.Secure {
-		icon, caption = hideSecretIcon, "隐藏"+label
+		icon, caption = hideSecretIcon, fmt.Sprintf(uiText("隐藏%s"), uiText(label))
 	}
-	input := ui.TextField(c, field, label, placeholder).FillWidth().MinWidth(0).Height(height).
+	input := ui.TextField(c, field, uiText(label), uiText(placeholder)).FillWidth().MinWidth(0).Height(height).
 		Disabled(blocked).Action(icon, caption)
 	skipButtonTabStop(input, input.ActionID())
 	if input.ActionClicked() {
@@ -144,19 +167,39 @@ func (m *editorApp) passwordInput(c ui.C, field *ui.Field, label, placeholder st
 }
 
 func (m *editorApp) passwordVaultContent(c ui.C, v *passwordVaultView, blocked bool) {
-	ui.Column(c).Fill().MinHeight(0).PadX(12).Gap(8).Children(func() {
-		ui.Row(c.Part("heading")).FillWidth().Height(62).PadY(5).Gap(4).Items(ui.Center).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Children(func() { m.assetHeading(c, passwordVaultIcon, "密码本", "本机加密库") })
-			if ui.Button(c, "锁定密码本").Icon(passwordLockIcon).Ghost().Height(32).Disabled(blocked).Clicked() {
-				c.After(v.lock)
+	ui.Column(c).Fill().MinHeight(0).Pad(8).Gap(6).Children(func() {
+		ui.Row(c.Part("actions")).FillWidth().Gap(4).Items(ui.Center).Children(func() {
+			if v.detailOpen {
+				if ui.Button(c, uiText("返回条目列表")).Icon(chevronLeftIcon).Ghost().Height(30).FontSize(12).Disabled(blocked).Clicked() {
+					c.After(func() {
+						v.detailOpen, v.revealed = false, false
+						m.vaultTouch()
+					})
+				}
+				ui.Slot(c).Grow(1)
+			} else {
+				title := uiText("所有分组")
+				if v.group != passwordVaultAllGroups {
+					title = v.store.data.groupPath(v.group)
+				}
+				groups := ui.Button(c.Part("group-picker"), title).Icon(folderIcon).Ghost().Grow(1).MinWidth(0).
+					Height(30).PadX(6).Justify(ui.Start).FontSize(12).Ellipsis().Tooltip(title).Disabled(blocked)
+				if v.groupsOpen {
+					groups.Secondary()
+				}
+				if groups.Clicked() {
+					c.After(func() { v.groupsOpen = !v.groupsOpen; m.vaultTouch() })
+				}
 			}
-			if ui.Button(c, "从文本识别").Icon(searchIcon).Secondary().Height(32).Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("从文本识别")).Icon(passwordRecognizeIcon).IconOnly().Ghost().Size(28, 30).
+				Tooltip(uiText("从文本识别")).Disabled(blocked).Clicked() {
 				c.After(func() { m.openPasswordImport("") })
 			}
-			if ui.Button(c, "新建条目").Icon(plusIcon).Height(32).Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("新建条目")).Icon(plusIcon).IconOnly().Size(28, 30).
+				Tooltip(uiText("新建条目")).Disabled(blocked).Clicked() {
 				c.After(func() { m.openPasswordEntry(passwordEntry{Group: v.entryGroup(), Kind: vaultLogin}) })
 			}
-			if ui.Button(c, "密码本设置").Icon(settingsIcon).IconOnly().Ghost().Size(32, 32).Tooltip("密码本设置").Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("密码本设置")).Icon(settingsIcon).IconOnly().Ghost().Size(28, 30).Tooltip(uiText("密码本设置")).Disabled(blocked).Clicked() {
 				c.After(func() {
 					data := v.store.data
 					d := &passwordVaultDialog{open: true, mode: "settings", useMaster: !v.windowsProtected,
@@ -170,21 +213,20 @@ func (m *editorApp) passwordVaultContent(c ui.C, v *passwordVaultView, blocked b
 				})
 			}
 		})
-		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
-		ui.Row(c.Part("columns")).FillWidth().Grow(1).MinHeight(0).Gap(10).Children(func() {
-			m.passwordGroupList(c.Part("groups"), v, blocked)
-			ui.Slot(c).Width(1).FillHeight().Background(m.theme.Border)
-			m.passwordEntryList(c.Part("entries"), v, blocked)
-			ui.Slot(c).Width(1).FillHeight().Background(m.theme.Border)
+		if v.detailOpen {
 			m.passwordDetail(c.Part("detail"), v, blocked)
-		})
-		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
+		} else {
+			if v.groupsOpen {
+				m.passwordGroupList(c.Part("groups"), v, blocked)
+			}
+			m.passwordEntryList(c.Part("entries"), v, blocked)
+		}
 		if v.problem != "" {
 			ui.Wrap(c, v.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
 		} else if v.message != "" {
 			ui.Wrap(c, v.message).FillWidth().Muted().FontSize(12)
-		} else {
-			ui.Text(c, "Ctrl+F 搜索").Muted().FontSize(12)
+		} else if !v.detailOpen {
+			ui.Text(c, uiText("本机加密库")).Muted().FontSize(11).PadX(3)
 		}
 	})
 }
@@ -200,7 +242,7 @@ func (m *editorApp) passwordGroupList(c ui.C, v *passwordVaultView, blocked bool
 		group passwordGroup
 		depth int
 	}
-	rows := []groupRow{{group: passwordGroup{ID: passwordVaultAllGroups, Name: "全部条目"}}}
+	rows := []groupRow{{group: passwordGroup{ID: passwordVaultAllGroups, Name: uiText("全部条目")}}}
 	var appendChildren func(int, int)
 	appendChildren = func(parent, depth int) {
 		for _, group := range children[parent] {
@@ -212,7 +254,9 @@ func (m *editorApp) passwordGroupList(c ui.C, v *passwordVaultView, blocked bool
 	}
 	appendChildren(0, 0)
 	if data.DefaultGroup == 0 || counts[passwordVaultNoGroup] > 0 {
-		rows = append(rows, groupRow{group: data.group(passwordVaultNoGroup)})
+		group := data.group(passwordVaultNoGroup)
+		group.Name = uiText(group.Name)
+		rows = append(rows, groupRow{group: group})
 	}
 	tree := &v.groupTree
 	tree.RowHeight, tree.Indent = 32, 13
@@ -223,17 +267,18 @@ func (m *editorApp) passwordGroupList(c ui.C, v *passwordVaultView, blocked bool
 		return ui.TreeNode{Depth: row.depth, Branch: row.group.ID > 0 && len(children[row.group.ID]) > 0,
 			Expanded: !v.closedGroups[row.group.ID], Selected: row.group.ID == v.group, Disabled: blocked}
 	}
-	ui.Column(c).Width(164).Shrink(0).FillHeight().MinHeight(0).Gap(5).Children(func() {
+	ui.Column(c).FillWidth().Height(min(202, 45+32*float32(len(rows)))).Shrink(0).MinHeight(0).Pad(7).Gap(3).
+		Radius(10).Background(m.theme.Card).Children(func() {
 		ui.Row(c).FillWidth().Items(ui.Center).Children(func() {
-			ui.Text(c, "分组").Bold().Muted().Grow(1)
-			if v.group > 0 && ui.Button(c, "重命名分组").Icon(modelEditIcon).IconOnly().Ghost().Size(27, 28).Tooltip("重命名分组").Disabled(blocked).Clicked() {
+			ui.Text(c, uiText("分组")).Bold().Muted().Grow(1)
+			if v.group > 0 && ui.Button(c, uiText("重命名分组")).Icon(modelEditIcon).IconOnly().Ghost().Size(27, 28).Tooltip(uiText("重命名分组")).Disabled(blocked).Clicked() {
 				c.After(func() { m.openPasswordGroup(v.group, 0) })
 			}
-			if ui.Button(c, "新建分组").Icon(plusIcon).IconOnly().Ghost().Size(27, 28).Tooltip("新建分组").Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("新建分组")).Icon(plusIcon).IconOnly().Ghost().Size(27, 28).Tooltip(uiText("新建分组")).Disabled(blocked).Clicked() {
 				c.After(func() { m.openPasswordGroup(0, 0) })
 			}
 		})
-		ui.Tree(c.Part("group-tree"), tree, len(rows), func(i int) string { return rows[i].group.Name }, func(i int) {
+		ui.Tree(c.Part("group-tree"), tree, len(rows), func(i int) string { return rows[i].group.displayName() }, func(i int) {
 			group := rows[i].group
 			place := c.Part("group").KeyInt(group.ID + 1)
 			row := ui.Row(place).Fill().Justify(ui.Start).Items(ui.Center).Gap(6).PadRight(5)
@@ -242,26 +287,26 @@ func (m *editorApp) passwordGroupList(c ui.C, v *passwordVaultView, blocked bool
 			}
 			row.Children(func() {
 				ui.Icon(place, folderIcon).Size(14, 14).Color(m.theme.MutedForeground)
-				name := ui.Text(place, group.Name).Grow(1).MinWidth(0).Ellipsis().FontSize(12).LabelFor(tree.RowID(i))
+				name := ui.Text(place, group.displayName()).Grow(1).MinWidth(0).Ellipsis().FontSize(12).LabelFor(tree.RowID(i))
 				if group.ID > 0 {
 					caption := data.groupPath(group.ID)
 					if group.Production {
-						caption += " · 正式环境"
+						caption += " · " + uiText("正式环境")
 					}
 					name.Tooltip(caption).TooltipOn(ui.TooltipRight)
 					if !blocked {
 						ui.ContextMenu(place, name, func(menu *ui.MenuItems) {
-							if menu.Item("新建子分组…").Icon(folderIcon).Clicked() {
+							if menu.Item(m.menuText("新建子分组…")).Icon(folderIcon).Clicked() {
 								place.After(func() { m.openPasswordGroup(0, group.ID) })
 							}
-							if menu.Item("新建条目…").Icon(plusIcon).Clicked() {
+							if menu.Item(m.menuText("新建条目…")).Icon(plusIcon).Clicked() {
 								place.After(func() { m.openPasswordEntry(passwordEntry{Group: group.ID, Kind: vaultLogin}) })
 							}
 							menu.Separator()
-							if menu.Item("重命名").Icon(modelEditIcon).Clicked() {
+							if menu.Item(m.menuText("重命名")).Icon(modelEditIcon).Clicked() {
 								place.After(func() { m.openPasswordGroup(group.ID, 0) })
 							}
-							if menu.Item("删除分组…").Destructive().Clicked() {
+							if menu.Item(m.menuText("删除分组…")).Destructive().Clicked() {
 								place.After(func() { m.confirmPasswordDelete(passwordDeleteGroupMode, group.ID) })
 							}
 						})
@@ -320,27 +365,38 @@ func passwordSiteBuckets(entries []passwordEntry) []passwordSiteBucket {
 }
 
 func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool) {
-	ui.Column(c).Width(272).Shrink(0).FillHeight().MinHeight(0).Gap(5).Children(func() {
-		box := ui.TextField(c.Part("vault-search"), &v.search, "搜索密码本", "搜索名称、账号、网站或标签").FillWidth().Height(34).Disabled(blocked)
-		if v.focusSearch && !blocked {
-			box.DrawOver(func(d *ui.DrawContext) { d.Canvas.RequestFocus(v.search.ID); v.focusSearch = false })
-		}
-		if box.Changed() {
-			v.revealed = false
-			clear(v.collapsed)
-			v.resultList.ScrollIntoView(0)
-			m.vaultTouch()
-		}
+	ui.Column(c).FillWidth().Grow(1).MinHeight(0).Pad(7).Gap(6).
+		Radius(10).Background(m.theme.Card).Children(func() {
+		ui.Row(c.Part("search-bar")).FillWidth().Height(37).PadX(8).Gap(6).Items(ui.Center).
+			Radius(8).Background(m.theme.Background).Children(func() {
+			ui.Icon(c, searchIcon).Size(15, 15).Color(m.theme.MutedForeground).Shrink(0)
+			box := ui.TextFieldBase(c.Part("vault-search"), &v.search, uiText("搜索密码本"), uiText("搜索名称、账号、网站或标签")).
+				Grow(1).MinWidth(0).Height(33).Disabled(blocked)
+			if v.focusSearch && !blocked {
+				box.DrawOver(func(d *ui.DrawContext) { d.Canvas.RequestFocus(v.search.ID); v.focusSearch = false })
+			}
+			if box.Changed() {
+				v.revealed = false
+				clear(v.collapsed)
+				v.resultList.ScrollIntoView(0)
+				m.vaultTouch()
+			}
+			if v.search.Text() != "" && ui.Button(c.Part("clear"), uiText("清空搜索")).Icon(closeIcon).IconOnly().Ghost().
+				Size(25, 25).Tooltip(uiText("清空搜索")).Disabled(blocked).Clicked() {
+				c.After(func() {
+					v.search.SetText("")
+					v.focusSearch, v.revealed = true, false
+					clear(v.collapsed)
+					v.resultList.ScrollIntoView(0)
+					m.vaultTouch()
+				})
+			}
+		})
 		query := strings.ToLower(strings.TrimSpace(v.search.GetEditor().CommittedString()))
-		var visible []passwordEntry
-		for _, entry := range v.store.data.Entries {
-			if (v.group != passwordVaultAllGroups && v.group != entry.Group) || (v.favorites && !entry.Favorite) {
-				continue
-			}
-			if query != "" && !strings.Contains(strings.ToLower(entry.Name+" "+entry.Account+" "+entry.Site+" "+strings.Join(entry.Tags, " ")), query) {
-				continue
-			}
-			visible = append(visible, entry)
+		matches := v.matchingEntries(query)
+		visible := make([]passwordEntry, 0, len(matches))
+		for _, index := range matches {
+			visible = append(visible, v.store.data.Entries[index])
 		}
 		selected := false
 		for _, entry := range visible {
@@ -360,7 +416,7 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 				label    string
 				favorite bool
 			}{{"全部", false}, {"收藏", true}} {
-				button := ui.Button(c.Key(option.label), option.label).Ghost().Height(27).FontSize(12).Disabled(blocked)
+				button := ui.Button(c.Key(option.label), uiText(option.label)).Ghost().Height(27).FontSize(12).Disabled(blocked)
 				if v.favorites == option.favorite {
 					button.Secondary()
 				}
@@ -373,10 +429,10 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 				}
 			}
 			ui.Slot(c).Grow(1)
-			ui.Text(c, fmt.Sprintf("%d 项", len(visible))).Muted().FontSize(12)
+			ui.Text(c, fmt.Sprintf(uiText("%d 项"), len(visible))).Muted().FontSize(12)
 		})
 		if len(visible) == 0 {
-			ui.Wrap(c, "没有符合条件的条目。").FillWidth().Muted().FontSize(12)
+			ui.Wrap(c, uiText("没有符合条件的条目。")).FillWidth().Muted().FontSize(12)
 			return
 		}
 		type catalogRow struct {
@@ -386,11 +442,13 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 		}
 		var rows []catalogRow
 		keys := make([]int, 0, len(visible))
+		labels := make([]string, 0, len(visible))
 		for _, bucket := range passwordSiteBuckets(visible) {
 			nested := len(bucket.entries) > 1
 			if nested {
 				rows = append(rows, catalogRow{bucket: bucket})
 				keys = append(keys, bucket.entries[0].ID*2-2)
+				labels = append(labels, bucket.label)
 				if v.collapsed[bucket.key] {
 					continue
 				}
@@ -398,12 +456,18 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 			for _, entry := range bucket.entries {
 				rows = append(rows, catalogRow{entry: entry, nested: nested})
 				keys = append(keys, entry.ID*2-1)
+				labels = append(labels, entry.Name)
 			}
 		}
 		v.resultList.Key = func(index int) int { return keys[index] }
+		v.resultList.Label = func(index int) string { return labels[index] }
 		ui.List(c.Part("vault-results"), &v.resultList, len(rows), func(row ui.ListRow) {
 			item := rows[row.Index]
-			row.Element.Height(37).FillWidth().Items(ui.Center).Children(func() {
+			height := float32(50)
+			if item.entry.ID == 0 {
+				height = 38
+			}
+			row.Element.Height(height).FillWidth().Items(ui.Center).Children(func() {
 				if item.entry.ID > 0 {
 					m.passwordEntryRow(row.C, v, item.entry, item.nested, blocked)
 					return
@@ -414,7 +478,7 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 				if closed {
 					chevron = chevronRightIcon
 				}
-				label := fmt.Sprintf("%s · %d 个账号", bucket.label, len(bucket.entries))
+				label := fmt.Sprintf(uiText("%s · %d 个账号"), bucket.label, len(bucket.entries))
 				if v.group == passwordVaultAllGroups {
 					label += " · " + v.store.data.groupPath(bucket.entries[0].Group)
 				}
@@ -422,7 +486,20 @@ func (m *editorApp) passwordEntryList(c ui.C, v *passwordVaultView, blocked bool
 					row.C.After(func() { v.collapsed[bucket.key] = !closed; m.vaultTouch() })
 				}
 			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("密码本条目")
+		}).FillWidth().Grow(1).MinHeight(0).Label(uiText("密码本条目"))
+		if index, submitted := v.resultList.Submitted(); !blocked && submitted && index >= 0 && index < len(rows) {
+			if entry := rows[index].entry; entry.ID != 0 {
+				c.After(func() {
+					v.selected, v.revealed, v.message, v.detailOpen = entry.ID, false, "", true
+					m.vaultTouch()
+				})
+			}
+		}
+		if selected := v.resultList.Selected(); !blocked && v.resultList.Changed() && selected >= 0 && selected < len(rows) {
+			if entry := rows[selected].entry; entry.ID > 0 && entry.ID != v.selected {
+				c.After(func() { v.selected, v.revealed = entry.ID, false; m.vaultTouch() })
+			}
+		}
 	})
 }
 
@@ -432,20 +509,64 @@ func (m *editorApp) passwordEntryRow(c ui.C, v *passwordVaultView, entry passwor
 		row.PadLeft(13)
 	}
 	row.Children(func() {
-		label := entry.Name
-		if entry.Account != "" {
-			label += " · " + entry.Account
+		detail := entry.Account
+		if detail == "" {
+			detail = entry.Site
 		}
 		if v.group == passwordVaultAllGroups && entry.Group != 0 {
-			label += " · " + v.store.data.groupPath(entry.Group)
+			if detail != "" {
+				detail += " · "
+			}
+			detail += v.store.data.groupPath(entry.Group)
 		}
-		button := m.passwordListRow(c, label, passwordVaultIcon, 35, entry.ID == v.selected, blocked)
+		label := entry.Name
+		if detail != "" {
+			label += " · " + detail
+		}
+		selected := entry.ID == v.selected
+		button := ui.Row(c.Part("entry-card")).FillWidth().MinWidth(0).Height(46).PadX(8).Gap(8).Items(ui.Center).Radius(8).
+			HitWith(ui.ID(c.Part("entry-select")), label, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked, Selected: selected}).
+			Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Ring(1, m.theme.Ring)).Tooltip(label)
+		if selected {
+			button.Background(m.theme.Selection)
+		}
+		button.Children(func() {
+			ink, fill := m.assetAccent()
+			ui.Row(c).Size(27, 28).Shrink(0).Center().Radius(7).Background(fill).Children(func() {
+				ui.Icon(c, passwordVaultIcon).Size(15, 15).Color(ink)
+			})
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, entry.Name).FillWidth().Ellipsis().FontSize(12).Bold()
+				if detail != "" {
+					ui.Text(c, detail).FillWidth().Ellipsis().FontSize(11).Muted()
+				}
+			})
+			if entry.Favorite {
+				ui.Icon(c, passwordFavoriteIcon).Size(13, 13).Color(ink).Shrink(0)
+			}
+		})
 		if button.Clicked() {
-			c.After(func() { v.selected, v.revealed, v.message = entry.ID, false, ""; m.vaultTouch() })
+			c.After(func() { v.selected, v.revealed, v.message, v.detailOpen = entry.ID, false, "", true; m.vaultTouch() })
 		}
 		if !blocked {
 			ui.ContextMenu(c, button, func(menu *ui.MenuItems) {
-				if menu.Item("删除条目…").Destructive().Clicked() {
+				if entry.Account != "" && menu.Item(uiText("复制用户名")).Icon(copyIcon).Clicked() {
+					c.After(func() { v.selected, v.revealed = entry.ID, false; m.copyPasswordField(entry.Account, "用户名") })
+				}
+				if entry.Secret != "" {
+					label := "密码"
+					if entry.Kind == vaultKey {
+						label = "密钥"
+					}
+					if menu.Item(fmt.Sprintf(uiText("复制%s"), uiText(label))).Icon(copyIcon).Clicked() {
+						c.After(func() { v.selected, v.revealed = entry.ID, false; m.copyPasswordField(entry.Secret, label) })
+					}
+				}
+				if menu.Item(uiText("编辑条目")).Icon(modelEditIcon).Clicked() {
+					c.After(func() { m.openPasswordEntry(entry) })
+				}
+				menu.Separator()
+				if menu.Item(m.menuText("删除条目…")).Destructive().Clicked() {
 					c.After(func() { m.confirmPasswordDelete(passwordDeleteEntryMode, entry.ID) })
 				}
 			})
@@ -473,20 +594,24 @@ func (m *editorApp) passwordListRow(c ui.C, label string, icon gfx.Icon, height 
 func (m *editorApp) passwordDetail(c ui.C, v *passwordVaultView, blocked bool) {
 	entry, ok := v.store.data.entry(v.selected)
 	if !ok {
-		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Center().Children(func() { ui.Text(c, "选择一个条目").Muted() })
+		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Center().Children(func() { ui.Text(c, uiText("选择一个条目")).Muted() })
 		return
 	}
-	ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Scrollbars().Children(func() {
+	ui.Scroll(c).FillWidth().Grow(1).MinWidth(0).MinHeight(0).Scrollbars().Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(560).MinWidth(0).Pad(8).Gap(10).Children(func() {
 			ui.Row(c.Part("item-heading")).FillWidth().Items(ui.Center).Gap(5).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					m.assetHeading(c, passwordVaultIcon, entry.Name, passwordKindLabel(entry.Kind))
+					m.assetHeading(c, passwordVaultIcon, entry.Name, uiText(passwordKindLabel(entry.Kind)))
 				})
 				label := "收藏条目"
 				if entry.Favorite {
 					label = "取消收藏"
 				}
-				if ui.Button(c, label).Ghost().Height(28).FontSize(12).Disabled(blocked).Clicked() {
+				favorite := ui.Button(c, uiText(label)).Icon(passwordFavoriteIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText(label)).Disabled(blocked)
+				if entry.Favorite {
+					favorite.Secondary()
+				}
+				if favorite.Clicked() {
 					c.After(func() {
 						data := v.store.data.clone()
 						for i, item := range data.Entries {
@@ -498,8 +623,12 @@ func (m *editorApp) passwordDetail(c ui.C, v *passwordVaultView, blocked bool) {
 						m.savePasswordData(data)
 					})
 				}
-				if ui.Button(c, "编辑条目").Icon(modelEditIcon).IconOnly().Ghost().Size(28, 28).Tooltip("编辑条目").Disabled(blocked).Clicked() {
+				if ui.Button(c, uiText("编辑条目")).Icon(modelEditIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("编辑条目")).Disabled(blocked).Clicked() {
 					c.After(func() { m.openPasswordEntry(entry) })
+				}
+				if key, _ := passwordSite(entry); key != "" && ui.Button(c, uiText("添加同站点账号")).Icon(plusIcon).IconOnly().Ghost().Size(28, 28).
+					Tooltip(uiText("添加同站点账号")).Disabled(blocked).Clicked() {
+					c.After(func() { m.openPasswordEntry(passwordEntry{Group: entry.Group, Kind: vaultLogin, Site: entry.Site}) })
 				}
 			})
 			group := v.store.data.group(entry.Group)
@@ -509,7 +638,7 @@ func (m *editorApp) passwordDetail(c ui.C, v *passwordVaultView, blocked bool) {
 				if !m.light {
 					ink, fill = gfx.RGB(255, 208, 161), gfx.RGB(60, 41, 27)
 				}
-				ui.Text(c, "正式环境 · "+groupPath).FontSize(12).Bold().Color(ink).Background(fill).Radius(5).PadX(7).PadY(4)
+				ui.Text(c, uiText("正式环境 · ")+groupPath).FontSize(12).Bold().Color(ink).Background(fill).Radius(5).PadX(7).PadY(4)
 			} else {
 				m.assetBadge(c, groupPath)
 			}
@@ -534,7 +663,7 @@ func (m *editorApp) passwordDetail(c ui.C, v *passwordVaultView, blocked bool) {
 				m.assetCard(c.Part("metadata")).Gap(10).Children(func() {
 					if len(entry.Tags) > 0 {
 						ui.Column(c.Part("tags")).FillWidth().Gap(6).Children(func() {
-							ui.Text(c, "标签").Bold().FontSize(12)
+							ui.Text(c, uiText("标签")).Bold().FontSize(12)
 							ink, fill := m.assetAccent()
 							ui.Flow(c).FillWidth().Gap(6).LineGap(6).Children(func() {
 								for _, tag := range entry.Tags {
@@ -548,14 +677,11 @@ func (m *editorApp) passwordDetail(c ui.C, v *passwordVaultView, blocked bool) {
 					}
 					if entry.Note != "" {
 						ui.Column(c.Part("note")).FillWidth().Gap(5).Children(func() {
-							ui.Text(c, "备注").Bold().FontSize(12)
+							ui.Text(c, uiText("备注")).Bold().FontSize(12)
 							ui.Wrap(c, entry.Note).FillWidth().FontSize(13)
 						})
 					}
 				})
-			}
-			if key, _ := passwordSite(entry); key != "" && ui.Button(c, "添加同站点账号").Icon(plusIcon).Outline().Height(30).FontSize(12).Disabled(blocked).Clicked() {
-				c.After(func() { m.openPasswordEntry(passwordEntry{Group: entry.Group, Kind: vaultLogin, Site: entry.Site}) })
 			}
 		})
 	})
@@ -567,13 +693,17 @@ func (m *editorApp) passwordDetailField(c ui.C, label, value string, secret bool
 		if secret && !v.revealed {
 			shown = "••••••••••••"
 		}
-		ui.Text(c, label).Width(49).Shrink(0).PadTop(6).Muted().FontSize(12)
-		ui.Wrap(c, shown).MinWidth(0).Shrink(1).PadY(5).FontSize(13)
+		labelWidth := float32(52)
+		if englishInterface.Load() {
+			labelWidth = 70
+		}
+		ui.Text(c, uiText(label)).Width(labelWidth).Shrink(0).PadTop(6).Muted().FontSize(12)
+		ui.Text(c, shown).MinWidth(0).Shrink(1).PadY(5).FontSize(13).Ellipsis()
 		ui.Row(c.Part("actions")).Shrink(0).Gap(2).Children(func() {
 			if secret {
-				action, icon := "显示"+label, showSecretIcon
+				action, icon := fmt.Sprintf(uiText("显示%s"), uiText(label)), showSecretIcon
 				if v.revealed {
-					action, icon = "隐藏"+label, hideSecretIcon
+					action, icon = fmt.Sprintf(uiText("隐藏%s"), uiText(label)), hideSecretIcon
 				}
 				eye := ui.Button(c, action).Icon(icon).IconOnly().Ghost().Size(27, 28).Tooltip(action).Disabled(blocked)
 				skipButtonTabStop(eye, eye.N().ID)
@@ -581,7 +711,15 @@ func (m *editorApp) passwordDetailField(c ui.C, label, value string, secret bool
 					c.After(func() { v.revealed = !v.revealed; m.vaultTouch() })
 				}
 			}
-			if ui.Button(c, "复制"+label).Icon(copyIcon).IconOnly().Ghost().Size(27, 28).Tooltip("复制" + label).Disabled(blocked).Clicked() {
+			copyLabel := fmt.Sprintf(uiText("复制%s"), uiText(label))
+			tooltip, icon := copyLabel, copyIcon
+			if remaining := time.Until(v.copyFeedbackUntil); remaining > 0 && v.copiedEntry == v.selected && v.copiedField == label {
+				tooltip, icon = uiText("已复制"), passwordCopiedIcon
+				if canvas := c.Canvas(); canvas != nil {
+					canvas.RequestFrameIn(remaining)
+				}
+			}
+			if ui.Button(c, copyLabel).Icon(icon).IconOnly().Ghost().Size(27, 28).Tooltip(tooltip).Disabled(blocked).Clicked() {
 				c.After(func() { m.copyPasswordField(value, label) })
 			}
 		})

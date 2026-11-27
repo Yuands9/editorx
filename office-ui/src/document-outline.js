@@ -1,4 +1,5 @@
 import "./document-outline.css";
+import { text } from "./i18n.js";
 
 export function groupHeadings(headings) {
   const roots = [], parents = [];
@@ -48,7 +49,7 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
           const found = await navigate(entry.target);
           if (request !== navigation) return;
           if (found === false) {
-            showStatus("无法跳转到此标题。");
+            showStatus(text("无法跳转到此标题。", "Could not jump to this heading."));
             return;
           }
           showStatus("");
@@ -56,7 +57,7 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
           selected = entry.key;
           buttons.get(selected)?.setAttribute("aria-current", "location");
         } catch {
-          if (request === navigation) showStatus("无法跳转到此标题。");
+          if (request === navigation) showStatus(text("无法跳转到此标题。", "Could not jump to this heading."));
         }
       };
 
@@ -68,7 +69,7 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
         function updateDisclosure() {
           children.hidden = collapsed.has(entry.key);
           disclosure.setAttribute("aria-expanded", String(!children.hidden));
-          disclosure.setAttribute("aria-label", (children.hidden ? "展开 " : "收起 ") + entry.title);
+          disclosure.setAttribute("aria-label", (children.hidden ? text("展开 ", "Expand ") : text("收起 ", "Collapse ")) + entry.title);
         }
         disclosure.onclick = () => {
           if (children.hidden) collapsed.delete(entry.key);
@@ -91,7 +92,7 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
     if (panel.hidden || reading || !dirty) return;
     dirty = false;
     reading = true;
-    if (!list.firstChild) showStatus("正在读取标题…");
+    if (!list.firstChild) showStatus(text("正在读取标题…", "Loading headings…"));
     try {
       const entries = await readEntries();
       const scroll = panel.scrollTop;
@@ -99,10 +100,10 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
       list.replaceChildren();
       if (entries.length) list.append(drawEntries(entries));
       panel.scrollTop = scroll;
-      showStatus(entries.length ? "" : emptyMessage);
+      showStatus(entries.length ? "" : emptyMessage());
     } catch {
       dirty = true;
-      showStatus("无法读取标题。关闭标题列表后可重新打开。");
+      showStatus(text("无法读取标题。关闭标题列表后可重新打开。", "Could not read headings. Close and reopen the outline to retry."));
       return;
     } finally {
       reading = false;
@@ -118,11 +119,16 @@ export function bindDocumentOutline(readEntries, navigate, emptyMessage) {
   toggle.onclick = () => {
     panel.hidden = !panel.hidden;
     toggle.setAttribute("aria-expanded", String(!panel.hidden));
-    toggle.title = panel.hidden ? "显示标题列表" : "收起标题列表";
+    toggle.title = panel.hidden ? text("显示标题列表", "Show Outline") : text("收起标题列表", "Hide Outline");
     if (!panel.hidden) void refresh();
   };
   toggle.disabled = false;
   toggle.hidden = false;
+  document.addEventListener("editorx-language", () => {
+    toggle.title = panel.hidden ? text("显示标题列表", "Show Outline") : text("收起标题列表", "Hide Outline");
+    dirty = true;
+    scheduleRefresh();
+  });
   window.addEventListener("pagehide", () => clearTimeout(timer), { once: true });
   return () => {
     dirty = true;

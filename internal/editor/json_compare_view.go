@@ -37,7 +37,7 @@ func (m *editorApp) jsonDiffView(c ui.C, t *editorTab, blocked bool) {
 				m.jsonDiffEditor(c.Part("json-right"), t, t.comparison, blocked)
 			})
 		})
-		ui.Splitter(c, &t.diffSplit).Mins(112, 132).SplitterThickness(14).Label("调整 JSON 比对结果高度").DrawOver(func(d *ui.DrawContext) {
+		ui.Splitter(c, &t.diffSplit).Mins(112, 132).SplitterThickness(14).Label(uiText("调整 JSON 比对结果高度")).DrawOver(func(d *ui.DrawContext) {
 			r := d.Rect
 			color := m.theme.MutedForeground
 			if t.diffSplit.Dragging() || d.Canvas.Hovered() == t.diffSplit.ID {
@@ -50,19 +50,19 @@ func (m *editorApp) jsonDiffView(c ui.C, t *editorTab, blocked bool) {
 }
 
 func (m *editorApp) jsonDiffEditor(c ui.C, t *editorTab, pane *editorPane, blocked bool) {
-	index, title, side, editorLabel := 0, "原始 JSON · 当前文件", "左侧", "代码编辑区"
+	index, title, side, editorLabel := 0, uiText("原始 JSON · 当前文件"), "左侧", "代码编辑区"
 	if pane == t.comparison {
-		index, title, side, editorLabel = 1, "待比较 JSON", "右侧", "JSON 对比输入"
-		pane.view.Snapshot.Placeholder = "粘贴或载入第二份 JSON，自动比较"
+		index, title, side, editorLabel = 1, uiText("待比较 JSON"), "右侧", "JSON 对比输入"
+		pane.placeholder = "粘贴或载入第二份 JSON，自动比较"
 	}
 	ui.Row(c).FillWidth().Height(40).PadX(8).Gap(4).Items(ui.Center).Children(func() {
 		ui.Text(c, title).FontSize(12).Bold().Grow(1).MinWidth(0).Ellipsis()
 		m.jsonPaneMenu(c.Part("json-tools"), t, pane, &t.diffMenus[index], side, blocked)
 		if pane == t.comparison {
-			if ui.Button(c, "载入对比文件").Icon(fileIcon).IconOnly().Ghost().Size(28, 28).Tooltip("载入对比文件").Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("载入对比文件")).Icon(fileIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("载入对比文件")).Disabled(blocked).Clicked() {
 				c.After(func() { m.loadComparison(t) })
 			}
-			if ui.Button(c, "粘贴对比内容").Icon(jsonPasteIcon).IconOnly().Ghost().Size(28, 28).Tooltip("粘贴对比内容").Disabled(blocked).Clicked() {
+			if ui.Button(c, uiText("粘贴对比内容")).Icon(jsonPasteIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("粘贴对比内容")).Disabled(blocked).Clicked() {
 				c.After(func() {
 					value, err := app.ClipboardText()
 					if err != nil {
@@ -82,7 +82,7 @@ func (m *editorApp) jsonDiffEditor(c ui.C, t *editorTab, pane *editorPane, block
 }
 
 func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *bool, side string, blocked bool) {
-	label := side + "操作"
+	label := m.menuText(side + "操作")
 	trigger := ui.Row(c).Height(28).PadX(8).Gap(6).Radius(8).Items(ui.Center).Shrink(0).
 		Background(m.theme.Background).
 		HitWith(ui.ID(c), label, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked, Expandable: true, Expanded: *open}).
@@ -101,9 +101,9 @@ func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *b
 		disabled := blocked || strings.TrimSpace(pane.text.String()) == ""
 		styleJSONMenu(menu)
 		menu.WidthRange(184, 228)
-		menu.Label(side + " JSON 菜单")
+		menu.Label(m.menuText(side + " JSON 菜单"))
 		addAction := func(action string) {
-			if menu.Item(action).Disabled(disabled).Clicked() {
+			if menu.Item(m.menuText(action)).Disabled(disabled).Clicked() {
 				c.After(func() { m.jsonPaneAction(t, pane, side, action) })
 			}
 		}
@@ -119,38 +119,38 @@ func (m *editorApp) jsonPaneMenu(c ui.C, t *editorTab, pane *editorPane, open *b
 
 func (m *editorApp) jsonPaneAction(t *editorTab, pane *editorPane, side, action string) {
 	if _, composing := pane.text.Composition(); composing {
-		m.status = "请先完成中文选词，再处理" + side + " JSON"
+		m.status = fmt.Sprintf(uiText("请先完成中文选词，再处理%s JSON"), uiText(side))
 		return
 	}
 	source := pane.text.String()
 	output, kind, err := transformJSON(source, action, t.jsonIndent)
 	if err != nil {
 		message, _ := jsonErrorMessage(source, err)
-		m.fail(fmt.Errorf("%s JSON：%s", side, message))
+		m.fail(fmt.Errorf(uiText("%s JSON：%s"), uiText(side), message))
 		return
 	}
 	if kind != "JSON" {
-		result := m.addTab(document{eol: "CRLF"}, "转换结果"+jsonResultExtension(kind))
+		result := m.addTab(document{eol: "CRLF"}, uiText("转换结果")+jsonResultExtension(kind))
 		result.source.replace(output)
-		m.status = side + "转换结果已放入新标签"
+		m.status = uiText(side) + " · " + uiText("转换结果已放入新标签")
 		return
 	}
 	if output != source {
 		pane.replace(output)
 	}
 	t.source.focus, t.comparison.focus = pane == t.source, pane == t.comparison
-	m.status = side + " JSON · " + action
+	m.status = uiText(side) + " JSON · " + uiText(action)
 }
 
 func (m *editorApp) jsonDiffResults(c ui.C, t *editorTab, blocked bool) {
 	ui.Column(c.Part("json-differences")).FillWidth().Grow(1).MinHeight(0).Pad(10).Gap(6).Radius(16).Background(m.theme.Card).Clip().Children(func() {
 		ui.Row(c).FillWidth().Height(28).Gap(8).Items(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("差异 %d", len(t.differences))).FontSize(13).Bold()
-			ui.Text(c, "对象忽略键顺序 · 数组按位置比较").FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
+			ui.Text(c, fmt.Sprintf(uiText("差异 %d"), len(t.differences))).FontSize(13).Bold()
+			ui.Text(c, uiText("对象忽略键顺序 · 数组按位置比较")).FontSize(11).Muted().Grow(1).MinWidth(0).Ellipsis()
 			if len(t.differences) != 0 {
-				ui.Text(c, "逐项合并").FontSize(11).Muted()
+				ui.Text(c, uiText("逐项合并")).FontSize(11).Muted()
 			}
-			if ui.Button(c, "复制差异").Icon(copyIcon).IconOnly().Ghost().Size(28, 28).Tooltip("复制完整差异报告").
+			if ui.Button(c, uiText("复制差异")).Icon(copyIcon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText("复制完整差异报告")).
 				Disabled(blocked || t.diffError != "" || strings.TrimSpace(t.diffRight) == "").Clicked() {
 				c.After(func() { m.copyDiff(t) })
 			}
@@ -160,11 +160,11 @@ func (m *editorApp) jsonDiffResults(c ui.C, t *editorTab, blocked bool) {
 			return
 		}
 		if strings.TrimSpace(t.diffRight) == "" {
-			ui.Text(c, "在右侧粘贴或载入待比较的 JSON。").FontSize(12).Muted().FillWidth().Ellipsis()
+			ui.Text(c, uiText("在右侧粘贴或载入待比较的 JSON。")).FontSize(12).Muted().FillWidth().Ellipsis()
 			return
 		}
 		if len(t.differences) == 0 {
-			ui.Text(c, "两份 JSON 结构和值一致").FontSize(13).Color(m.theme.Success)
+			ui.Text(c, uiText("两份 JSON 结构和值一致")).FontSize(13).Color(m.theme.Success)
 			return
 		}
 		ui.List(c, &t.diffList, len(t.differences), func(item ui.ListRow) {
@@ -172,7 +172,7 @@ func (m *editorApp) jsonDiffResults(c ui.C, t *editorTab, blocked bool) {
 			item.Element.Height(34).MarginBottom(3).PadX(8).Gap(7).Radius(8).Background(m.theme.Background).Items(ui.Center).Clip().Children(func() {
 				m.jsonDiffRow(item.C, t, difference, blocked)
 			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("JSON 差异列表")
+		}).FillWidth().Grow(1).MinHeight(0).Label(uiText("JSON 差异列表"))
 		if index, submitted := t.diffList.Submitted(); submitted && !blocked {
 			difference := t.differences[index]
 			c.After(func() { t.locateDifference(difference) })
@@ -191,9 +191,9 @@ func (m *editorApp) jsonDiffRow(c ui.C, t *editorTab, difference jsonDifference,
 		color = m.theme.Danger
 	}
 	path := jsonDisplayPath(difference.path)
-	ui.Text(c, difference.kind).Color(color).Width(53).FontSize(12)
+	ui.Text(c, uiText(difference.kind)).Color(color).Width(53).FontSize(12)
 	locate := ui.Text(c, path).Grow(1).MinWidth(0).FontSize(12).Ellipsis().
-		HitWith(ui.ID(c), "定位 "+path, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked}).Tooltip("点击定位 " + path)
+		HitWith(ui.ID(c), uiText("定位 ")+path, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked}).Tooltip(uiText("点击定位 ") + path)
 	if locate.Clicked() {
 		c.After(func() { t.locateDifference(difference) })
 	}
@@ -209,15 +209,15 @@ func (m *editorApp) jsonDiffRow(c ui.C, t *editorTab, difference jsonDifference,
 		{"左侧", jsonMergeLeftIcon, true, difference.left.End == difference.left.Start, difference.right.End == difference.right.Start},
 		{"右侧", jsonMergeRightIcon, false, difference.right.End == difference.right.Start, difference.left.End == difference.left.Start},
 	} {
-		label := "合并到" + action.side
+		label := uiText("合并到" + action.side)
 		hint := label + " " + path
 		if action.sourceMissing {
-			hint = "删除" + action.side + "的 " + path
+			hint = fmt.Sprintf(uiText("删除%s的 %s"), uiText(action.side), path)
 		} else if action.missing {
-			hint = "添加到" + action.side + " " + path
+			hint = fmt.Sprintf(uiText("添加到%s %s"), uiText(action.side), path)
 		}
 		if action.missing && difference.arrayGap {
-			hint = "请先合并前面缺失的数组项"
+			hint = uiText("请先合并前面缺失的数组项")
 		}
 		if ui.Button(c, label+" "+path).Icon(action.icon).IconOnly().Ghost().Size(26, 26).
 			Tooltip(hint).Disabled(blocked || action.missing && difference.arrayGap).Clicked() {
@@ -227,7 +227,7 @@ func (m *editorApp) jsonDiffRow(c ui.C, t *editorTab, difference jsonDifference,
 }
 
 func (m *editorApp) loadComparison(t *editorTab) {
-	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "载入待比较 JSON", Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}}})
+	paths, err := app.OpenFiles(app.OpenFileOptions{Title: uiText("载入待比较 JSON"), Filters: []app.FileFilter{{Name: uiText("所有文件"), Pattern: "*.*"}}})
 	t.comparison.focus = true
 	if errors.Is(err, app.ErrCanceled) || err == nil && len(paths) == 0 {
 		return

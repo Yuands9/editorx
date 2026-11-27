@@ -21,13 +21,14 @@ type gitPatchHunk struct {
 type gitReviewData struct {
 	root, path, revision string
 	staged               bool
+	wholeWorking         bool
 	change               gitChange
 	comparison           localHistoryComparison
 	patch                string
 	hunks                []gitPatchHunk
 }
 
-type gitCommitRecord struct{ hash, author, at, subject string }
+type gitCommitRecord struct{ hash, author, at, subject, refs, body, parents string }
 type gitCommitFiles struct {
 	parent  string
 	changes []gitChange
@@ -66,7 +67,7 @@ func readGitReview(ctx context.Context, root string, change gitChange, staged bo
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if change.conflicted() {
-		return data, errors.New("此文件存在冲突，请打开冲突处理")
+		return data, errors.New(uiText("此文件存在冲突，请打开冲突处理"))
 	}
 	leftPath := change.path
 	if change.original != "" && staged {
@@ -115,6 +116,39 @@ func readGitReview(ctx context.Context, root string, change gitChange, staged bo
 		}
 		data.hunks = parseGitPatch(data.patch)
 	}
+	return data, nil
+}
+
+func readGitWorkingReview(ctx context.Context, root string, change gitChange) (gitReviewData, error) {
+	data := gitReviewData{root: root, path: change.path, change: change, wholeWorking: true}
+	git, err := exec.LookPath("git.exe")
+	if err != nil {
+		return data, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if change.conflicted() {
+		return data, errors.New(uiText("此文件存在冲突，请打开冲突处理"))
+	}
+	left, leftPath := "HEAD", change.path
+	if change.original != "" {
+		leftPath = change.original
+	}
+	if change.status == "??" || strings.HasPrefix(change.status, "A") {
+		left = ""
+	}
+	data.comparison.old, err = gitReviewBlob(ctx, git, root, left, leftPath)
+	if err != nil {
+		return data, err
+	}
+	deleted := strings.HasSuffix(change.status, "D") || strings.HasPrefix(change.status, "D") && !change.unstaged()
+	if !deleted {
+		data.comparison.current, err = readHistoryCurrentFile(ctx, filepath.Join(root, change.path))
+		if err != nil {
+			return data, err
+		}
+	}
+	data.comparison.compareLines()
 	return data, nil
 }
 
@@ -184,7 +218,7 @@ func (h gitPatchHunk) rows(result components.CodeDiffResult) components.CodeDiff
 
 func applyGitHunk(ctx context.Context, data gitReviewData, index int) error {
 	if index < 0 || index >= len(data.hunks) || data.revision != "" {
-		return errors.New("请选择可暂存的区别")
+		return errors.New(uiText("请选择可暂存的区别"))
 	}
 	git, err := exec.LookPath("git.exe")
 	if err != nil {
@@ -197,7 +231,7 @@ func applyGitHunk(ctx context.Context, data gitReviewData, index int) error {
 		return err
 	}
 	if patch != data.patch {
-		return errors.New("文件或暂存区已变化，请刷新差异后重试")
+		return errors.New(uiText("文件或暂存区已变化，请刷新差异后重试"))
 	}
 	args := []string{"apply", "--cached", "--whitespace=nowarn", "--recount"}
 	if data.staged {
@@ -208,20 +242,8 @@ func applyGitHunk(ctx context.Context, data gitReviewData, index int) error {
 }
 
 func readGitLog(ctx context.Context, root string) ([]gitCommitRecord, error) {
-	git, err := exec.LookPath("git.exe")
-	if err != nil {
-		return nil, err
-	}
-	output, err := runGitCommand(ctx, git, root, "log", "-n", "100", "--format=%H%x00%an%x00%aI%x00%s%x00")
-	if err != nil {
-		return nil, err
-	}
-	fields := strings.Split(output, "\x00")
-	var commits []gitCommitRecord
-	for i := 0; i+3 < len(fields); i += 4 {
-		commits = append(commits, gitCommitRecord{strings.TrimSpace(fields[i]), fields[i+1], fields[i+2], fields[i+3]})
-	}
-	return commits, nil
+	page, err := readGitLogPage(ctx, root, gitLogQuery{})
+	return page.commits, err
 }
 
 func readGitCommitFiles(ctx context.Context, root, revision string) (gitCommitFiles, error) {
@@ -259,6 +281,9 @@ func readGitCommitFiles(ctx context.Context, root, revision string) (gitCommitFi
 func gitReviewTitle(data gitReviewData) string {
 	if data.revision != "" {
 		return fmt.Sprintf("%s · %s", data.revision[:min(8, len(data.revision))], data.path)
+	}
+	if data.wholeWorking {
+		return uiText("整文件变更 · HEAD → 当前磁盘文件 · ") + data.path
 	}
 	if data.staged {
 		return "已暂存 · HEAD → 暂存区 · " + data.path

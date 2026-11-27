@@ -111,7 +111,7 @@ func (t *editorTab) enterLargeEdit(loaded largeEditLoad, saved *largeEditRevisio
 	pane.readOnly, pane.view.Snapshot.ReadOnly = false, false
 	pane.view.Snapshot.LineNumbers, pane.view.Snapshot.ContinuousCaretBlink = true, true
 	pane.view.Snapshot.ScrollbarID = gfx.ID{}
-	pane.view.Snapshot.Placeholder = "文件为空，输入开始编辑"
+	pane.placeholder = "文件为空，输入开始编辑"
 	pane.view.Scroll, pane.view.Pointer = t.scrollLargeEdit, t.pointLargeEdit
 	pane.view.Key = func(event gfx.KeyEvent) gfx.EventResult {
 		if pane.searchKey != nil {
@@ -847,7 +847,7 @@ func (m *editorApp) largeEditPane(c ui.C, t *editorTab, blocked bool) {
 				edit.top = edit.viewport.absolute(offset)
 			}
 		})
-		ui.Control(c.Part("document-scroll"), "文档滚动条", &edit.bar).Width(12).Shrink(0).FillHeight().Draw(func(d *ui.DrawContext) {
+		ui.Control(c.Part("document-scroll"), uiText("文档滚动条"), &edit.bar).Width(12).Shrink(0).FillHeight().Draw(func(d *ui.DrawContext) {
 			edit.barBounds = d.Rect
 			thumb := t.largeEditScrollbarThumb()
 			if thumb.Height < d.Rect.Height {
@@ -862,18 +862,18 @@ func (m *editorApp) largeEditPane(c ui.C, t *editorTab, blocked bool) {
 
 func (m *editorApp) largeEditToolbar(c ui.C, t *editorTab, disabled bool) {
 	ui.Row(c).FillWidth().Height(40).PadX(12).Gap(5).Items(ui.Center).Children(func() {
-		ui.Text(c, "完整编辑").Bold().FontSize(13)
-		if ui.Button(c, "转到行").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+		ui.Text(c, uiText("完整编辑")).Bold().FontSize(13)
+		if ui.Button(c, uiText("转到行")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 			c.After(m.openGotoLine)
 		}
 		ui.Slot(c).Grow(1)
-		if ui.Button(c, "查找").Icon(searchIcon).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+		if ui.Button(c, uiText("查找")).Icon(searchIcon).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 			c.After(t.openSearch)
 		}
-		if ui.Button(c, "替换").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+		if ui.Button(c, uiText("替换")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 			c.After(t.openReplace)
 		}
-		if ui.Button(c, "退出完整编辑").Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
+		if ui.Button(c, uiText("退出完整编辑")).Ghost().FontSize(12).Height(28).Disabled(disabled).Clicked() {
 			c.After(func() { m.exitLargeTextEdit(t) })
 		}
 	})
@@ -889,12 +889,12 @@ func (m *editorApp) largeEditStatusBar(c ui.C, t *editorTab, blocked bool) {
 	}
 	status := m.status
 	if t.modified() {
-		status = "未保存"
+		status = uiText("未保存")
 	}
 	ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
 		ui.Text(c, status).Muted().FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 		if err == nil {
-			ui.Text(c, fmt.Sprintf("行 %d · 共 %d 行", line+1, edit.revision.breaks+1)).Muted().FontSize(12)
+			ui.Text(c, fmt.Sprintf(uiText("行 %d · 共 %d 行"), line+1, edit.revision.breaks+1)).Muted().FontSize(12)
 		}
 		ui.Text(c, t.doc.eol).Muted().FontSize(12)
 		m.encodingPicker(c, t, blocked)

@@ -76,7 +76,7 @@ func (doc document) checkDisk(ctx context.Context, path string) (os.FileInfo, er
 	}
 	input, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("无法核对原文件，请另存为：%w", err)
+		return nil, fmt.Errorf(uiText("无法核对原文件，请另存为：%w"), err)
 	}
 	defer input.Close()
 	info, err := input.Stat()

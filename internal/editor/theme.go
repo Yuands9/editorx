@@ -33,8 +33,8 @@ var editorControlStyles = ui.Styles{
 }
 
 func (m *editorApp) themeButton(c ui.C, blocked bool) {
-	if ui.Button(c, "切换颜色主题").Icon(themeIcon).IconOnly().Ghost().Size(32, 34).
-		Tooltip("切换主题 · 深色 / 浅色").TooltipOn(ui.TooltipLeft).Disabled(blocked).Clicked() {
+	if ui.Button(c, m.menuText("切换颜色主题")).Icon(themeIcon).IconOnly().Ghost().Size(32, 34).
+		Tooltip(m.menuText("切换主题 · 深色 / 浅色")).TooltipOn(ui.TooltipLeft).Disabled(blocked).Clicked() {
 		c.After(m.cycleTheme)
 	}
 }
@@ -154,6 +154,10 @@ func (m *editorApp) setLightMode(light bool) {
 		if state.window != nil {
 			_ = state.window.SetIcon(themedApplicationIcon(light))
 		}
+		state.invalidator.Invalidate()
+	}
+	if state := m.gitLogWindow; state != nil {
+		_ = state.window.SetIcon(themedApplicationIcon(light))
 		state.invalidator.Invalidate()
 	}
 	for _, tab := range m.tabs {

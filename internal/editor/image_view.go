@@ -59,18 +59,18 @@ func readImage(path string) (*imageDocument, error) {
 func decodeImage(source io.ReadSeeker, size int64) (*imageDocument, error) {
 	config, kind, err := image.DecodeConfig(source)
 	if err != nil {
-		return nil, fmt.Errorf("无法识别图片或图片已损坏：%w", err)
+		return nil, fmt.Errorf(uiText("无法识别图片或图片已损坏：%w"), err)
 	}
 	// 先检查尺寸再解码，避免巨大像素分配和超过 D3D 纹理的单边上限。
 	if config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 16384 || int64(config.Width)*int64(config.Height) > 40_000_000 {
-		return nil, fmt.Errorf("图片尺寸 %d × %d 超出查看范围（最多 4000 万像素，单边不超过 16384）", config.Width, config.Height)
+		return nil, fmt.Errorf(uiText("图片尺寸 %d × %d 超出查看范围（最多 4000 万像素，单边不超过 16384）"), config.Width, config.Height)
 	}
 	if _, err = source.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
 	decoded, _, err := image.Decode(source)
 	if err != nil {
-		return nil, fmt.Errorf("图片解码失败：%w", err)
+		return nil, fmt.Errorf(uiText("图片解码失败：%w"), err)
 	}
 	picture := &imageDocument{
 		bitmap: imageToVivaBitmap(decoded),
@@ -152,15 +152,15 @@ func (m *editorApp) imageView(c ui.C, t *editorTab, blocked bool) {
 		return
 	}
 	ui.Row(c).FillWidth().Height(44).PadX(12).Gap(8).Items(ui.Center).Children(func() {
-		if ui.Button(c, "适应窗口").Ghost().Height(28).FontSize(12).Clicked() {
+		if ui.Button(c, uiText("适应窗口")).Ghost().Height(28).FontSize(12).Clicked() {
 			picture.zoom = 0
 			picture.pan = gfx.Point{}
 		}
-		if ui.Button(c, "原始尺寸").Ghost().Height(28).FontSize(12).Tooltip("100% · 一个图片像素对应一个屏幕像素").Clicked() {
+		if ui.Button(c, uiText("原始尺寸")).Ghost().Height(28).FontSize(12).Tooltip(uiText("100% · 一个图片像素对应一个屏幕像素")).Clicked() {
 			picture.zoom = 1
 			picture.pan = gfx.Point{}
 		}
-		if ui.Button(c, "缩小图片").Icon(minusIcon).IconOnly().Ghost().Width(28).Height(28).Clicked() {
+		if ui.Button(c, uiText("缩小图片")).Icon(minusIcon).IconOnly().Ghost().Width(28).Height(28).Clicked() {
 			picture.changeZoom(1 / 1.2)
 		}
 		label := "适应窗口"
@@ -168,24 +168,24 @@ func (m *editorApp) imageView(c ui.C, t *editorTab, blocked bool) {
 			label = fmt.Sprintf("%.0f%%", picture.zoom*100)
 		}
 		ui.Text(c, label).FontSize(12).Muted().Width(68)
-		if ui.Button(c, "放大图片").Icon(plusIcon).IconOnly().Ghost().Width(28).Height(28).Clicked() {
+		if ui.Button(c, uiText("放大图片")).Icon(plusIcon).IconOnly().Ghost().Width(28).Height(28).Clicked() {
 			picture.changeZoom(1.2)
 		}
 		ui.Slot(c).Grow(1)
-		if ui.Button(c.Part("image-ocr"), "识别文字").Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
+		if ui.Button(c.Part("image-ocr"), uiText("识别文字")).Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
 			c.After(m.showImageOCR)
 		}
-		if ui.Button(c.Part("image-ai"), "AI 识图").Icon(aiIcon).Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
+		if ui.Button(c.Part("image-ai"), uiText("AI 识图")).Icon(aiIcon).Outline().Height(28).FontSize(12).Disabled(blocked).Clicked() {
 			c.After(m.openImageAI)
 		}
-		ui.Text(c, "滚轮缩放 · 拖动查看").FontSize(12).Muted()
+		ui.Text(c, uiText("滚轮缩放 · 拖动查看")).FontSize(12).Muted()
 	})
-	control := ui.Control(c, "图片查看区", &picture.handlers).FillWidth().Grow(1).MinHeight(0)
+	control := ui.Control(c, uiText("图片查看区"), &picture.handlers).FillWidth().Grow(1).MinHeight(0)
 	cursor := gfx.PointerCursorHand
 	if picture.dragging {
 		cursor = gfx.PointerCursorGrabbing
 	}
-	control.HitWith(control.N().ID, "图片查看区", gfx.HitOptions{Role: gfx.RoleGroup, Cursor: cursor})
+	control.HitWith(control.N().ID, uiText("图片查看区"), gfx.HitOptions{Role: gfx.RoleGroup, Cursor: cursor})
 	control.Draw(func(d *ui.DrawContext) {
 		zoom := picture.zoom
 		if zoom == 0 {
@@ -201,9 +201,9 @@ func (m *editorApp) imageStatus(c ui.C, t *editorTab) {
 	picture := t.picture
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	ui.Row(c).FillWidth().Height(28).PadX(14).Gap(18).Items(ui.Center).Background(m.theme.Card).Children(func() {
-		ui.Text(c, "图片 · 只读查看").FontSize(12).Muted().Grow(1)
+		ui.Text(c, uiText("图片 · 只读查看")).FontSize(12).Muted().Grow(1)
 		if picture.kind == "GIF" {
-			ui.Text(c, "GIF 首帧").FontSize(12).Muted()
+			ui.Text(c, uiText("GIF 首帧")).FontSize(12).Muted()
 		}
 		ui.Text(c, fmt.Sprintf("%d × %d px", picture.bitmap.Width, picture.bitmap.Height)).FontSize(12).Muted()
 		ui.Text(c, fmt.Sprintf("%.1f KB", float64(picture.bytes)/1024)).FontSize(12).Muted()

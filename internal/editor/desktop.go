@@ -52,15 +52,16 @@ func (d *editorDesktop) syncTray() error {
 			}
 		},
 		Menu: func() []app.MenuItem {
+			language := d.preferences.MenuLanguage
 			return []app.MenuItem{
-				{Title: "显示 EditorX", Disabled: d.exiting, OnSelect: func() { d.present(nil) }},
-				{Title: "设置…", Disabled: d.exiting, OnSelect: func() {
+				{Title: language.text("显示 EditorX"), Disabled: d.exiting, OnSelect: func() { d.present(nil) }},
+				{Title: language.text("设置…"), Disabled: d.exiting, OnSelect: func() {
 					if window := d.present(nil); window != nil {
 						window.openApplicationSettings()
 					}
 				}},
 				{Separator: true},
-				{Title: "退出 EditorX", Disabled: d.exiting, OnSelect: d.quit},
+				{Title: language.text("退出 EditorX"), Disabled: d.exiting, OnSelect: d.quit},
 			}
 		},
 	})
@@ -153,6 +154,7 @@ func (d *editorDesktop) closeLastWindow(window *editorApp) {
 		return
 	}
 	window.closeHistoryComparison()
+	window.closeGitLog()
 	window.nativeWindow.Hide()
 }
 
@@ -181,7 +183,7 @@ func (d *editorDesktop) closeWindowAfterDrafts(window *editorApp, remaining []*e
 	d.store.windows = slices.Delete(slices.Clone(previous), index, index+1)
 	if err := d.store.save(); err != nil {
 		d.store.windows = previous
-		window.fail(fmt.Errorf("无法保存本次会话，窗口保持打开：%w", err))
+		window.fail(fmt.Errorf(uiText("无法保存本次会话，窗口保持打开：%w"), err))
 		window.invalidator.Invalidate()
 		return
 	}
@@ -222,7 +224,7 @@ func (d *editorDesktop) flushForExit(index int) {
 			continue
 		}
 		if window.largeEditOperationPending() {
-			d.cancelExit(window, fmt.Errorf("请等待大文件保存完成"))
+			d.cancelExit(window, fmt.Errorf("%s", uiText("请等待大文件保存完成")))
 			return
 		}
 		if window.appSettings.open {
@@ -242,14 +244,14 @@ func (d *editorDesktop) flushForExit(index int) {
 
 func (d *editorDesktop) finishExit() {
 	if err := d.store.save(); err != nil {
-		d.cancelExit(d.lastActive, fmt.Errorf("无法保存本次会话：%w", err))
+		d.cancelExit(d.lastActive, fmt.Errorf(uiText("无法保存本次会话：%w"), err))
 		return
 	}
 	if d.exitConfirmation != nil && d.exitConfirmation.dontAsk {
 		preferences := d.preferences
 		preferences.SkipExitSaveConfirmation = true
 		if err := preferences.save(d.store.directory); err != nil {
-			d.cancelExit(d.lastActive, fmt.Errorf("无法保存退出询问设置：%w", err))
+			d.cancelExit(d.lastActive, fmt.Errorf(uiText("无法保存退出询问设置：%w"), err))
 			return
 		}
 		d.preferences = preferences
@@ -260,7 +262,7 @@ func (d *editorDesktop) finishExit() {
 			d.updated, err = replaceEditorExecutable(executable, d.updateFile)
 		}
 		if err != nil {
-			d.cancelExit(d.lastActive, fmt.Errorf("无法替换 EditorX 程序：%w", err))
+			d.cancelExit(d.lastActive, fmt.Errorf(uiText("无法替换 EditorX 程序：%w"), err))
 			return
 		}
 	}

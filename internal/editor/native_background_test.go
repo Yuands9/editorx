@@ -31,7 +31,7 @@ func TestNativeEditorBackground(t *testing.T) {
 		t.Cleanup(cancel)
 		command := exec.CommandContext(ctx, executable, paths...)
 		command.Dir = filepath.Dir(directory)
-		command.Env = append(os.Environ(), "VIVA_EDITOR_DATA_DIR="+directory)
+		command.Env = append(os.Environ(), "VIVA_EDITOR_DATA_DIR="+directory, editorCommandRegistration+"=0")
 		return command
 	}
 	openWindow := func(t *testing.T, command *exec.Cmd) (uintptr, <-chan error) {

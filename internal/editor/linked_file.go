@@ -80,7 +80,7 @@ func linkedFileURL(value string) (*url.URL, error) {
 	address, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || address.Hostname() == "" || address.User != nil ||
 		(address.Scheme != "http" && address.Scheme != "https") {
-		return nil, errors.New("请输入有效的 HTTP 或 HTTPS 文件地址")
+		return nil, errors.New(uiText("请输入有效的 HTTP 或 HTTPS 文件地址"))
 	}
 	address.Fragment = ""
 	return address, nil
@@ -123,8 +123,8 @@ func (m *editorApp) linkedFileDialog(c ui.C) {
 	}
 	busy := state.request != nil
 	submitted := false
-	dismissed := ui.ModalWith(c, &state.open, "打开链接文件", ui.ModalSpec{Width: 520}, func() {
-		field := ui.TextField(c, &state.address, "文件链接", "粘贴 HTTP 或 HTTPS 链接").
+	dismissed := ui.ModalWith(c, &state.open, uiText("打开链接文件"), ui.ModalSpec{Width: 520}, func() {
+		field := ui.TextField(c, &state.address, uiText("文件链接"), uiText("粘贴 HTTP 或 HTTPS 链接")).
 			FillWidth().Height(38).PadX(12).Radius(9).Disabled(busy)
 		if state.focus {
 			field.AutoFocus()
@@ -132,23 +132,23 @@ func (m *editorApp) linkedFileDialog(c ui.C) {
 		}
 		submitted = field.Submitted()
 		if busy {
-			ui.Text(c, "正在打开链接文件…").Muted().FontSize(12)
+			ui.Text(c, uiText("正在打开链接文件…")).Muted().FontSize(12)
 			ui.Progress(c.Part("progress"), 0).FillWidth().Indeterminate()
 		} else if state.problem != "" {
 			ui.Wrap(c, state.problem).FillWidth().FontSize(12).Color(m.theme.Danger)
 		} else {
-			ui.Text(c, "直接打开时只在内存中保留文件。").Muted().FontSize(12)
+			ui.Text(c, uiText("直接打开时只在内存中保留文件。")).Muted().FontSize(12)
 		}
 	}, func() {
-		if ui.Button(c, "取消").Ghost().Clicked() {
+		if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 			c.After(m.closeLinkedFileDialog)
 		}
 		_, composing := state.address.GetEditor().Composition()
 		ready := !busy && !composing && strings.TrimSpace(state.address.Text()) != ""
-		if ui.Button(c, "保存并打开…").Outline().Disabled(!ready).Clicked() {
+		if ui.Button(c, uiText("保存并打开…")).Outline().Disabled(!ready).Clicked() {
 			c.After(func() { m.startLinkedFile(true) })
 		}
-		if ui.Button(c, "打开").Icon(linkIcon).Disabled(!ready).Clicked() || ready && submitted {
+		if ui.Button(c, uiText("打开")).Icon(linkIcon).Disabled(!ready).Clicked() || ready && submitted {
 			c.After(func() { m.startLinkedFile(false) })
 		}
 	})
@@ -204,9 +204,9 @@ func (m *editorApp) updateLinkedFile(c ui.C) {
 			tab.htmlMode = "编辑"
 		}
 		if tab.doc.path == "" {
-			m.status = "已临时打开链接文件 · " + tab.title()
+			m.status = uiText("已临时打开链接文件 · ") + tab.title()
 		} else {
-			m.status = "已保存并打开 · " + tab.title()
+			m.status = uiText("已保存并打开 · ") + tab.title()
 		}
 	}
 	if m.post != nil {
@@ -221,8 +221,8 @@ func (m *editorApp) saveLinkedFile(result linkedFileResult) {
 	state.request, state.save, state.focus = nil, false, true
 	name := result.file.name
 	path, err := app.SaveFile(app.SaveFileOptions{
-		Title: "保存链接文件", SuggestedName: name, DefaultExtension: strings.TrimPrefix(filepath.Ext(name), "."),
-		Filters: []app.FileFilter{{Name: "所有文件", Pattern: "*.*"}},
+		Title: uiText("保存链接文件"), SuggestedName: name, DefaultExtension: strings.TrimPrefix(filepath.Ext(name), "."),
+		Filters: []app.FileFilter{{Name: uiText("所有文件"), Pattern: "*.*"}},
 	})
 	if errors.Is(err, app.ErrCanceled) {
 		return
@@ -235,7 +235,7 @@ func (m *editorApp) saveLinkedFile(result linkedFileResult) {
 		return
 	}
 	if m.tabAtPath(path) != nil {
-		state.problem = "该文件已在编辑器中打开，请选择其他保存位置"
+		state.problem = uiText("该文件已在编辑器中打开，请选择其他保存位置")
 		return
 	}
 	state.request = ui.NewEffect[linkedFileResult, int](func(ctx context.Context) (linkedFileResult, error) {
@@ -249,7 +249,7 @@ func (m *editorApp) saveLinkedFile(result linkedFileResult) {
 			return ctx.Err()
 		})
 		if err != nil {
-			return linkedFileResult{}, fmt.Errorf("无法保存链接文件：%w", err)
+			return linkedFileResult{}, fmt.Errorf(uiText("无法保存链接文件：%w"), err)
 		}
 		result.data, result.file.doc.path = nil, path
 		if result.file.preview != nil {
@@ -270,21 +270,21 @@ func readLinkedFile(ctx context.Context, client *http.Client, address *url.URL) 
 		if errors.As(err, &requestError) {
 			err = requestError.Err
 		}
-		return linkedFileResult{}, fmt.Errorf("无法读取链接文件：%w", err)
+		return linkedFileResult{}, fmt.Errorf(uiText("无法读取链接文件：%w"), err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return linkedFileResult{}, fmt.Errorf("链接返回 HTTP %d", response.StatusCode)
+		return linkedFileResult{}, fmt.Errorf(uiText("链接返回 HTTP %d"), response.StatusCode)
 	}
 	if response.ContentLength > linkedFileLimit {
-		return linkedFileResult{}, errors.New("链接文件超过 128 MiB")
+		return linkedFileResult{}, errors.New(uiText("链接文件超过 128 MiB"))
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, linkedFileLimit+1))
 	if err != nil {
-		return linkedFileResult{}, fmt.Errorf("无法读取链接文件：%w", err)
+		return linkedFileResult{}, fmt.Errorf(uiText("无法读取链接文件：%w"), err)
 	}
 	if len(data) > linkedFileLimit {
-		return linkedFileResult{}, errors.New("链接文件超过 128 MiB")
+		return linkedFileResult{}, errors.New(uiText("链接文件超过 128 MiB"))
 	}
 	if err := ctx.Err(); err != nil {
 		return linkedFileResult{}, err
@@ -297,7 +297,7 @@ func readLinkedFile(ctx context.Context, client *http.Client, address *url.URL) 
 	}
 	file, err := decodeLinkedFile(name, data)
 	if err != nil {
-		return linkedFileResult{}, fmt.Errorf("无法打开链接文件：%w", err)
+		return linkedFileResult{}, fmt.Errorf(uiText("无法打开链接文件：%w"), err)
 	}
 	if err := ctx.Err(); err != nil {
 		return linkedFileResult{}, err

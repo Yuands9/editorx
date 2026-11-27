@@ -107,7 +107,7 @@ func readDocumentPreview(path string) (*documentPreview, error) {
 
 func validatePDFHeader(data []byte) error {
 	if !bytes.Contains(data[:min(len(data), 1024)], []byte("%PDF-")) {
-		return errors.New("文件缺少 PDF 标识")
+		return errors.New(uiText("文件缺少 PDF 标识"))
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func readMindMap(path string) ([]mindMapSheet, error) {
 		defer book.Close()
 	}
 	if err != nil {
-		return nil, errors.New("无法读取 XMind 压缩包")
+		return nil, errors.New(uiText("无法读取 XMind 压缩包"))
 	}
 	return decodeMindMap(&book.Reader)
 }
@@ -138,7 +138,7 @@ func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 		dataFile = legacy
 	}
 	if dataFile == nil || dataFile.UncompressedSize64 > xmindContentLimit {
-		return nil, errors.New("XMind 主题数据缺失或过大")
+		return nil, errors.New(uiText("XMind 主题数据缺失或过大"))
 	}
 	stream, err := dataFile.Open()
 	if err != nil {
@@ -147,7 +147,7 @@ func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 	defer stream.Close()
 	data, err := io.ReadAll(io.LimitReader(stream, xmindContentLimit+1))
 	if err != nil || len(data) > xmindContentLimit {
-		return nil, errors.New("无法读取完整的 XMind 主题")
+		return nil, errors.New(uiText("无法读取完整的 XMind 主题"))
 	}
 	var sheets []mindMapSheet
 	left := xmindTopicLimit
@@ -158,7 +158,7 @@ func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 		}
 		var current []sheet
 		if err := json.Unmarshal(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}), &current); err != nil {
-			return nil, errors.New("XMind 的 content.json 格式无效")
+			return nil, errors.New(uiText("XMind 的 content.json 格式无效"))
 		}
 		for _, item := range current {
 			topic := item.Root.tree(0, &left)
@@ -172,7 +172,7 @@ func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 			} `xml:"sheet"`
 		}
 		if err := xml.Unmarshal(data, &legacy); err != nil {
-			return nil, errors.New("XMind 的 content.xml 格式无效")
+			return nil, errors.New(uiText("XMind 的 content.xml 格式无效"))
 		}
 		for _, item := range legacy.Sheets {
 			topic := item.Root.tree(0, &left)
@@ -180,10 +180,10 @@ func decodeMindMap(book *zip.Reader) ([]mindMapSheet, error) {
 		}
 	}
 	if left < 0 {
-		return nil, errors.New("XMind 主题数或层级超出了预览范围")
+		return nil, errors.New(uiText("XMind 主题数或层级超出了预览范围"))
 	}
 	if len(sheets) == 0 {
-		return nil, errors.New("XMind 文件中没有画布")
+		return nil, errors.New(uiText("XMind 文件中没有画布"))
 	}
 	return sheets, nil
 }
@@ -267,7 +267,7 @@ func (m *editorApp) openDocumentPreview(t *editorTab) {
 		err = xmindTemplate.Execute(&html, struct{ Sheets []mindMapSheet }{preview.mindMap})
 	}
 	if err != nil {
-		preview.issue = "无法生成 " + preview.kind + " 预览：" + err.Error()
+		preview.issue = uiText("无法生成 ") + preview.kind + uiText(" 预览：") + err.Error()
 		return
 	}
 	const location = "editorx-document://local/index.html"
@@ -290,11 +290,12 @@ func (m *editorApp) openDocumentPreview(t *editorTab) {
 			}
 			preview.ready = true
 			preview.view.Eval(previewThemeJS(m.light))
+			preview.view.Eval(previewLanguageJS(currentUILanguage()))
 		},
 	})
 	if err != nil {
 		preview.close()
-		preview.issue = "无法打开内嵌预览：" + err.Error()
+		preview.issue = uiText("无法打开内嵌预览：") + err.Error()
 		return
 	}
 	preview.view = view

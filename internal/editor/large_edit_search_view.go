@@ -35,7 +35,7 @@ func (t *editorTab) refreshLargeEditSearch() {
 	edit.searchQuery, edit.searchJob, edit.searchSelected = largeEditQuery{}, nil, false
 	t.largeText.selectedResult = -1
 	if len(pattern) > largeTextQueryLimit {
-		s.errorText = "查找内容过长"
+		s.errorText = uiText("查找内容过长")
 	} else {
 		query, err := s.options.compile(pattern)
 		if err == nil {
@@ -43,7 +43,7 @@ func (t *editorTab) refreshLargeEditSearch() {
 			edit.searchQuery.normalizeCRLF = t.doc.eol == "CRLF"
 		}
 		if err != nil {
-			s.errorText = "正则表达式无效：" + err.Error()
+			s.errorText = uiText("正则表达式无效：") + err.Error()
 		} else {
 			s.compiled = query
 		}
@@ -83,7 +83,7 @@ func (t *editorTab) findInLargeEdit(direction int) {
 func (t *editorTab) startLargeEditFind(from int64, direction int, skipEmpty bool) {
 	s, edit := &t.search, t.largeText.editing
 	query, revision, wrap := edit.searchQuery, edit.revision, s.wrap
-	t.largeText.selectedResult, s.message = -1, "正在查找…"
+	t.largeText.selectedResult, s.message = -1, uiText("正在查找…")
 	edit.searchJob = ui.NewEffect[largeEditSearchOutcome, int](func(ctx context.Context) (largeEditSearchOutcome, error) {
 		match, err := searchLargeEdit(ctx, revision, query, from, direction, wrap, skipEmpty)
 		return largeEditSearchOutcome{match: match}, err
@@ -144,7 +144,7 @@ func (t *editorTab) countLargeEditMatches() {
 	}
 	edit := t.largeText.editing
 	query, revision := edit.searchQuery, edit.revision
-	t.search.message = "正在计数…"
+	t.search.message = uiText("正在计数…")
 	edit.searchJob = ui.NewEffect[largeEditSearchOutcome, int](func(ctx context.Context) (largeEditSearchOutcome, error) {
 		count := 0
 		err := query.walk(ctx, revision, 0, func(text.Span, []int) bool {
@@ -174,9 +174,9 @@ func (t *editorTab) updateLargeEditSearch(c ui.C) {
 	case err != nil:
 		s.message = err.Error()
 	case result.counted:
-		s.message = fmt.Sprintf("当前范围共有 %d 个匹配", result.count)
+		s.message = fmt.Sprintf(uiText("当前范围共有 %d 个匹配"), result.count)
 	case result.match.Start < 0:
-		s.message = "此方向没有更多匹配"
+		s.message = uiText("此方向没有更多匹配")
 	default:
 		if _, composing := t.source.text.Composition(); composing {
 			s.message = ""
@@ -217,7 +217,7 @@ func (t *editorTab) replaceInLargeEdit(all bool) {
 	state, edit, s := t.largeText, t.largeText.editing, &t.search
 	template := t.largeEditInputValue(s.replacementText())
 	if !utf8.ValidString(template) || strings.ContainsRune(template, 0) {
-		s.message = "请输入有效的替换内容"
+		s.message = uiText("请输入有效的替换内容")
 		return
 	}
 	start, end := edit.position.rangeOffsets()
@@ -227,7 +227,7 @@ func (t *editorTab) replaceInLargeEdit(all bool) {
 	}
 	revision, query := edit.revision, edit.searchQuery
 	edit.searchJob, edit.lastType = nil, time.Time{}
-	s.message = "正在替换…"
+	s.message = uiText("正在替换…")
 	state.replacing = ui.NewEffect[largeEditReplacement, int](func(ctx context.Context) (largeEditReplacement, error) {
 		if all {
 			return replaceAllLargeEdit(ctx, revision, query, template)

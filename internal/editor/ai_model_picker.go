@@ -76,9 +76,9 @@ func (m *editorApp) aiProfilePicker(c ui.C, blocked bool) {
 	if profile.ID != 0 {
 		a.effort = profile.effectiveReasoning(a.effort)
 	}
-	label, tooltip := "切换模型配置", "切换模型 · "+model+" · "+profile.Name+" · 思考 "+aiReasoningLabel(a.effort)
+	label, tooltip := "切换模型配置", uiText("切换模型 · ")+model+" · "+profile.Name+uiText(" · 思考 ")+aiReasoningLabel(a.effort)
 	if profile.ID == 0 {
-		label, tooltip, model = "选择模型", "添加模型配置", "选择模型"
+		label, tooltip, model = "选择模型", uiText("添加模型配置"), "选择模型"
 	}
 	button := m.aiPickerPill(c, label, tooltip, blocked).PadX(5).MinWidth(0).MaxWidth(218).Clip()
 	button.Children(func() {
@@ -119,18 +119,18 @@ func (m *editorApp) aiProfilePicker(c ui.C, blocked bool) {
 		ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 		ui.Row(c.Part("footer")).FillWidth().Gap(5).Items(ui.Center).Children(func() {
 			row := ui.Row(c.Part("reasoning-link")).Grow(1).MinWidth(0).Height(33).PadX(8).Gap(7).Radius(8).Items(ui.Center)
-			row.HitWith(ui.ID(c.Part("reasoning-link")), "思考水平", gfx.HitOptions{
+			row.HitWith(ui.ID(c.Part("reasoning-link")), uiText("思考水平"), gfx.HitOptions{
 				Role: gfx.RoleButton, Value: aiReasoningLabel(a.effort),
 			}).Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Ring(1, m.theme.Ring))
 			row.Children(func() {
 				ui.Icon(c, chevronRightIcon).Size(11, 11).Color(m.theme.MutedForeground).Shrink(0)
-				ui.Text(c, "思考水平").FontSize(12).Grow(1).MinWidth(0).Ellipsis()
+				ui.Text(c, uiText("思考水平")).FontSize(12).Grow(1).MinWidth(0).Ellipsis()
 				ui.Text(c, aiReasoningLabel(a.effort)).FontSize(11).Muted()
 			})
 			if row.Clicked() {
 				c.After(func() { picker.reasoning = true })
 			}
-			if ui.Button(c.Part("settings"), "模型设置").Ghost().Height(32).FontSize(12).Clicked() {
+			if ui.Button(c.Part("settings"), uiText("模型设置")).Ghost().Height(32).FontSize(12).Clicked() {
 				c.After(m.openAISettings)
 			}
 		})
@@ -143,10 +143,10 @@ func (m *editorApp) aiModelInput(c ui.C, field *ui.Field, label, placeholder str
 
 func (m *editorApp) aiReasoningChoices(c ui.C, profile aiSettings) {
 	ui.Row(c.Part("heading")).FillWidth().Height(32).Gap(6).Items(ui.Center).Children(func() {
-		if ui.Button(c, "返回模型列表").Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip("返回模型列表").Clicked() {
+		if ui.Button(c, uiText("返回模型列表")).Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip(uiText("返回模型列表")).Clicked() {
 			c.After(func() { m.ai.modelPicker.reasoning = false })
 		}
-		ui.Text(c, "思考水平").FontSize(13).Bold()
+		ui.Text(c, uiText("思考水平")).FontSize(13).Bold()
 	})
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	for index, level := range profile.reasoningLevels() {
@@ -199,7 +199,7 @@ func (m *editorApp) updateAIModelLists(c ui.C) {
 		} else {
 			list.models = models
 			if len(models) == 0 {
-				list.problem = "服务未返回可选模型"
+				list.problem = uiText("服务未返回可选模型")
 			}
 		}
 	}
@@ -242,10 +242,10 @@ func (m *editorApp) aiManualModel(c ui.C, profile aiSettings) {
 	a := &m.ai
 	picker := &a.modelPicker
 	ui.Row(c.Part("heading")).FillWidth().Height(32).Gap(6).Items(ui.Center).Children(func() {
-		if ui.Button(c, "返回模型列表").Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip("返回模型列表").Clicked() {
+		if ui.Button(c, uiText("返回模型列表")).Icon(chevronLeftIcon).IconOnly().Ghost().Size(30, 30).Tooltip(uiText("返回模型列表")).Clicked() {
 			c.After(func() { picker.manualID = 0 })
 		}
-		ui.Text(c, "模型 ID · "+profile.Name).Grow(1).MinWidth(0).Ellipsis().FontSize(13).Bold()
+		ui.Text(c, uiText("模型 ID · ")+profile.Name).Grow(1).MinWidth(0).Ellipsis().FontSize(13).Bold()
 	})
 	input := m.aiModelInput(c.Part("manual-model"), &picker.manualModel, "手动输入模型 ID", "输入模型 ID")
 	if picker.focusInput {
@@ -257,7 +257,7 @@ func (m *editorApp) aiManualModel(c ui.C, profile aiSettings) {
 	canSelect := validAIModelID(model) && !composing
 	submitted := input.Submitted()
 	ui.Row(c).FillWidth().Items(ui.Center).Justify(ui.End).Children(func() {
-		use := ui.Button(c, "使用此模型").Height(30).FontSize(12).Disabled(!canSelect)
+		use := ui.Button(c, uiText("使用此模型")).Height(30).FontSize(12).Disabled(!canSelect)
 		if canSelect && (submitted || use.Clicked()) {
 			c.After(func() { a.selectModel(profile, model) })
 		}
@@ -312,7 +312,7 @@ func (m *editorApp) aiModelOptions(c ui.C, active aiSettings) {
 		}
 	}
 	if len(providers) == 0 {
-		ui.Text(c, "没有匹配的模型").Pad(10).Muted().FontSize(12)
+		ui.Text(c, uiText("没有匹配的模型")).Pad(10).Muted().FontSize(12)
 		return
 	}
 	maxHeight := max(132, min(330, c.Bounds().Height-195))
@@ -362,7 +362,7 @@ func (m *editorApp) aiModelOptions(c ui.C, active aiSettings) {
 func (m *editorApp) aiModelGroupHeading(c ui.C, provider string, choices []aiModelChoices, expanded, filtering bool) {
 	label := aiProviderLabel(provider)
 	heading := ui.Row(c).FillWidth().Height(34).PadX(7).Gap(8).Items(ui.Center).Radius(8)
-	heading.HitWith(ui.ID(c), label+" 模型", gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: expanded, Disabled: filtering}).
+	heading.HitWith(ui.ID(c), label+uiText(" 模型"), gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: expanded, Disabled: filtering}).
 		Hover(ui.Look{}.Background(m.theme.Hover)).Focus(ui.Look{}.Ring(1, m.theme.Ring))
 	heading.Children(func() {
 		arrow := chevronRightIcon
@@ -373,7 +373,7 @@ func (m *editorApp) aiModelGroupHeading(c ui.C, provider string, choices []aiMod
 		m.aiProviderMark(c, provider, 18)
 		ui.Text(c, label).Bold().FontSize(13).Grow(1).MinWidth(0).Ellipsis()
 		if slices.ContainsFunc(choices, func(choice aiModelChoices) bool { return choice.profile.ID == m.ai.profiles.DefaultID }) {
-			ui.Text(c, "默认").Muted().FontSize(11)
+			ui.Text(c, uiText("默认")).Muted().FontSize(11)
 		}
 	})
 	if heading.Clicked() {
@@ -393,8 +393,8 @@ func (m *editorApp) aiModelGroupHeading(c ui.C, provider string, choices []aiMod
 func (m *editorApp) aiModelGroupActions(c ui.C, choice aiModelChoices) {
 	picker := &m.ai.modelPicker
 	ui.Row(c).FillWidth().Height(31).Gap(3).Items(ui.Center).Children(func() {
-		if ui.Button(c.Part("manual"), "手动输入 ID").Icon(modelEditIcon).Ghost().Height(29).FontSize(12).
-			Tooltip("手动输入 " + choice.profile.Name + " 的模型 ID").Clicked() {
+		if ui.Button(c.Part("manual"), uiText("手动输入 ID")).Icon(modelEditIcon).Ghost().Height(29).FontSize(12).
+			Tooltip(uiText("手动输入 ") + choice.profile.Name + uiText(" 的模型 ID")).Clicked() {
 			c.After(func() {
 				picker.manualID, picker.focusInput = choice.profile.ID, true
 				picker.manualModel.SetText("")
@@ -407,7 +407,7 @@ func (m *editorApp) aiModelGroupActions(c ui.C, choice aiModelChoices) {
 				label = "获取中…"
 			}
 			if ui.Button(c.Part("fetch"), label).Icon(refreshIcon).Ghost().Height(29).FontSize(11).
-				Tooltip("从 " + choice.profile.Name + " 获取模型").Disabled(choice.list.request != nil).Clicked() {
+				Tooltip(uiText("从 ") + choice.profile.Name + uiText(" 获取模型")).Disabled(choice.list.request != nil).Clicked() {
 				c.After(func() { m.fetchAIModels(choice.profile) })
 			}
 		}

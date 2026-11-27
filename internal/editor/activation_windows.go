@@ -64,7 +64,7 @@ func claimEditorInstance(directory string, paths []string) (func(), error) {
 		return nil, err
 	}
 	if len(payload) > maxActivationBytes {
-		return nil, errors.New("启动参数过长")
+		return nil, errors.New(uiText("启动参数过长"))
 	}
 
 	title := activationWindowTitle(directory)
@@ -74,7 +74,7 @@ func claimEditorInstance(directory string, paths []string) (func(), error) {
 			return nil, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("无法唤起已打开的 %s，请稍后再试：%w", applicationName, errSessionDirectoryInUse)
+			return nil, fmt.Errorf(uiText("无法唤起已打开的 %s，请稍后再试：%w"), applicationName, errSessionDirectoryInUse)
 		}
 		time.Sleep(40 * time.Millisecond)
 		// The previous process may still be starting, or may have just exited.
@@ -136,14 +136,14 @@ var registerActivationClass = sync.OnceValues(func() (uintptr, error) {
 func listenForEditorActivation(directory string, activate func([]string) bool, lockPasswords func()) (func(), func() bool, error) {
 	module, err := registerActivationClass()
 	if err != nil {
-		return nil, nil, fmt.Errorf("无法注册窗口唤起服务：%w", err)
+		return nil, nil, fmt.Errorf(uiText("无法注册窗口唤起服务：%w"), err)
 	}
 	title := activationWindowTitle(directory)
 	window, _, err := editorUser.NewProc("CreateWindowExW").Call(0,
 		uintptr(unsafe.Pointer(activationClassName)), uintptr(unsafe.Pointer(title)),
 		0, 0, 0, 0, 0, messageOnlyWindow, 0, module, 0)
 	if window == 0 {
-		return nil, nil, fmt.Errorf("无法启动窗口唤起服务：%w", err)
+		return nil, nil, fmt.Errorf(uiText("无法启动窗口唤起服务：%w"), err)
 	}
 	activationHandlers.Store(window, editorActivationHandlers{activate: activate, lockPasswords: lockPasswords})
 	watching := false

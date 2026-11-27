@@ -41,21 +41,21 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 		return true
 	}
 	if len(pattern) > largeTextQueryLimit {
-		s.message = "包含大文件时，查找内容过长"
+		s.message = uiText("包含大文件时，查找内容过长")
 		return true
 	}
 	if m.searchBatch != nil && m.searchBatch.replacing {
-		s.message = "请等待当前替换完成"
+		s.message = uiText("请等待当前替换完成")
 		return true
 	}
 	query, err := options.compile(pattern)
 	if err != nil {
-		s.errorText = "正则表达式无效：" + err.Error()
+		s.errorText = uiText("正则表达式无效：") + err.Error()
 		return true
 	}
 	stream, err := newLargeEditQuery(query)
 	if err != nil {
-		s.errorText = "正则表达式无效：" + err.Error()
+		s.errorText = uiText("正则表达式无效：") + err.Error()
 		return true
 	}
 	var replacement string
@@ -81,7 +81,7 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 			continue
 		}
 		if _, composing := pane.text.Composition(); composing || large && tab.largeText.busyEditing() {
-			s.message = "请等文档编辑完成后重试"
+			s.message = uiText("请等文档编辑完成后重试")
 			return true
 		}
 		file := searchBatchFile{group: searchResultGroup{tab: tab, pane: pane}, title: tab.title(), replacement: replacement}
@@ -90,7 +90,7 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 			file.normalizeCRLF = tab.doc.eol == "CRLF"
 			file.replacement = tab.largeEditInputValue(replacement)
 			if replacing && strings.ContainsRune(file.replacement, 0) {
-				s.message = "请输入有效的替换内容"
+				s.message = uiText("请输入有效的替换内容")
 				return true
 			}
 		} else {
@@ -101,9 +101,9 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 	if current := m.searchBatch; current != nil {
 		current.origin.search.message = ""
 	}
-	s.message = "正在查找…"
+	s.message = uiText("正在查找…")
 	if replacing {
-		s.message = "正在替换…"
+		s.message = uiText("正在替换…")
 	}
 	m.searchBatch = &documentSearchBatch{origin: t, query: pattern, options: options, allOpen: allOpen, replacing: replacing}
 	m.searchBatch.effect = ui.NewEffect[[]searchBatchFile, int](func(ctx context.Context) ([]searchBatchFile, error) {
@@ -121,7 +121,7 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 				}
 				result, err := replaceAllLargeEdit(ctx, file.revision, stream, file.replacement)
 				if err != nil {
-					return nil, fmt.Errorf("无法替换 %s：%w", file.title, err)
+					return nil, fmt.Errorf(uiText("无法替换 %s：%w"), file.title, err)
 				}
 				file.largeEdit = result
 			} else {
@@ -134,7 +134,7 @@ func (m *editorApp) startLargeDocumentSearch(t *editorTab, allOpen, replacing bo
 				} else {
 					result, err := collectLargeEditResults(ctx, file.revision, stream, left)
 					if err != nil {
-						return nil, fmt.Errorf("无法查找 %s：%w", file.title, err)
+						return nil, fmt.Errorf(uiText("无法查找 %s：%w"), file.title, err)
 					}
 					group.stream, group.lines, group.truncated = &result, result.lines, result.truncated
 				}
@@ -216,7 +216,7 @@ func (m *editorApp) applySearchBatchReplacements(files []searchBatchFile) string
 		editor := file.group.pane.text
 		edits[i] = searchReplacementRanges(editor, file.ordinaryEdits)
 		if err := editor.ValidateReplaceRanges(edits[i], text.ReplaceRangesOptions{}); err != nil {
-			return fmt.Sprintf("无法替换 %s：%v", file.title, err)
+			return fmt.Sprintf(uiText("无法替换 %s：%v"), file.title, err)
 		}
 	}
 	var count, changed int
@@ -228,7 +228,7 @@ func (m *editorApp) applySearchBatchReplacements(files []searchBatchFile) string
 			changed++
 		} else if len(edits[i]) > 0 {
 			if err := file.group.pane.text.ReplaceRanges(edits[i]); err != nil {
-				return fmt.Sprintf("无法替换 %s：%v", file.title, err)
+				return fmt.Sprintf(uiText("无法替换 %s：%v"), file.title, err)
 			}
 			count += len(edits[i])
 			changed++
@@ -237,5 +237,5 @@ func (m *editorApp) applySearchBatchReplacements(files []searchBatchFile) string
 	if count == 0 {
 		return "没有需要替换的内容"
 	}
-	return fmt.Sprintf("已替换 %d 处 · %d 个文件", count, changed)
+	return fmt.Sprintf(uiText("已替换 %d 处 · %d 个文件"), count, changed)
 }

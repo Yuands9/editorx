@@ -27,10 +27,11 @@ func (m *editorApp) aiPickerPill(c ui.C, label, tooltip string, blocked bool) ui
 
 func (m *editorApp) aiModePicker(c ui.C, blocked bool) {
 	a := &m.ai
-	button := m.aiPickerPill(c, "选择 AI 模式", "当前模式 · "+aiModeLabel(a.mode), blocked).Shrink(0)
+	label := m.menuText(aiModeLabel(a.mode))
+	button := m.aiPickerPill(c, m.menuText("选择 AI 模式"), m.menuText("当前模式")+" · "+label, blocked).Shrink(0)
 	button.Children(func() {
 		ui.Icon(c, aiModeIcon(a.mode)).Size(13, 13).Color(m.theme.Ring)
-		ui.Text(c, aiModeLabel(a.mode)).FontSize(12)
+		ui.Text(c, label).FontSize(12)
 		ui.Icon(c, chevronDownIcon).Size(10, 10).Color(m.theme.MutedForeground)
 	})
 	if button.Clicked() {
@@ -39,14 +40,14 @@ func (m *editorApp) aiModePicker(c ui.C, blocked bool) {
 	ui.Menu(c, button, &a.modeMenu, func(menu *ui.MenuItems) {
 		menu.WidthRange(188, 235)
 		for _, mode := range aiModes {
-			description := "解答问题，解释选中的内容"
+			description := uiText("解答问题，解释选中的内容")
 			switch mode {
 			case aiEdit:
-				description = "生成差异，审阅后应用"
+				description = uiText("生成差异，审阅后应用")
 			case aiDraft:
-				description = "起草内容，审阅后创建标签"
+				description = uiText("起草内容，审阅后创建标签")
 			}
-			if menu.Item(aiModeLabel(mode)).Icon(aiModeIcon(mode)).Description(description).Checked(a.mode == mode).Clicked() {
+			if menu.Item(m.menuText(aiModeLabel(mode))).Icon(aiModeIcon(mode)).Description(m.menuText(description)).Checked(a.mode == mode).Clicked() {
 				c.After(func() { a.mode = mode })
 			}
 		}

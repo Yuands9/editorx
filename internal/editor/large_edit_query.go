@@ -273,7 +273,7 @@ func (q largeEditQuery) replacement(revision *largeEditRevision, span text.Span,
 	}
 	value, err := revision.read(int64(span.Start), int64(span.End))
 	if err != nil {
-		return "", fmt.Errorf("读取正则匹配内容失败：%w", err)
+		return "", fmt.Errorf(uiText("读取正则匹配内容失败：%w"), err)
 	}
 	for i, offset := range groups {
 		if offset >= 0 {

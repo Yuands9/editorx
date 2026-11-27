@@ -138,7 +138,7 @@ func loadLargeEdit(ctx context.Context, store *largeEditStorage, path string, re
 		return largeEditLoad{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return largeEditLoad{}, errors.New("请选择普通文本文件")
+		return largeEditLoad{}, errors.New(uiText("请选择普通文本文件"))
 	}
 	size := info.Size()
 	enc, bom, err := inspectTextEncoding(file, size, requested)
@@ -207,7 +207,7 @@ func loadLargeEdit(ctx context.Context, store *largeEditStorage, path string, re
 		return largeEditLoad{}, err
 	}
 	if !sameTextFile(info, current) {
-		return largeEditLoad{}, errors.New("文件在打开期间发生变化，请重试")
+		return largeEditLoad{}, errors.New(uiText("文件在打开期间发生变化，请重试"))
 	}
 	if crlf > 0 {
 		doc.eol = "混合"
@@ -309,7 +309,7 @@ func (r *largeEditRevision) pieceAt(offset int64) int {
 // ReadAt uses UTF-8 byte offsets in this revision, even for files saved in other encodings.
 func (r *largeEditRevision) ReadAt(dst []byte, offset int64) (int, error) {
 	if offset < 0 {
-		return 0, errors.New("文档偏移越界")
+		return 0, errors.New(uiText("文档偏移越界"))
 	}
 	written := 0
 	for i := r.pieceAt(offset); i < len(r.pieces) && written < len(dst); i++ {
@@ -331,7 +331,7 @@ func (r *largeEditRevision) ReadAt(dst []byte, offset int64) (int, error) {
 
 func (r *largeEditRevision) read(start, end int64) (string, error) {
 	if start < 0 || end < start || end > r.size {
-		return "", errors.New("文档偏移越界")
+		return "", errors.New(uiText("文档偏移越界"))
 	}
 	if start == end {
 		return "", nil
@@ -428,7 +428,7 @@ func (r *largeEditRevision) apply(ctx context.Context, changes []largeEditChange
 			return nil, err
 		}
 		if change.Start < start || change.End < change.Start || !r.boundary(change.Start) || !r.boundary(change.End) {
-			return nil, errors.New("编辑位置已变化")
+			return nil, errors.New(uiText("编辑位置已变化"))
 		}
 		if !utf8.ValidString(change.Text) || strings.ContainsRune(change.Text, 0) {
 			return nil, errTextEncoding

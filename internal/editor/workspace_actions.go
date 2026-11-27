@@ -55,7 +55,7 @@ func (m *editorApp) rememberClosedTab(tab *editorTab) {
 
 func (m *editorApp) reopenClosedTab() {
 	if len(m.closedTabs) == 0 {
-		m.status = "没有可恢复的关闭标签"
+		m.status = uiText("没有可恢复的关闭标签")
 		return
 	}
 	index := len(m.closedTabs) - 1
@@ -95,7 +95,7 @@ func (m *editorApp) reopenClosedTab() {
 		tab.setWrap(item.source.Wrap)
 	}
 	m.activate(tab)
-	m.status = "已恢复 " + tab.tabTitle()
+	m.status = uiText("已恢复 ") + tab.tabTitle()
 }
 
 func (m *editorApp) saveAllTabs() {
@@ -127,17 +127,17 @@ func (m *editorApp) saveAllNext(tabs []*editorTab, index int) {
 	}
 	if index == len(tabs) {
 		m.savingAll = false
-		m.status = fmt.Sprintf("已保存 %d 个文件", len(tabs))
+		m.status = fmt.Sprintf(uiText("已保存 %d 个文件"), len(tabs))
 		m.focusActiveSource()
 		return
 	}
 	tab := tabs[index]
-	m.status = fmt.Sprintf("正在保存 %d/%d · %s", index+1, len(tabs), tab.tabTitle())
+	m.status = fmt.Sprintf(uiText("正在保存 %d/%d · %s"), index+1, len(tabs), tab.tabTitle())
 	m.saveModifiedTab(tab, func(saved bool) {
 		if !saved {
 			m.savingAll = false
 			m.activate(tab)
-			m.status = fmt.Sprintf("全部保存已停止：已保存 %d 个，剩余 %d 个", index, len(tabs)-index)
+			m.status = fmt.Sprintf(uiText("全部保存已停止：已保存 %d 个，剩余 %d 个"), index, len(tabs)-index)
 			return
 		}
 		next := func() { m.saveAllNext(tabs, index+1) }

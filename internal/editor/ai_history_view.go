@@ -39,8 +39,8 @@ func (m *editorApp) aiConversationPicker(c ui.C, blocked bool) {
 	if current.hasContent() {
 		count++
 	}
-	button := ui.Button(c, "对话记录").Icon(aiHistoryIcon).IconOnly().Ghost().Size(28, 28).
-		Tooltip("对话记录").Disabled(blocked || count == 0)
+	button := ui.Button(c, uiText("对话记录")).Icon(aiHistoryIcon).IconOnly().Ghost().Size(28, 28).
+		Tooltip(uiText("对话记录")).Disabled(blocked || count == 0)
 	if button.Clicked() {
 		a.historyMenu = !a.historyMenu
 	}
@@ -90,10 +90,10 @@ func (m *editorApp) aiConversationRow(c ui.C, index int, record aiConversation) 
 				}
 			})
 		}
-		if ui.Button(c, "重命名 "+name).Icon(aiRenameIcon).IconOnly().Ghost().Size(25, 27).Shrink(0).Tooltip("重命名对话").Clicked() {
+		if ui.Button(c, uiText("重命名 ")+name).Icon(aiRenameIcon).IconOnly().Ghost().Size(25, 27).Shrink(0).Tooltip(uiText("重命名对话")).Clicked() {
 			c.After(func() { m.beginAIConversationEdit(index, name, false) })
 		}
-		if ui.Button(c, "删除 "+name).Icon(aiDeleteIcon).IconOnly().Ghost().Size(25, 27).Shrink(0).Tooltip("删除对话").Clicked() {
+		if ui.Button(c, uiText("删除 ")+name).Icon(aiDeleteIcon).IconOnly().Ghost().Size(25, 27).Shrink(0).Tooltip(uiText("删除对话")).Clicked() {
 			c.After(func() { m.beginAIConversationEdit(index, name, true) })
 		}
 	})
@@ -120,13 +120,13 @@ func (m *editorApp) aiConversationDialog(c ui.C) {
 		a.focusPrompt = true
 	}
 	if edit.remove {
-		dismissed := ui.ModalWith(c, &edit.open, "删除对话", ui.ModalSpec{Width: 400}, func() {
-			ui.Wrap(c, "删除「"+edit.title+"」及其中的消息？").FillWidth()
+		dismissed := ui.ModalWith(c, &edit.open, uiText("删除对话"), ui.ModalSpec{Width: 400}, func() {
+			ui.Wrap(c, uiText("删除「")+edit.title+uiText("」及其中的消息？")).FillWidth()
 		}, func() {
-			if ui.Button(c, "取消删除对话").Outline().Clicked() {
+			if ui.Button(c, uiText("取消删除对话")).Outline().Clicked() {
 				c.After(closeDialog)
 			}
-			if ui.Button(c, "确认删除对话").Destructive().Clicked() {
+			if ui.Button(c, uiText("确认删除对话")).Destructive().Clicked() {
 				c.After(func() {
 					if edit.index == currentAIConversation {
 						a.resetConversation()
@@ -144,17 +144,17 @@ func (m *editorApp) aiConversationDialog(c ui.C) {
 	}
 
 	submitted := false
-	dismissed := ui.ModalWith(c, &edit.open, "重命名对话", ui.ModalSpec{Width: 400}, func() {
-		field := ui.TextField(c, &edit.field, "对话名称", "输入对话名称").FillWidth()
+	dismissed := ui.ModalWith(c, &edit.open, uiText("重命名对话"), ui.ModalSpec{Width: 400}, func() {
+		field := ui.TextField(c, &edit.field, uiText("对话名称"), uiText("输入对话名称")).FillWidth()
 		submitted = field.Submitted()
 	}, func() {
-		if ui.Button(c, "取消重命名对话").Outline().Clicked() {
+		if ui.Button(c, uiText("取消重命名对话")).Outline().Clicked() {
 			c.After(closeDialog)
 		}
 		name := strings.TrimSpace(edit.field.Text())
 		_, composing := edit.field.GetEditor().Composition()
 		valid := !composing && name != "" && utf8.RuneCountInString(name) <= 64
-		save := ui.Button(c, "保存对话名称").Disabled(!valid).Tooltip("Enter 确认")
+		save := ui.Button(c, uiText("保存对话名称")).Disabled(!valid).Tooltip(uiText("Enter 确认"))
 		if valid && (save.Clicked() || submitted) {
 			c.After(func() {
 				if edit.index == currentAIConversation {

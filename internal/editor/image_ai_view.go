@@ -39,7 +39,7 @@ func (m *editorApp) openImageAI() {
 	m.imageAI = state
 	profiles, err := readAIProfiles(m.dataDirectory)
 	if err != nil {
-		state.problem = "无法读取 AI 模型配置：" + err.Error()
+		state.problem = uiText("无法读取 AI 模型配置：") + err.Error()
 		return
 	}
 	state.profiles = profiles
@@ -72,12 +72,12 @@ func (m *editorApp) startImageAI() {
 	profile := state.profiles.active(state.modelID)
 	profiles, err := readAIProfiles(m.dataDirectory)
 	if err != nil {
-		state.problem = "无法读取 AI 模型配置：" + err.Error()
+		state.problem = uiText("无法读取 AI 模型配置：") + err.Error()
 		return
 	}
 	index := profiles.index(state.modelID)
 	if index < 0 || !reflect.DeepEqual(profile, profiles.Profiles[index]) {
-		state.problem = "模型配置已变更，请重新打开 AI 识图"
+		state.problem = uiText("模型配置已变更，请重新打开 AI 识图")
 		return
 	}
 
@@ -117,19 +117,19 @@ func (m *editorApp) imageAIView(c ui.C) {
 		return
 	}
 	busy := state.request != nil
-	dismissed := ui.ModalWith(c, &state.open, "AI 识图", ui.ModalSpec{Width: 620, Description: state.tab.title()}, func() {
+	dismissed := ui.ModalWith(c, &state.open, uiText("AI 识图"), ui.ModalSpec{Width: 620, Description: state.tab.title()}, func() {
 		if len(state.choices) == 0 {
 			if state.problem != "" {
 				ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger)
 			} else {
-				ui.Wrap(c, "请在 AI 设置中添加支持图片输入的 API 模型。").FillWidth().Muted()
+				ui.Wrap(c, uiText("请在 AI 设置中添加支持图片输入的 API 模型。")).FillWidth().Muted()
 			}
 			return
 		}
 		ui.Column(c).FillWidth().Gap(10).Children(func() {
 			modelLabel := func(id int) string { return aiServiceModelLabel(state.profiles.active(id)) }
 			if ui.Select(c.Part("model"), &state.modelID, state.choices, modelLabel).
-				Label("识图模型").FillWidth().Height(34).Disabled(busy).Changed() {
+				Label(uiText("识图模型")).FillWidth().Height(34).Disabled(busy).Changed() {
 				state.output.SetText("")
 				state.problem = ""
 			}
@@ -148,19 +148,19 @@ func (m *editorApp) imageAIView(c ui.C) {
 			})
 			profile := state.profiles.active(state.modelID)
 			address, _ := url.Parse(profile.BaseURL) // Only validated service URLs are offered.
-			ui.Wrap(c, "开始后将当前图片发送至 "+address.Host).FillWidth().FontSize(12).Muted()
+			ui.Wrap(c, uiText("开始后将当前图片发送至 ")+address.Host).FillWidth().FontSize(12).Muted()
 			if busy {
-				ui.Text(c, "正在识图…").FontSize(12).Muted()
+				ui.Text(c, uiText("正在识图…")).FontSize(12).Muted()
 				ui.Progress(c.Part("busy"), 0).FillWidth().Height(5).Indeterminate()
 			} else if state.problem != "" {
 				ui.Wrap(c, state.problem).FillWidth().Color(m.theme.Danger)
 			} else if state.output.Text() != "" {
-				ui.TextArea(c.Part("result"), &state.output, "识图结果", "").FillWidth().Height(220)
+				ui.TextArea(c.Part("result"), &state.output, uiText("识图结果"), "").FillWidth().Height(220)
 			}
 		})
 	}, func() {
 		if len(state.choices) == 0 {
-			if ui.Button(c, "打开 AI 设置").Clicked() {
+			if ui.Button(c, uiText("打开 AI 设置")).Clicked() {
 				c.After(func() {
 					m.imageAI = nil
 					m.openAISettings()
@@ -169,18 +169,18 @@ func (m *editorApp) imageAIView(c ui.C) {
 			return
 		}
 		if busy {
-			if ui.Button(c, "取消").Ghost().Clicked() {
+			if ui.Button(c, uiText("取消")).Ghost().Clicked() {
 				c.After(func() { state.request = nil })
 			}
 			return
 		}
-		start := ui.Button(c, "开始识图")
+		start := ui.Button(c, uiText("开始识图"))
 		if strings.TrimSpace(state.output.Text()) != "" {
 			start.Outline()
-			if ui.Button(c, "复制全文").Icon(copyIcon).Clicked() {
+			if ui.Button(c, uiText("复制全文")).Icon(copyIcon).Clicked() {
 				c.After(func() {
 					if err := app.SetClipboardText(state.output.Text()); err != nil {
-						state.problem = "复制失败：" + err.Error()
+						state.problem = uiText("复制失败：") + err.Error()
 						return
 					}
 					state.problem = ""

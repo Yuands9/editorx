@@ -117,8 +117,8 @@ func (m *editorApp) exitConfirmationDialog(c ui.C) {
 		return
 	}
 	prompt := d.exitConfirmation
-	description := fmt.Sprintf("有 %d 个文件尚未保存。", len(prompt.files))
-	dismissed := ui.ModalWith(c, &prompt.open, "退出 EditorX 前保存？", ui.ModalSpec{Description: description, Width: 480}, func() {
+	description := fmt.Sprintf(uiText("有 %d 个文件尚未保存。"), len(prompt.files))
+	dismissed := ui.ModalWith(c, &prompt.open, uiText("退出 EditorX 前保存？"), ui.ModalSpec{Description: description, Width: 480}, func() {
 		ui.Column(c.Part("files")).FillWidth().Gap(4).Children(func() {
 			for _, file := range prompt.files[:min(visibleExitFileLimit, len(prompt.files))] {
 				ui.Text(c, file.tab.tabTitle()).FillWidth().FontSize(13).Ellipsis()
@@ -127,12 +127,12 @@ func (m *editorApp) exitConfirmationDialog(c ui.C) {
 				ui.Text(c, "…").Muted().FontSize(13)
 			}
 		})
-		ui.Checkbox(c.Part("exit-preference"), &prompt.dontAsk, "以后退出时不再询问").Height(28).MarginTop(8).Disabled(prompt.saving)
+		ui.Checkbox(c.Part("exit-preference"), &prompt.dontAsk, uiText("以后退出时不再询问")).Height(28).MarginTop(8).Disabled(prompt.saving)
 	}, func() {
-		if ui.Button(c, "保留草稿并退出").Outline().Disabled(prompt.saving).Clicked() {
+		if ui.Button(c, uiText("保留草稿并退出")).Outline().Disabled(prompt.saving).Clicked() {
 			c.After(d.finishExit)
 		}
-		save := ui.Button(c, "保存并退出").Disabled(prompt.saving)
+		save := ui.Button(c, uiText("保存并退出")).Disabled(prompt.saving)
 		if prompt.focus {
 			save.AutoFocus()
 			prompt.focus = false

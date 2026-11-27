@@ -56,11 +56,11 @@ func (m *editorApp) toggleMarkdownOutline() {
 func (m *editorApp) outlinePanel(c ui.C, t *editorTab) {
 	t.updateOutline()
 	ui.Row(c).FillWidth().Height(48).PadX(18).Items(ui.Center).Children(func() {
-		ui.Text(c, "文档大纲").FontSize(14).Grow(1)
-		if ui.Button(c, "全部展开").Icon(expandIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip("展开全部标题").Clicked() {
+		ui.Text(c, uiText("文档大纲")).FontSize(14).Grow(1)
+		if ui.Button(c, uiText("全部展开")).Icon(expandIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip(uiText("展开全部标题")).Clicked() {
 			clear(t.outlineCollapsed)
 		}
-		if ui.Button(c, "全部折叠").Icon(collapseIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip("折叠全部标题").Clicked() {
+		if ui.Button(c, uiText("全部折叠")).Icon(collapseIcon).IconOnly().Ghost().Width(26).Height(28).Tooltip(uiText("折叠全部标题")).Clicked() {
 			for _, h := range t.headings {
 				if h.children {
 					t.outlineCollapsed[h.offset] = true
@@ -71,7 +71,7 @@ func (m *editorApp) outlinePanel(c ui.C, t *editorTab) {
 	ui.Slot(c).FillWidth().Height(1).Background(m.theme.Border)
 	ui.Slot(c).Height(12)
 	if len(t.headings) == 0 {
-		ui.Text(c, "添加 Markdown 标题后显示目录").Muted().FontSize(12).Pad(12).FillWidth()
+		ui.Text(c, uiText("添加 Markdown 标题后显示目录")).Muted().FontSize(12).Pad(12).FillWidth()
 		return
 	}
 	ui.Scroll(c).FillWidth().Grow(1).Scrollbars().Children(func() {
@@ -110,7 +110,7 @@ func (m *editorApp) outlinePanel(c ui.C, t *editorTab) {
 func (m *editorApp) markdownPreview(c ui.C, t *editorTab) {
 	t.markdown.Source = t.source.text.String()
 	ui.Column(c).FillHeight().Grow(1).MinWidth(0).PadX(24).Children(func() {
-		ui.Text(c, "阅读预览").Muted().FontSize(12).Height(36).PadY(9)
+		ui.Text(c, uiText("阅读预览")).Muted().FontSize(12).Height(36).PadY(9)
 		uimarkdown.View(c, "Markdown 预览", &t.markdown).FillWidth().Grow(1).DrawOver(func(d *ui.DrawContext) {
 			t.previewHeight = d.Rect.Height
 			offset := t.markdown.Offset

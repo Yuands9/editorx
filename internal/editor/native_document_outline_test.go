@@ -133,6 +133,10 @@ const outlineProbeStart = `(async () => {
 		if (panel.hidden) throw new Error("outline did not open");
 `
 const outlineProbeEnd = `
+		window.editorxSetLanguage("en");
+		await waitFor(() => document.documentElement.lang === "en" && toggle.textContent === "Outline");
+		window.editorxSetLanguage("zh-CN");
+		await waitFor(() => document.documentElement.lang === "zh-CN" && toggle.textContent === "标题");
 		window.viva.postMessage(JSON.stringify({kind:"ready"}));
 	} catch (error) {
 		window.viva.postMessage(JSON.stringify({kind:"error", message:error.message, text:error.message}));

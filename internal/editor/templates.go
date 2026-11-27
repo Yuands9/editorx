@@ -61,10 +61,10 @@ func validWindowsEntryName(name string) bool {
 
 func validateTextFilename(name string) error {
 	if !validWindowsEntryName(name) {
-		return errors.New("请输入有效的 Windows 文件名")
+		return errors.New(uiText("请输入有效的 Windows 文件名"))
 	}
 	if hasNonTextExtension(name) {
-		return errors.New("请选择可编辑的文本文件名")
+		return errors.New(uiText("请选择可编辑的文本文件名"))
 	}
 	return nil
 }
@@ -77,26 +77,26 @@ func hasNonTextExtension(name string) bool {
 
 func validateTemplate(template documentTemplate) error {
 	if strings.TrimSpace(template.Name) == "" || len([]rune(template.Name)) > 80 {
-		return errors.New("请输入不超过 80 个字符的模板名称")
+		return errors.New(uiText("请输入不超过 80 个字符的模板名称"))
 	}
 	if err := validateTextFilename(template.Filename); err != nil {
 		return err
 	}
 	if template.EOL != "CRLF" && template.EOL != "LF" && template.EOL != "混合" {
-		return errors.New("模板行尾格式无效")
+		return errors.New(uiText("模板行尾格式无效"))
 	}
 	if template.Body == "" || len(template.Body) > templateBodyLimit || strings.ContainsRune(template.Body, 0) {
-		return errors.New("请输入不超过 128 KiB 的文本正文")
+		return errors.New(uiText("请输入不超过 128 KiB 的文本正文"))
 	}
 	if len(template.Fields) > templateFieldLimit {
-		return fmt.Errorf("每个模板最多支持 %d 个变量", templateFieldLimit)
+		return fmt.Errorf(uiText("每个模板最多支持 %d 个变量"), templateFieldLimit)
 	}
 	seen := make(map[string]bool, len(template.Fields))
 	for _, field := range template.Fields {
 		if !placeholderName(field.Name) || seen[field.Name] || len([]rune(field.Name)) > 24 ||
 			!strings.Contains(template.Body, "{{"+field.Name+"}}") || len(field.Default) > templateBodyLimit ||
 			strings.ContainsRune(field.Default, 0) {
-			return fmt.Errorf("模板变量无效：%s", field.Name)
+			return fmt.Errorf(uiText("模板变量无效：%s"), field.Name)
 		}
 		seen[field.Name] = true
 	}
@@ -136,17 +136,17 @@ func writeTemplate(path string, template documentTemplate, original *documentTem
 		if original != nil && item.Name == original.Name {
 			if item.Filename != original.Filename || item.EOL != original.EOL || item.BOM != original.BOM ||
 				item.Body != original.Body || !slices.Equal(item.Fields, original.Fields) {
-				return errors.New("模板已有其他修改，请重新打开后编辑")
+				return errors.New(uiText("模板已有其他修改，请重新打开后编辑"))
 			}
 			editIndex = i
 			continue
 		}
 		if strings.EqualFold(item.Name, template.Name) {
-			return errors.New("这个范围下已有同名模板，请换一个名称")
+			return errors.New(uiText("这个范围下已有同名模板，请换一个名称"))
 		}
 	}
 	if original != nil && editIndex < 0 {
-		return errors.New("原模板已被移除或更名，请重新打开模板库")
+		return errors.New(uiText("原模板已被移除或更名，请重新打开模板库"))
 	}
 	if editIndex >= 0 {
 		templates[editIndex] = template
@@ -162,7 +162,7 @@ func writeTemplate(path string, template documentTemplate, original *documentTem
 
 func renderTemplate(template documentTemplate, filename string, values []string, fragment bool) (string, error) {
 	if len(values) != len(template.Fields) {
-		return "", errors.New("模板变量数量不匹配")
+		return "", errors.New(uiText("模板变量数量不匹配"))
 	}
 	jsonDocument := documentFormat(filename) == "JSON"
 	pairs := make([]string, 0, 2*len(values))
@@ -171,10 +171,10 @@ func renderTemplate(template documentTemplate, filename string, values []string,
 	for i, field := range template.Fields {
 		value := values[i]
 		if strings.TrimSpace(value) == "" && problem == nil {
-			problem = fmt.Errorf("请填写变量：%s", field.Name)
+			problem = fmt.Errorf(uiText("请填写变量：%s"), field.Name)
 		}
 		if len(value) > templateBodyLimit || strings.ContainsRune(value, 0) {
-			return "", fmt.Errorf("变量过长或含有空字符：%s", field.Name)
+			return "", fmt.Errorf(uiText("变量过长或含有空字符：%s"), field.Name)
 		}
 		if jsonDocument {
 			encoded, _ := json.Marshal(value)
@@ -188,11 +188,11 @@ func renderTemplate(template documentTemplate, filename string, values []string,
 		pairs = append(pairs, marker, value)
 	}
 	if expandedSize > templateBodyLimit {
-		return "", errors.New("生成的正文超过 128 KiB")
+		return "", errors.New(uiText("生成的正文超过 128 KiB"))
 	}
 	value := strings.NewReplacer(pairs...).Replace(template.Body)
 	if problem == nil && jsonDocument && !fragment && !json.Valid([]byte(value)) {
-		problem = errors.New("生成内容不是有效的 JSON，请检查模板正文和变量位置")
+		problem = errors.New(uiText("生成内容不是有效的 JSON，请检查模板正文和变量位置"))
 	}
 	return value, problem
 }
@@ -205,29 +205,29 @@ func (m *editorApp) createTextDraft(filename, body string, doc document) *editor
 	}
 	tab.applyDefaultWrap(m.editorPrefs)
 	m.queueHTMLPreview(tab)
-	m.status = "新文档"
+	m.status = uiText("新文档")
 	return tab
 }
 
 func (m *editorApp) createTextFile(directory, filename, body string, doc document) error {
 	if !validWindowsEntryName(filename) {
-		return errors.New("请输入有效的 Windows 文件名")
+		return errors.New(uiText("请输入有效的 Windows 文件名"))
 	}
 	path := filepath.Join(directory, filename)
 	if m.tabAtPath(path) != nil {
-		return errors.New("同一路径已在标签中打开，请换一个名称")
+		return errors.New(uiText("同一路径已在标签中打开，请换一个名称"))
 	}
 	if err := doc.create(path, body); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return errors.New("目录中已有同名文件，请换一个名称")
+			return errors.New(uiText("目录中已有同名文件，请换一个名称"))
 		}
-		return fmt.Errorf("无法新建 %s：%w", filename, err)
+		return fmt.Errorf(uiText("无法新建 %s：%w"), filename, err)
 	}
 	if root := m.projectRoot(directory); root != "" {
 		m.refreshProject(m.workspace.project(root), path)
 	}
 	if hasNonTextExtension(filename) {
-		m.status = "已创建文件 " + filename
+		m.status = uiText("已创建文件 ") + filename
 		return nil
 	}
 	m.load(path)

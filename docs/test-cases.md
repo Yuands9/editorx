@@ -304,6 +304,50 @@ $env:VIVA_PREVIEW_DIR = Join-Path $PWD '.dev/workflow-qa'
 ## IDEA 预设与输入时补全
 
 - `TestIdeaShortcutPreset` 验证通过界面切换并保存预设。实际组合键打开文件、命令和目录替换，切换标签及导航历史，验证补全与正文和搜索框的不同 Ctrl+Y 行为。
-- `TestAutomaticCompletionSettingsAndTyping` 验证开关默认关闭、修改后持久化、最后一键后延迟、Enter 换行、Tab 补全词中后缀、单次撤销及中文组词结束后点选候选。
+- `TestAutomaticCompletionSettingsAndTyping` 验证开关默认开启、显式关闭后持久化、最后一键后延迟、Enter 换行、Tab 补全词中后缀、单次撤销及输入法提交后点选候选。
 - `./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeEditingDepth` 验证 Windows 的 Alt+/、Ctrl+Alt+Space、Ctrl+Y、无额外输入时自动弹出及 Tab 接受。
-- 在仓库目录初始化 `tools/dev-env.ps1` 后，运行 Go 测试的 `-run '^$' -bench '^BenchmarkAutomaticCompletionCandidates$' -benchmem ./internal/editor` 测量一次候选扫描。本机约 15.5 MiB 样本的单次扫描约 0.05 ms、分配 56 字节。此数值不含界面渲染和 150 ms 的输入停顿。
+- 在仓库目录初始化 `tools/dev-env.ps1` 后，运行 Go 测试的 `-run '^$' -bench '^BenchmarkAutomaticCompletionCandidates$' -benchmem ./internal/editor` 测量一次候选扫描。约 15.5 MiB 的缓冲区实测每次 0.050～0.053 ms，分配 32 B。基准只计扫描开销。
+
+## 快捷键预设与界面语言
+
+- `TestVSCodeShortcutPreset` 从界面选中 VS Code 后验证持久化，并执行当前文件替换、目录替换、多光标、双向复制行、列选择、删除行和终端快捷键。
+- `TestShortcutSearchAndPyCharmPreset` 验证全局设置和快捷键分类内搜索，以及 PyCharm 预设和键位持久化。
+- `TestMenuLanguageUIAndPersistence` 验证简体中文默认值、从设置切换到英文、同一实例窗口同步、通过英文菜单执行查找、全选和复制项目文件路径、下一次加载沿用英文和切回简体中文。
+- `TestNativeEditingDepth` 在 Windows 原生编辑区检查 VS Code 的复制行和终端组合键。`TestNativeTerminalInput` 验证终端获得焦点时可用 Ctrl+反引号收起，重新打开后继续向同一会话输入。
+
+## Git 和密码本侧栏
+
+- `TestGitCommitSidebarGroupingAndTerminal` 使用临时仓库验证默认目录分组、连续目录压缩、文件状态文字和父目录、文件／目录／全选的即时勾选、忽略文件、展开／折叠，以及向本地 bare 仓库提交所选文件并推送。勾选期间确认不创建 Git 请求、实际暂存区不变，刷新后保留选择。检查 Git 与终端能同时显示，900×560 下中英文操作入口均可点击。
+- `TestGitSidebarKeepsPartialStageExplicit` 验证已有部分暂存的文件默认不勾选，通过“更多提交操作 → 仅提交暂存区”只提交已暂存部分，未暂存内容保留在工作区。
+- `TestGitSelectedCommitPreservesUnselectedIndex`、`TestGitSelectedCommitInitialAndAmend` 验证普通提交、初始提交、修改上次提交、重命名、删除和特殊路径，所选文件的磁盘内容进入提交，未选文件的暂存及工作区内容保持原样。
+- `TestGitSelectedCommitFailurePreservesIndex`、`TestGitSelectedCommitPostCommitInterruption` 验证提交前失败不改变索引、临时索引及锁被清理；提交后钩子被中断时仍能识别已经生成的提交，避免误报为未提交和重复提交。
+- `TestGitLogFiltersPaginationAndUI` 使用超过 100 条的真实 Git 历史，验证继续加载、失败后重试不漏页、说明／哈希／作者／时间和分支／标签筛选、长说明布局、同名文件路径、复制哈希、查看差异和返回列表。截图覆盖深浅色和 900×560 小窗口。
+- `TestGitWorkingReviewIncludesStagedAndUnstaged` 验证默认文件比对展示 HEAD 到磁盘的完整改动，浏览不改动索引；原有逐块暂存及取消暂存仍由 Git 审阅专项覆盖。
+- `TestProjectGitShelveAndAmend` 验证搁置、陈旧索引拦截、弹出、修改上次提交和最近说明读取，并从侧栏切换贮藏列表和提交页。
+- `TestPasswordVaultSidebarNavigation` 和 `TestPasswordVaultThroughUI` 验证侧栏打开时正文仍可访问，以及分组、搜索、条目详情、复制和锁定流程。
+
+## 首页布局
+
+- `TestTablessHomeThroughUI` 验证无标签页和新建空白文档的居中欢迎区、按钮从左到右“打开项目 → 打开文件 → 最近打开文件”、中英文按钮和无链接按钮。打开项目不会隐式创建文档。
+- `TestRecentHistoryOpenRemoveAndPersist` 验证最多三个最近文件、已有标签复用、中文输入法组合时隐藏欢迎区、首次文字输入及打开历史的移除和清空。
+- `TestEditorContextMenuEditing` 在欢迎区之外右击空白编辑区，验证剪切后撤销、重做和粘贴，避免把欢迎按钮覆盖编辑器中心误判为整个编辑区不可操作。
+- 设置 `VIVA_PREVIEW_DIR` 后运行上述首页和 Git 测试，可生成深浅色、中英文及小窗口截图。
+
+## AI 生成 Git 提交说明
+
+- `TestGitCommitAIGeneratesOnlySelectedChanges` 使用本机模拟 AI 服务验证配置的服务地址、模型、认证和请求头；只发送勾选文件从 HEAD 到磁盘的完整改动，不包含未选文件、其他编辑器内容或工作目录绝对路径。生成语言跟随界面，结果可编辑并通过 Ctrl+Z／Ctrl+Y 撤销重做，HEAD 和索引保持不变。
+- `TestGitCommitAIFailurePreservesDraft`、`TestGitCommitAICancelsInFlightRequests` 验证失败、主动取消、切换勾选、关闭 Git 面板和切换仓库，保留原说明并取消正在进行的请求。
+- `TestGitCommitAIProfileSelection` 验证无服务配置时进入 AI 设置，以及多个已保存服务的选择；`TestGitCommitAIWaitsForStatusRefresh` 验证刷新中的旧分支结果不会填入提交说明。
+- `TestGitCommitAIContextSelectedWorkingChanges`、`TestGitCommitAIContextInitialAndLimits`、`TestGitCommitAIContextBoundsDeletedBlob` 覆盖初始仓库、已暂存且继续修改、新增、删除、中文及特殊路径、重命名，以及文件数量、单文件和上下文上限。
+- `TestGitCommitAIContextRejectsDirectoryPathspec`、`TestGitCommitAIContextRejectsForcedBinaryDiff` 验证拒绝目录替代文件、符号链接及被强制视为文本的二进制差异，避免读取未勾选的子文件或发送无效内容。
+- 上述请求均使用本机模拟服务，不调用用户配置的真实模型账户。截图和专项日志位于 `.dev/git-ai-qa`。
+
+2026-11-27 前一轮首页和侧栏优化通过专项、公开版与本地版完整回归。独立试用 EXE 通过 `TestNativeEditorBackground`，覆盖窗口隐藏与唤起、旧会话合并、未保存退出确认和启动退出时保存会话。该轮试用程序、截图和测试日志位于 `.dev/git-sidebar-qa`。
+
+2026-11-27 本轮 Git 勾选提交、历史浏览与首页按钮调整通过公开版和本地版完整回归（编辑器包分别为 104.366 秒、104.120 秒）。实际打包 EXE 通过 `TestNativeEditorBackground`（7.08 秒）。试用程序与完整日志位于 `.dev/git-workflow-qa`，历史页深浅色、小窗口和差异截图位于 `.dev/git-flow-qa`。测试仓库均为临时夹具，提交及推送仅面向本地测试仓库。
+
+## Git 独立历史窗口与项目树操作
+
+- `TestProjectGitContextScopes` 从项目树右键操作临时仓库，验证指定目录的勾选计数、暂存、文件取消暂存、差异及提交记录，其他文件的暂存内容保持原样。
+- `.\tools\native-smoke.ps1 -PublicRelease -TestName TestNativeGitLogWindow` 验证提交记录有独立的 Windows 窗口边框，窗口可移动缩放，同一范围重复打开会复用窗口，关闭历史窗口后主窗口仍然在。
+- `TestPasswordVaultThroughUI` 验证条目弹框内取消新建分组可以返回原草稿，保存新分组后自动选中并保留名称和密码。

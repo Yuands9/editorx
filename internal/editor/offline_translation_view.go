@@ -67,7 +67,7 @@ func (offline *offlineTranslationState) downloadSize(model offlineComponent) (in
 func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, blocked bool) {
 	offline := m.translationOfflineState(state)
 	m.assetCard(c).Children(func() {
-		ui.Text(c, "离线整句").Bold().FontSize(14)
+		ui.Text(c, uiText("离线整句")).Bold().FontSize(14)
 		hasFiles := offline.runtime.installed != nil || offline.runtime.err != nil
 		for _, model := range offlineModels {
 			status := offline.models[model.ID]
@@ -77,12 +77,12 @@ func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, 
 				bytes, err := offline.downloadSize(model)
 				switch {
 				case err != nil:
-					ui.Text(c, "需重装").Muted().FontSize(12)
+					ui.Text(c, uiText("需重装")).Muted().FontSize(12)
 				case bytes == 0:
-					ui.Text(c, "已下载").Muted().FontSize(12)
+					ui.Text(c, uiText("已下载")).Muted().FontSize(12)
 				default:
-					if ui.Button(c, fmt.Sprintf("下载 %.1f MiB", float64(bytes)/(1<<20))).Outline().Height(28).FontSize(12).
-						Tooltip("下载 " + model.Label).Disabled(blocked || offline.download != nil || offline.remove).Clicked() {
+					if ui.Button(c, fmt.Sprintf(uiText("下载 %.1f MiB"), float64(bytes)/(1<<20))).Outline().Height(28).FontSize(12).
+						Tooltip(uiText("下载 ") + model.Label).Disabled(blocked || offline.download != nil || offline.remove).Clicked() {
 						c.After(func() { m.startOfflineDownload(model) })
 					}
 				}
@@ -91,9 +91,9 @@ func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, 
 		if offline.download != nil {
 			m.offlineDownloadProgress(c.Part("progress"), offline, blocked)
 		} else if offline.remove {
-			ui.Wrap(c, "移除两个语言方向的组件。").FillWidth().Muted().FontSize(12)
+			ui.Wrap(c, uiText("移除两个语言方向的组件。")).FillWidth().Muted().FontSize(12)
 			ui.Row(c).Gap(6).Children(func() {
-				if ui.Button(c, "确认移除离线组件").Outline().FontSize(12).Disabled(blocked).Clicked() {
+				if ui.Button(c, uiText("确认移除离线组件")).Outline().FontSize(12).Disabled(blocked).Clicked() {
 					c.After(func() {
 						err := removeOfflineComponents(m.dataDirectory)
 						m.refreshOfflineComponents(offline)
@@ -103,11 +103,11 @@ func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, 
 						}
 					})
 				}
-				if ui.Button(c, "取消移除").Ghost().FontSize(12).Disabled(blocked).Clicked() {
+				if ui.Button(c, uiText("取消移除")).Ghost().FontSize(12).Disabled(blocked).Clicked() {
 					offline.remove = false
 				}
 			})
-		} else if hasFiles && ui.Button(c, "移除离线组件…").Ghost().FontSize(12).Disabled(blocked).Clicked() {
+		} else if hasFiles && ui.Button(c, uiText("移除离线组件…")).Ghost().FontSize(12).Disabled(blocked).Clicked() {
 			offline.remove = true
 		}
 		if offline.problem != "" {
@@ -119,13 +119,13 @@ func (m *editorApp) offlineComponentsCard(c ui.C, state *translationPanelState, 
 func (m *editorApp) offlineDownloadProgress(c ui.C, offline *offlineTranslationState, blocked bool) {
 	download := offline.download
 	fraction := min(1, float32(download.progress.received.Load())/float32(download.bytes))
-	label := fmt.Sprintf("下载中 · %.0f%%", fraction*100)
+	label := fmt.Sprintf(uiText("下载中 · %.0f%%"), fraction*100)
 	if fraction >= 1 {
 		label = "正在安装…"
 	}
 	ui.Row(c).FillWidth().Gap(6).Items(ui.Center).Children(func() {
 		ui.Text(c, label).Grow(1).Muted().FontSize(12)
-		if ui.Button(c, "取消组件下载").Ghost().Height(26).FontSize(12).Disabled(blocked).Clicked() {
+		if ui.Button(c, uiText("取消组件下载")).Ghost().Height(26).FontSize(12).Disabled(blocked).Clicked() {
 			c.After(func() {
 				offline.download = nil
 				m.refreshOfflineComponents(offline)
@@ -157,7 +157,7 @@ func (m *editorApp) startOfflineDownload(model offlineComponent) {
 		client.Timeout = 15 * time.Minute
 		client.CheckRedirect = func(request *http.Request, previous []*http.Request) error {
 			if request.URL.Scheme != "https" || len(previous) >= 6 {
-				return fmt.Errorf("离线组件下载跳转无效")
+				return fmt.Errorf("%s", uiText("离线组件下载跳转无效"))
 			}
 			return nil
 		}
@@ -200,7 +200,7 @@ func (m *editorApp) updateOfflineTranslation(c ui.C) {
 			offline.download = nil
 			m.refreshOfflineComponents(offline)
 			if err != nil {
-				offline.problem = download.model.Label + "下载失败：" + err.Error()
+				offline.problem = download.model.Label + uiText("下载失败：") + err.Error()
 			}
 		}
 	}
@@ -214,11 +214,11 @@ func (m *editorApp) updateOfflineTranslation(c ui.C) {
 	}
 	offline.request = nil
 	if err != nil {
-		state.problem = "离线翻译失败：" + err.Error()
+		state.problem = uiText("离线翻译失败：") + err.Error()
 		return
 	}
 	if err := state.validateTarget(m.active); err != nil || !state.matchesLanguages() {
-		state.problem = "原文或语言已变化，请重新翻译"
+		state.problem = uiText("原文或语言已变化，请重新翻译")
 		return
 	}
 	state.output.SetText(result.Text)

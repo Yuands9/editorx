@@ -36,14 +36,14 @@ article img{max-width:100%;height:auto;display:block}
 <body>
 <header>
 <strong title="{{.Title}}">{{.Title}}</strong>
-<button id="outline-toggle" type="button" aria-controls="outline" aria-expanded="false">标题</button>
-<button id="smaller" type="button" aria-label="缩小">−</button>
-<button id="fit" type="button" title="还原缩放">100%</button>
-<button id="larger" type="button" aria-label="放大">＋</button>
+<button id="outline-toggle" type="button" aria-controls="outline" aria-expanded="false" data-en-text="Outline">标题</button>
+<button id="smaller" type="button" aria-label="缩小" data-en-label="Zoom Out">−</button>
+<button id="fit" type="button" title="还原缩放" data-en-title="Reset Zoom">100%</button>
+<button id="larger" type="button" aria-label="放大" data-en-label="Zoom In">＋</button>
 </header>
 <div class="layout">
-<nav id="outline" aria-label="文档标题" hidden>
-{{range .Headings}}<a href="#heading-{{.ID}}" style="--depth:{{.Depth}}">{{.Text}}</a>{{else}}<p>这份文档没有标题。</p>{{end}}
+<nav id="outline" aria-label="文档标题" data-en-label="Document Outline" hidden>
+{{range .Headings}}<a href="#heading-{{.ID}}" style="--depth:{{.Depth}}">{{.Text}}</a>{{else}}<p data-en-text="This document has no headings.">这份文档没有标题。</p>{{end}}
 </nav>
 <main><article>{{.Body}}</article></main>
 </div>

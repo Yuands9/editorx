@@ -31,7 +31,7 @@ func (s *gitWatchState) close() {
 func (m *editorApp) updateGitWatch(c ui.C) {
 	git := &m.tools.git
 	s := &git.watch
-	if !m.watchFiles || m.tools.active != "Git" || m.windowClosed || git.snapshot.root == "" {
+	if !m.watchFiles || !m.tools.gitOpen || m.windowClosed || git.snapshot.root == "" {
 		s.close()
 		return
 	}

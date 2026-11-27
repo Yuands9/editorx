@@ -59,15 +59,15 @@ func recognizeImageText(ctx context.Context, directory string, bitmap gfx.Bitmap
 			detail = strings.TrimSpace(detail[index+1:])
 		}
 		if detail != "" {
-			return "", fmt.Errorf("OCR 引擎运行失败：%s", detail)
+			return "", fmt.Errorf(uiText("OCR 引擎运行失败：%s"), detail)
 		}
-		return "", fmt.Errorf("OCR 引擎运行失败：%w", err)
+		return "", fmt.Errorf(uiText("OCR 引擎运行失败：%w"), err)
 	}
 
 	// Run waits until Python, Tesseract and the models have left memory.
 	output := strings.TrimSpace(stdout.String())
 	if stdout.overflow || !utf8.ValidString(output) || strings.ContainsRune(output, 0) {
-		return "", errors.New("识别结果过长或无效，请尝试较小的图片")
+		return "", errors.New(uiText("识别结果过长或无效，请尝试较小的图片"))
 	}
 	return output, nil
 }
@@ -75,7 +75,7 @@ func recognizeImageText(ctx context.Context, directory string, bitmap gfx.Bitmap
 func imageOCRPixels(ctx context.Context, bitmap gfx.Bitmap) ([]byte, int, int, error) {
 	const maxSide = 3500
 	if !validImageBitmap(bitmap) {
-		return nil, 0, 0, errors.New("图片像素数据不完整")
+		return nil, 0, 0, errors.New(uiText("图片像素数据不完整"))
 	}
 
 	width, height := bitmap.Width, bitmap.Height

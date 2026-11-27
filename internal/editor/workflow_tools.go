@@ -45,7 +45,7 @@ func readWorkflowPreferences(directory string) (workflowPreferences, error) {
 		return preferences, err
 	}
 	if len(data) > 2<<20 {
-		return preferences, errors.New("宏与工具配置超过 2 MiB")
+		return preferences, errors.New(uiText("宏与工具配置超过 2 MiB"))
 	}
 	if err := json.Unmarshal(data, &preferences); err != nil {
 		return preferences, err
@@ -55,26 +55,26 @@ func readWorkflowPreferences(directory string) (workflowPreferences, error) {
 
 func (preferences workflowPreferences) validate() error {
 	if len(preferences.Tools) > 30 || len(preferences.Macros) > 30 {
-		return errors.New("最多保存 30 个宏和 30 个工具")
+		return errors.New(uiText("最多保存 30 个宏和 30 个工具"))
 	}
 	for _, macro := range preferences.Macros {
 		if strings.TrimSpace(macro.Name) == "" || len(macro.Name) > 120 || len(macro.Steps) == 0 || len(macro.Steps) > macroStepLimit {
-			return errors.New("宏名称或步数无效")
+			return errors.New(uiText("宏名称或步数无效"))
 		}
 		bytes := 0
 		for _, step := range macro.Steps {
 			bytes += len(step.Text)
 		}
 		if bytes > macroTextLimit {
-			return errors.New("宏文本超过 256 KiB")
+			return errors.New(uiText("宏文本超过 256 KiB"))
 		}
 	}
 	for _, tool := range preferences.Tools {
 		if strings.TrimSpace(tool.Name) == "" || len(tool.Name) > 120 || strings.TrimSpace(tool.Executable) == "" {
-			return errors.New("请填写工具名称和程序")
+			return errors.New(uiText("请填写工具名称和程序"))
 		}
 		if len(tool.Arguments) > 200 || len(strings.Join(tool.Arguments, "")) > 64<<10 {
-			return errors.New("工具参数过长")
+			return errors.New(uiText("工具参数过长"))
 		}
 	}
 	return nil
@@ -89,7 +89,7 @@ func (preferences workflowPreferences) save(directory string) error {
 		return err
 	}
 	if len(data) > 2<<20 {
-		return errors.New("宏与工具配置超过 2 MiB，请删除不需要的条目")
+		return errors.New(uiText("宏与工具配置超过 2 MiB，请删除不需要的条目"))
 	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
@@ -117,7 +117,7 @@ func toolArguments(tool customEditorTool, values toolContext) (string, []string,
 	expand := func(value string) (string, error) {
 		for _, variable := range []struct{ key, value string }{{"{file}", values.file}, {"{dir}", values.directory}, {"{project}", values.project}, {"{selection}", values.selection}} {
 			if strings.Contains(value, variable.key) && variable.value == "" && variable.key != "{selection}" {
-				return "", fmt.Errorf("%s 当前不可用，请先保存文件或添加项目", variable.key)
+				return "", fmt.Errorf(uiText("%s 当前不可用，请先保存文件或添加项目"), variable.key)
 			}
 		}
 		// One replacement pass: document text containing placeholders is literal.

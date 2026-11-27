@@ -9,45 +9,45 @@
 <body>
   <header class="pdf-toolbar">
     <strong id="name" class="pdf-title">PDF 预览</strong>
-    <div class="pdf-group" role="group" aria-label="页码">
-      <button id="back" title="上一页" aria-label="上一页" disabled>‹</button>
-      <input id="page" type="number" min="1" value="1" aria-label="页码" disabled>
+    <div class="pdf-group" role="group" aria-label="页码" data-en-label="Page">
+      <button id="back" title="上一页" data-en-title="Previous Page" aria-label="上一页" data-en-label="Previous Page" disabled>‹</button>
+      <input id="page" type="number" min="1" value="1" aria-label="页码" data-en-label="Page" disabled>
       <span id="total">/ …</span>
-      <button id="forward" title="下一页" aria-label="下一页" disabled>›</button>
+      <button id="forward" title="下一页" data-en-title="Next Page" aria-label="下一页" data-en-label="Next Page" disabled>›</button>
     </div>
-    <div class="pdf-group" role="group" aria-label="缩放">
-      <button id="smaller" title="缩小" aria-label="缩小" disabled>−</button>
-      <button id="fit" title="适合宽度" disabled>适合宽度</button>
-      <button id="larger" title="放大" aria-label="放大" disabled>＋</button>
+    <div class="pdf-group" role="group" aria-label="缩放" data-en-label="Zoom">
+      <button id="smaller" title="缩小" data-en-title="Zoom Out" aria-label="缩小" data-en-label="Zoom Out" disabled>−</button>
+      <button id="fit" title="适合宽度" data-en-title="Fit to Width" disabled>适合宽度</button>
+      <button id="larger" title="放大" data-en-title="Zoom In" aria-label="放大" data-en-label="Zoom In" disabled>＋</button>
     </div>
     <div class="pdf-group pdf-actions">
-      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" disabled>标题</button>
-      <button id="find-toggle" aria-expanded="false" aria-controls="find">查找</button>
-      <button id="save-copy">另存原件</button>
-      <button id="external" title="在系统阅读器中打开">系统阅读器</button>
+      <button id="outline-toggle" aria-expanded="false" aria-controls="document-outline" title="显示标题列表" data-en-title="Show Outline" data-en-text="Outline" disabled>标题</button>
+      <button id="find-toggle" aria-expanded="false" aria-controls="find" data-en-text="Find">查找</button>
+      <button id="save-copy" data-en-text="Save a Copy">另存原件</button>
+      <button id="external" title="在系统阅读器中打开" data-en-title="Open in System Viewer" data-en-text="System Viewer">系统阅读器</button>
     </div>
   </header>
   <div id="find" hidden>
-    <input id="find-query" type="search" placeholder="查找文字" aria-label="查找 PDF 文字">
-    <button id="find-previous" aria-label="上一个匹配">‹</button>
-    <button id="find-next" aria-label="下一个匹配">›</button>
+    <input id="find-query" type="search" placeholder="查找文字" data-en-placeholder="Find text" aria-label="查找 PDF 文字" data-en-label="Find PDF Text">
+    <button id="find-previous" aria-label="上一个匹配" data-en-label="Previous Match">‹</button>
+    <button id="find-next" aria-label="下一个匹配" data-en-label="Next Match">›</button>
     <output id="find-count" aria-live="polite"></output>
-    <button id="find-close" aria-label="关闭查找">×</button>
+    <button id="find-close" aria-label="关闭查找" data-en-label="Close Find">×</button>
   </div>
   <div id="message" role="status">正在加载 PDF…</div>
   <form id="password-form" hidden>
-    <label for="password">输入 PDF 打开密码</label>
+    <label for="password" data-en-text="PDF Password">输入 PDF 打开密码</label>
     <input id="password" type="password" autocomplete="off" required>
-    <button type="submit">打开</button>
+    <button type="submit" data-en-text="Open">打开</button>
   </form>
   <div class="document-layout">
-    <aside id="document-outline" class="document-outline" aria-label="标题" hidden>
-      <h2>标题</h2>
+    <aside id="document-outline" class="document-outline" aria-label="标题" data-en-label="Outline" hidden>
+      <h2 data-en-text="Outline">标题</h2>
       <p id="outline-status" role="status" hidden></p>
       <div id="outline-entries"></div>
     </aside>
     <main class="pdf-workspace">
-      <div id="viewer-container" aria-label="PDF 文档" tabindex="0">
+      <div id="viewer-container" aria-label="PDF 文档" data-en-label="PDF Document" tabindex="0">
         <div id="viewer" class="pdfViewer"></div>
       </div>
     </main>

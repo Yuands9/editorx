@@ -31,7 +31,7 @@ type localHistoryPage struct {
 func (m *editorApp) localHistorySettings(c ui.C) {
 	store := m.documentHistory()
 	if store == nil {
-		ui.Text(c, "无法定位 EditorX 数据目录").Muted()
+		ui.Text(c, uiText("无法定位 EditorX 数据目录")).Muted()
 		return
 	}
 	state := &m.appSettings.history
@@ -41,27 +41,27 @@ func (m *editorApp) localHistorySettings(c ui.C) {
 	}
 	state.update(c, store)
 	ui.Row(c.Part("history-nav")).FillWidth().Gap(8).Items(ui.Center).Children(func() {
-		if ui.Button(c.Part("back"), "存储概览").Icon(chevronLeftIcon).Ghost().Height(30).
+		if ui.Button(c.Part("back"), uiText("存储概览")).Icon(chevronLeftIcon).Ghost().Height(30).
 			Disabled(state.action != nil).Clicked() {
 			c.After(func() {
 				state.manage = false
 				state.overview = storageOverview{}
 			})
 		}
-		ui.Text(c, "历史版本").FontSize(16).Bold()
+		ui.Text(c, uiText("历史版本")).FontSize(16).Bold()
 	})
 	m.historyRetentionSettings(c.Part("retention"), store, state)
 	ui.Row(c.Part("summary")).FillWidth().Items(ui.Center).Gap(8).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, "历史记录").FontSize(14).Bold()
-			ui.Text(c, fmt.Sprintf("%s · %d 个文件 · %d 个版本", historySize(state.catalog.bytes),
+			ui.Text(c, uiText("历史记录")).FontSize(14).Bold()
+			ui.Text(c, fmt.Sprintf(uiText("%s · %d 个文件 · %d 个版本"), historySize(state.catalog.bytes),
 				len(state.catalog.files), state.catalog.count)).FontSize(12).Muted()
 		})
-		if ui.Button(c.Part("delete"), fmt.Sprintf("清理所选 (%d)", len(state.selected))).Outline().Height(32).
+		if ui.Button(c.Part("delete"), fmt.Sprintf(uiText("清理所选 (%d)"), len(state.selected))).Outline().Height(32).
 			Disabled(len(state.selected) == 0 || state.action != nil).Clicked() {
 			state.confirm, state.clearAll = true, false
 		}
-		if ui.Button(c.Part("clear"), "清空历史").Ghost().Height(32).
+		if ui.Button(c.Part("clear"), uiText("清空历史")).Ghost().Height(32).
 			Disabled(state.catalog.count == 0 || state.action != nil).Clicked() {
 			state.confirm, state.clearAll = true, true
 		}
@@ -75,7 +75,7 @@ func (m *editorApp) localHistorySettings(c ui.C) {
 		}
 	}
 	if state.action != nil {
-		ui.Text(c, "正在处理历史记录…").Muted().FontSize(12)
+		ui.Text(c, uiText("正在处理历史记录…")).Muted().FontSize(12)
 	}
 	m.historyRecords(c.Part("records"), state)
 	m.historyCleanupDialog(c.Part("cleanup"), store, state)
@@ -105,7 +105,7 @@ func (state *localHistoryPage) update(c ui.C, store *localHistoryStore) {
 		state.scan, state.loaded = nil, true
 		if err != nil {
 			state.catalog.revision = revision
-			state.catalog.problem = "无法读取本地历史：" + err.Error()
+			state.catalog.problem = uiText("无法读取本地历史：") + err.Error()
 			return
 		}
 		state.catalog = catalog
@@ -132,24 +132,24 @@ func (m *editorApp) historyRetentionSettings(c ui.C, store *localHistoryStore, s
 		state.versions.SetText(strconv.Itoa(max(0, versions)))
 	}
 	enabled := !preferences.Disabled
-	if m.applicationSettingSwitch(c.Part("record"), "记录本地历史",
-		fmt.Sprintf("保存改动时，压缩保存大小在 %d MiB 以内的旧版本。", localHistoryFileSizeLimit>>20), &enabled) {
+	if m.applicationSettingSwitch(c.Part("record"), uiText("记录本地历史"),
+		fmt.Sprintf(uiText("保存改动时，压缩保存大小在 %d MiB 以内的旧版本。"), localHistoryFileSizeLimit>>20), &enabled) {
 		m.appSettings.draft.LocalHistory.Disabled = !enabled
 		c.After(m.saveApplicationSettings)
 	}
-	m.applicationSetting(c.Part("rules"), "保留规则",
-		"同时检查两项上限，满足任一清理条件的旧版本会自动移除。填 0 表示不限。", func() {
+	m.applicationSetting(c.Part("rules"), uiText("保留规则"),
+		uiText("同时检查两项上限，满足任一清理条件的旧版本会自动移除。填 0 表示不限。"), func() {
 			ui.Row(c).Gap(6).Items(ui.Center).Children(func() {
 				ui.Column(c.Part("duration")).Gap(2).Children(func() {
-					ui.Text(c, "保留天数").FontSize(11).Muted()
-					ui.TextField(c, &state.days, "保留天数", "0").Width(76).Height(32)
+					ui.Text(c, uiText("保留天数")).FontSize(11).Muted()
+					ui.TextField(c, &state.days, uiText("保留天数"), "0").Width(76).Height(32)
 				})
 				ui.Column(c.Part("count")).Gap(2).Children(func() {
-					ui.Text(c, "每文件版本数").FontSize(11).Muted()
-					ui.TextField(c, &state.versions, "每文件版本数", "0").Width(86).Height(32)
+					ui.Text(c, uiText("每文件版本数")).FontSize(11).Muted()
+					ui.TextField(c, &state.versions, uiText("每文件版本数"), "0").Width(86).Height(32)
 				})
 				changed := state.days.Text() != strconv.Itoa(max(0, days)) || state.versions.Text() != strconv.Itoa(max(0, versions))
-				if ui.Button(c.Part("apply"), "应用").Height(32).Disabled(!changed || state.action != nil).Clicked() {
+				if ui.Button(c.Part("apply"), uiText("应用")).Height(32).Disabled(!changed || state.action != nil).Clicked() {
 					c.After(func() { m.applyHistoryRetention(store, state) })
 				}
 			})
@@ -160,11 +160,11 @@ func (m *editorApp) applyHistoryRetention(store *localHistoryStore, state *local
 	days, dayErr := strconv.Atoi(strings.TrimSpace(state.days.Text()))
 	versions, versionErr := strconv.Atoi(strings.TrimSpace(state.versions.Text()))
 	if dayErr != nil || days < 0 || days > maxHistoryDays {
-		state.problem = fmt.Sprintf("保留天数请输入 0 到 %d 的整数", maxHistoryDays)
+		state.problem = fmt.Sprintf(uiText("保留天数请输入 0 到 %d 的整数"), maxHistoryDays)
 		return
 	}
 	if versionErr != nil || versions < 0 || versions > maxHistoryCount {
-		state.problem = fmt.Sprintf("每文件版本数请输入 0 到 %d 的整数", maxHistoryCount)
+		state.problem = fmt.Sprintf(uiText("每文件版本数请输入 0 到 %d 的整数"), maxHistoryCount)
 		return
 	}
 	state.days.SetText(strconv.Itoa(days))
@@ -188,7 +188,7 @@ func (m *editorApp) applyHistoryRetention(store *localHistoryStore, state *local
 	state.notice, state.problem = "", ""
 	state.action = ui.NewEffect[string, int](func(ctx context.Context) (string, error) {
 		removed, err := store.clean(time.Now(), false)
-		return fmt.Sprintf("已应用保留规则，清理 %d 个旧版本", removed), err
+		return fmt.Sprintf(uiText("已应用保留规则，清理 %d 个旧版本"), removed), err
 	})
 }
 
@@ -198,7 +198,7 @@ type localHistoryRow struct {
 }
 
 func (m *editorApp) historyRecords(c ui.C, state *localHistoryPage) {
-	ui.TextField(c.Part("file-filter"), &state.filter, "筛选历史文件", "筛选文件名或路径").FillWidth().Height(32)
+	ui.TextField(c.Part("file-filter"), &state.filter, uiText("筛选历史文件"), uiText("筛选文件名或路径")).FillWidth().Height(32)
 	filter := strings.ToLower(strings.TrimSpace(state.filter.Text()))
 	var rows []localHistoryRow
 	for i := range state.catalog.files {
@@ -230,7 +230,7 @@ func (m *editorApp) historyRecords(c ui.C, state *localHistoryPage) {
 			return
 		}
 		m.historyVersionRow(item, state, row.file, *row.version)
-	}).FillWidth().Height(248).Label("本地历史记录")
+	}).FillWidth().Height(248).Label(uiText("本地历史记录"))
 }
 
 func (m *editorApp) historyFileRow(item ui.ListRow, state *localHistoryPage, file *localHistoryFile) {
@@ -270,7 +270,7 @@ func (m *editorApp) historyFileRow(item ui.ListRow, state *localHistoryPage, fil
 				ui.Text(c, name).FontSize(13).Ellipsis()
 				ui.Text(c, path).FontSize(11).Muted().Ellipsis()
 			})
-			ui.Text(c, fmt.Sprintf("%d 个版本 · %s", len(file.versions), historySize(file.bytes))).Muted().FontSize(12).Shrink(0)
+			ui.Text(c, fmt.Sprintf(uiText("%d 个版本 · %s"), len(file.versions), historySize(file.bytes))).Muted().FontSize(12).Shrink(0)
 			ui.Icon(c, chevron).Size(16, 16).Color(m.theme.MutedForeground)
 		})
 		if row.Clicked() {
@@ -294,7 +294,7 @@ func (m *editorApp) historyVersionRow(item ui.ListRow, state *localHistoryPage, 
 			c.After(func() { state.selectVersion(version, checked) })
 		}
 		ui.Text(c, historySize(version.bytes)).Muted().FontSize(12).Shrink(0)
-		if ui.Button(c.Part("show-version"), "比对版本").Ghost().Height(28).FontSize(12).Disabled(state.action != nil).Clicked() {
+		if ui.Button(c.Part("show-version"), uiText("比对版本")).Ghost().Height(28).FontSize(12).Disabled(state.action != nil).Clicked() {
 			c.After(func() { m.openHistoryComparison(file.source, version) })
 		}
 	})
@@ -315,19 +315,19 @@ func (m *editorApp) historyCleanupDialog(c ui.C, store *localHistoryStore, state
 	if !state.confirm {
 		return
 	}
-	title, action := "清理所选历史记录？", "确认清理"
+	title, action := uiText("清理所选历史记录？"), "确认清理"
 	count, bytes := len(state.selected), int64(0)
 	for _, version := range state.selected {
 		bytes += version.bytes
 	}
 	if state.clearAll {
-		title, action = "清空全部本地历史？", "确认清空"
+		title, action = uiText("清空全部本地历史？"), "确认清空"
 		count, bytes = state.catalog.count, state.catalog.bytes
 	}
 	ui.ModalWith(c, &state.confirm, title, ui.ModalSpec{Width: 450}, func() {
-		ui.Wrap(c, fmt.Sprintf("将永久删除 %d 个历史版本，释放约 %s。", count, historySize(bytes))).FillWidth()
+		ui.Wrap(c, fmt.Sprintf(uiText("将永久删除 %d 个历史版本，释放约 %s。"), count, historySize(bytes))).FillWidth()
 	}, func() {
-		if ui.Button(c.Part("cancel"), "取消").Ghost().Clicked() {
+		if ui.Button(c.Part("cancel"), uiText("取消")).Ghost().Clicked() {
 			state.confirm = false
 		}
 		if ui.Button(c.Part("confirm"), action).Clicked() {
@@ -346,7 +346,7 @@ func (m *editorApp) historyCleanupDialog(c ui.C, store *localHistoryStore, state
 					} else {
 						removed, err = store.remove(versions)
 					}
-					return fmt.Sprintf("已清理 %d 个历史版本", removed), err
+					return fmt.Sprintf(uiText("已清理 %d 个历史版本"), removed), err
 				})
 			})
 		}

@@ -105,7 +105,7 @@ func (client *codexRPC) next() (codexRPCMessage, error) {
 	for client.scanner.Scan() {
 		var message codexRPCMessage
 		if err := json.Unmarshal(client.scanner.Bytes(), &message); err != nil {
-			return codexRPCMessage{}, errors.New("Codex CLI 返回了无效的 JSON-RPC 消息")
+			return codexRPCMessage{}, errors.New(uiText("Codex CLI 返回了无效的 JSON-RPC 消息"))
 		}
 		if message.Method != "" && len(message.ID) != 0 && !bytes.Equal(message.ID, []byte("null")) {
 			// Viva only consumes text and never grants a server request for a tool or approval.
@@ -122,7 +122,7 @@ func (client *codexRPC) next() (codexRPCMessage, error) {
 	if err := client.scanner.Err(); err != nil {
 		return codexRPCMessage{}, err
 	}
-	return codexRPCMessage{}, errors.New("Codex CLI 已关闭连接")
+	return codexRPCMessage{}, errors.New(uiText("Codex CLI 已关闭连接"))
 }
 
 func (client *codexRPC) send(method string, params any) (int, error) {
@@ -158,13 +158,13 @@ func codexRequestError(text string) error {
 	detail := strings.ToLower(text)
 	switch {
 	case strings.Contains(detail, "not logged in"), strings.Contains(detail, "unauthorized"), strings.Contains(detail, "authentication"):
-		return errors.New("Codex CLI 的登录已失效，请检查 CLI 的登录状态")
+		return errors.New(uiText("Codex CLI 的登录已失效，请检查 CLI 的登录状态"))
 	case strings.Contains(detail, "rate limit"), strings.Contains(detail, "usage limit"), strings.Contains(detail, "429"):
-		return errors.New("Codex 模型请求达到账号限额，请稍后重试")
+		return errors.New(uiText("Codex 模型请求达到账号限额，请稍后重试"))
 	case strings.Contains(detail, "model"), strings.Contains(detail, "unsupported"):
-		return errors.New("Codex CLI 无法使用当前模型，请从模型列表重新选择")
+		return errors.New(uiText("Codex CLI 无法使用当前模型，请从模型列表重新选择"))
 	default:
-		return errors.New("Codex CLI 请求失败，请检查本机网络和登录状态")
+		return errors.New(uiText("Codex CLI 请求失败，请检查本机网络和登录状态"))
 	}
 }
 
@@ -244,7 +244,7 @@ func (settings aiSettings) runCodex(ctx context.Context, system string, messages
 		return aiCompletion{}, false, err
 	}
 	if thread.Thread.ID == "" {
-		return aiCompletion{}, false, errors.New("Codex CLI 未创建对话")
+		return aiCompletion{}, false, errors.New(uiText("Codex CLI 未创建对话"))
 	}
 	prompt, err := cliUserPrompt(messages, true)
 	if err != nil {
@@ -293,7 +293,7 @@ func (client *codexRPC) readTurn(id int, onDelta func(string)) (aiCompletion, er
 				return aiCompletion{}, err
 			}
 			if partial.Len()+len(delta.Delta) > aiResponseLimit {
-				return aiCompletion{}, errors.New("Codex 模型响应超过 2 MB")
+				return aiCompletion{}, errors.New(uiText("Codex 模型响应超过 2 MB"))
 			}
 			partial.WriteString(delta.Delta)
 			if onDelta != nil {
@@ -325,7 +325,7 @@ func (client *codexRPC) readTurn(id int, onDelta func(string)) (aiCompletion, er
 				return aiCompletion{}, codexRequestError(completed.Turn.Error.Message)
 			}
 			if completed.Turn.Status != "completed" {
-				return aiCompletion{}, fmt.Errorf("Codex CLI 没有完成回复")
+				return aiCompletion{}, fmt.Errorf("%s", uiText("Codex CLI 没有完成回复"))
 			}
 			if reply.Text == "" {
 				reply.Text = partial.String()

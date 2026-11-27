@@ -73,7 +73,7 @@ func (state *documentTranslationState) stop() {
 	if state.request != nil {
 		state.showResult(state.stream.text())
 		state.request, state.stream = nil, nil
-		state.problem = "翻译已停止"
+		state.problem = uiText("翻译已停止")
 	}
 }
 
@@ -85,7 +85,7 @@ func (m *editorApp) chooseDocumentTranslation(t *editorTab) {
 	state.problem = ""
 	profile, err := state.choose(m.dataDirectory)
 	if err != nil {
-		state.problem = "无法读取 AI 服务配置：" + err.Error()
+		state.problem = uiText("无法读取 AI 服务配置：") + err.Error()
 		return
 	}
 	if profile != nil {
@@ -105,12 +105,12 @@ func (m *editorApp) startDocumentTranslation(t *editorTab, settings aiSettings) 
 		return
 	}
 	if _, composing := t.source.text.Composition(); composing {
-		state.problem = "请先完成中文选词"
+		state.problem = uiText("请先完成中文选词")
 		return
 	}
 	original := t.source.text.CommittedString()
 	if strings.TrimSpace(original) == "" {
-		state.problem = "请输入需要翻译的文章"
+		state.problem = uiText("请输入需要翻译的文章")
 		return
 	}
 	if len(original) > documentTranslationLimit {
@@ -197,7 +197,7 @@ func (input documentTranslationInput) translate(ctx context.Context, settings ai
 			invalidate()
 		}
 	}
-	limitError := errors.New("译文超过 2 MiB，已保留已输出的内容")
+	limitError := errors.New(uiText("译文超过 2 MiB，已保留已输出的内容"))
 	for index, part := range parts {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -230,14 +230,14 @@ func (input documentTranslationInput) translate(ctx context.Context, settings ai
 			return "", limitError
 		}
 		if timedOut {
-			return "", fmt.Errorf("第 %d 段翻译超时，请重试", index+1)
+			return "", fmt.Errorf(uiText("第 %d 段翻译超时，请重试"), index+1)
 		}
 		if err != nil {
-			return "", fmt.Errorf("第 %d 段翻译失败：%w", index+1, err)
+			return "", fmt.Errorf(uiText("第 %d 段翻译失败：%w"), index+1, err)
 		}
 		translated = strings.TrimSpace(translated)
 		if !utf8.ValidString(translated) || strings.ContainsRune(translated, 0) {
-			return "", fmt.Errorf("第 %d 段返回了无效的译文", index+1)
+			return "", fmt.Errorf(uiText("第 %d 段返回了无效的译文"), index+1)
 		}
 		if result.Len()+len(translated)+len(part.after) > aiResponseLimit {
 			return "", limitError

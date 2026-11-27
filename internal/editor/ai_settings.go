@@ -113,7 +113,7 @@ func (e *aiSettingsEditor) toggleKeyVisibility() {
 	if e.enteredKey() == "" && !e.clearKey && e.provider == e.original.Provider && len(e.original.Key) > 0 {
 		key, err := windowsAIKey(e.original.Key, false)
 		if err != nil {
-			e.problem = "无法解锁已保存的密钥，请重新输入"
+			e.problem = uiText("无法解锁已保存的密钥，请重新输入")
 			return
 		}
 		defer clear(key)
@@ -134,7 +134,7 @@ func (e *aiSettingsEditor) profile(requireModel bool) (aiSettings, error) {
 	for _, field := range []*ui.Field{&e.name, &e.baseURL, &e.model, &e.key, &e.headers, &e.cliPath} {
 		if editor := field.GetEditor(); editor != nil {
 			if _, composing := editor.Composition(); composing {
-				return aiSettings{}, errors.New("请先完成中文选词")
+				return aiSettings{}, errors.New(uiText("请先完成中文选词"))
 			}
 		}
 	}
@@ -146,7 +146,7 @@ func (e *aiSettingsEditor) profile(requireModel bool) (aiSettings, error) {
 		profile.BaseURL, profile.Auth, profile.Direct = "", aiAuthNone, false
 		profile.Key, profile.Headers = nil, nil
 		if profile.Model != "" && !validAIModelID(profile.Model) {
-			return aiSettings{}, errors.New("请输入有效的模型 ID")
+			return aiSettings{}, errors.New(uiText("请输入有效的模型 ID"))
 		}
 		if profile.CLIPath != "" {
 			if _, err := profile.cliExecutable(); err != nil {
@@ -157,10 +157,10 @@ func (e *aiSettingsEditor) profile(requireModel bool) (aiSettings, error) {
 	}
 	profile.CLIPath = ""
 	if requireModel && !validAIModelID(profile.Model) {
-		return aiSettings{}, errors.New("请输入有效的模型 ID")
+		return aiSettings{}, errors.New(uiText("请输入有效的模型 ID"))
 	}
 	if !slices.Contains(aiProtocols, profile.Protocol) {
-		return aiSettings{}, errors.New("请选择 API 协议")
+		return aiSettings{}, errors.New(uiText("请选择 API 协议"))
 	}
 	base, err := profile.apiBase()
 	if err != nil {
@@ -169,10 +169,10 @@ func (e *aiSettingsEditor) profile(requireModel bool) (aiSettings, error) {
 	oldBase, _ := e.original.apiBase()
 	key, headers := e.enteredKey(), strings.TrimSpace(e.headers.Text())
 	if len(key) > 16*1024 || strings.ContainsFunc(key, unicode.IsControl) {
-		return aiSettings{}, errors.New("API 密钥超长或包含控制字符")
+		return aiSettings{}, errors.New(uiText("API 密钥超长或包含控制字符"))
 	}
 	if base != oldBase && (len(profile.Key) > 0 && key == "" && !e.clearKey || len(profile.Headers) > 0 && headers == "" && !e.clearHeaders) {
-		return aiSettings{}, errors.New("接口地址已改变，请重新填写或清除原密钥和请求头")
+		return aiSettings{}, errors.New(uiText("接口地址已改变，请重新填写或清除原密钥和请求头"))
 	}
 	if e.clearKey {
 		profile.Key = nil
@@ -226,6 +226,8 @@ func (m *editorApp) toggleAIPanel() {
 }
 
 func (m *editorApp) openAIAt(tab *editorTab, path string, directory bool) {
+	m.leavePasswordVault()
+	m.tools.gitOpen = false
 	m.translation = nil
 	m.templatePanel = nil
 	a := &m.ai
@@ -292,7 +294,7 @@ func (m *editorApp) saveAIChatPreferences(mode, size int) {
 			}
 		}
 	}
-	a.settings.message, a.settings.problem, a.settings.passed = "对话偏好已保存", "", true
+	a.settings.message, a.settings.problem, a.settings.passed = uiText("对话偏好已保存"), "", true
 }
 
 // Read the catalog again before writing so changes from another window are
@@ -305,7 +307,7 @@ func (m *editorApp) editableAIProfiles() (aiProfiles, int, error) {
 	original := m.ai.settings.original
 	index := profiles.index(original.ID)
 	if original.ID != 0 && (index < 0 || !reflect.DeepEqual(profiles.Profiles[index], original)) {
-		return aiProfiles{}, -1, errors.New("此配置已在其他窗口修改，请重新打开设置")
+		return aiProfiles{}, -1, errors.New(uiText("此配置已在其他窗口修改，请重新打开设置"))
 	}
 	return profiles, index, nil
 }
@@ -355,12 +357,12 @@ func (m *editorApp) saveAISettings() {
 		return
 	}
 	if profile.Name == "" || utf8.RuneCountInString(profile.Name) > aiProfileNameLimit || strings.ContainsFunc(profile.Name, unicode.IsControl) {
-		e.problem = fmt.Sprintf("请输入有效的配置名称，最多 %d 个字符", aiProfileNameLimit)
+		e.problem = fmt.Sprintf(uiText("请输入有效的配置名称，最多 %d 个字符"), aiProfileNameLimit)
 		return
 	}
 	for _, other := range profiles.Profiles {
 		if other.ID != profile.ID && strings.EqualFold(other.Name, profile.Name) {
-			e.problem = "已有同名配置，请换一个名称"
+			e.problem = uiText("已有同名配置，请换一个名称")
 			return
 		}
 	}
@@ -384,11 +386,11 @@ func (m *editorApp) saveAISettings() {
 	models, message, passed := e.models, e.message, e.passed
 	e.load(profile)
 	e.models, e.scrollTop = models, false
-	e.message, e.passed = "配置已保存", true
+	e.message, e.passed = uiText("配置已保存"), true
 	if passed {
-		e.message = message + " · 已保存"
+		e.message = message + uiText(" · 已保存")
 	}
-	a.message = "模型配置已保存"
+	a.message = uiText("模型配置已保存")
 }
 
 func (m *editorApp) setDefaultAISettings() {
@@ -407,7 +409,7 @@ func (m *editorApp) setDefaultAISettings() {
 		return
 	}
 	a.profiles, a.profileID = profiles, 0
-	e.problem, e.message, e.passed = "", "已设为默认配置", true
+	e.problem, e.message, e.passed = "", uiText("已设为默认配置"), true
 }
 
 func (m *editorApp) removeAISettings() {
@@ -429,7 +431,7 @@ func (m *editorApp) removeAISettings() {
 		return
 	}
 	m.reloadAISettingsPage()
-	a.settings.message, a.settings.passed = "配置已删除", true
+	a.settings.message, a.settings.passed = uiText("配置已删除"), true
 }
 
 func (m *editorApp) startAISettingsProbe(discover bool) {
@@ -459,7 +461,7 @@ func (m *editorApp) startAISettingsProbe(discover bool) {
 		}
 		// A reasoning model may reach the probe output limit before any visible text.
 		if !reply.Truncated && strings.TrimSpace(reply.Text) == "" {
-			return aiSettingsProbe{}, errors.New("服务已连接，但该模型没有返回文本")
+			return aiSettingsProbe{}, errors.New(uiText("服务已连接，但该模型没有返回文本"))
 		}
 		model := reply.Model
 		if model == "" {
@@ -485,13 +487,13 @@ func (e *aiSettingsEditor) updateProbe(c ui.C) {
 	}
 	e.passed = true
 	if result.model != "" {
-		e.message = fmt.Sprintf("连接成功 · %d ms · %s", max(1, result.elapsed.Milliseconds()), result.model)
+		e.message = fmt.Sprintf(uiText("连接成功 · %d ms · %s"), max(1, result.elapsed.Milliseconds()), result.model)
 		return
 	}
 	e.models = result.models
 	if len(e.models) == 0 {
-		e.message = "服务未返回模型，可直接填写模型 ID"
+		e.message = uiText("服务未返回模型，可直接填写模型 ID")
 		return
 	}
-	e.message = fmt.Sprintf("已获取 %d 个模型，可从列表选择", len(e.models))
+	e.message = fmt.Sprintf(uiText("已获取 %d 个模型，可从列表选择"), len(e.models))
 }

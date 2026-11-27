@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -17,16 +20,27 @@ type gitReviewState struct {
 	root, revision, parent, problem    string
 	change                             gitChange
 	staged                             bool
+	wholeWorking                       bool
 	selected                           int
 	data                               *gitReviewData
 	read                               *ui.EffectState[gitReviewData, int]
 	apply                              *ui.EffectState[bool, int]
-	log                                *ui.EffectState[[]gitCommitRecord, int]
+	log                                *ui.EffectState[gitLogPage, int]
 	files                              *ui.EffectState[gitCommitFiles, int]
 	commits                            []gitCommitRecord
 	changes                            []gitChange
 	logList, fileList                  ui.ListState
 	diff                               codeeditor.Diff
+	logQuery                           gitLogQuery
+	logSearch, logAuthor               ui.Field
+	logReferences                      []string
+	logHasMore, logDiff                bool
+	logDate                            string
+	logSplit                           ui.SplitterState
+	logScope                           string
+	logDirectory                       bool
+	window                             *app.Window
+	invalidator                        app.Invalidator
 }
 
 func (m *editorApp) openGitReview(change gitChange, staged bool) {
@@ -35,28 +49,52 @@ func (m *editorApp) openGitReview(change gitChange, staged bool) {
 	s.reload()
 }
 
+func (m *editorApp) openGitWorkingReview(change gitChange) {
+	s := &gitReviewState{open: true, root: m.tools.git.snapshot.root, change: change, wholeWorking: true}
+	m.tools.git.review = s
+	s.reload()
+}
+
 func (s *gitReviewState) reload() {
 	root, change, staged, revision, parent := s.root, s.change, s.staged, s.revision, s.parent
+	wholeWorking := s.wholeWorking
 	s.data, s.problem, s.selected = nil, "", 0
 	s.diff = codeeditor.Diff{}
 	s.read = ui.NewEffect[gitReviewData, int](func(ctx context.Context) (gitReviewData, error) {
+		if wholeWorking {
+			return readGitWorkingReview(ctx, root, change)
+		}
 		return readGitReview(ctx, root, change, staged, revision, parent)
 	})
 }
 
 func (m *editorApp) openGitLog() {
-	s := &gitReviewState{open: true, history: true, root: m.tools.git.snapshot.root}
-	s.log = ui.NewEffect[[]gitCommitRecord, int](func(ctx context.Context) ([]gitCommitRecord, error) {
+	m.openGitLogAt(m.tools.git.snapshot.root, "", true)
+}
+
+func (s *gitReviewState) loadLog(more bool) {
+	s.problem = ""
+	if more {
+		s.logQuery.offset += gitLogPageSize
+	} else {
+		s.logQuery.offset = 0
+		s.logQuery.text, s.logQuery.author = strings.TrimSpace(s.logSearch.Text()), strings.TrimSpace(s.logAuthor.Text())
+		s.commits, s.changes, s.data, s.read, s.files = nil, nil, nil, nil, nil
+		s.logList, s.fileList = ui.ListState{}, ui.ListState{}
+		s.revision, s.problem, s.change, s.logDiff = "", "", gitChange{}, false
+	}
+	query, root := s.logQuery, s.root
+	query.scope = s.logScope
+	s.log = ui.NewEffect[gitLogPage, int](func(ctx context.Context) (gitLogPage, error) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		return readGitLog(ctx, s.root)
+		return readGitLogPage(ctx, root, query)
 	})
-	m.tools.git.review = s
 }
 
 func (s *gitReviewState) selectCommit(record gitCommitRecord) {
 	s.revision, s.problem, s.data, s.read = record.hash, "", nil, nil
-	s.changes = nil
+	s.changes, s.change, s.logDiff = nil, gitChange{}, false
 	s.fileList = ui.ListState{}
 	root := s.root
 	s.files = ui.NewEffect[gitCommitFiles, int](func(ctx context.Context) (gitCommitFiles, error) {
@@ -71,17 +109,36 @@ func (m *editorApp) gitReviewDialog(c ui.C) {
 	if s == nil {
 		return
 	}
+	m.updateGitReview(c, s, m.invalidator.Invalidate)
+	m.gitReviewModal(c, s)
+}
+
+func (m *editorApp) updateGitReview(c ui.C, s *gitReviewState, invalidate func()) {
 	if s.log != nil {
 		ui.Effect(c.Part("log"), s.log, 0)
-		if records, err, done := s.log.Take(); done {
+		if page, err, done := s.log.Take(); done {
 			s.log = nil
 			if err != nil {
 				s.problem = err.Error()
+				if s.logQuery.offset > 0 {
+					s.logQuery.offset -= gitLogPageSize
+				}
 			} else {
-				s.commits = records
-				if len(records) > 0 {
-					s.selectCommit(records[0])
-					m.invalidator.Invalidate()
+				s.logHasMore = page.hasMore
+				if page.root != "" {
+					s.root = page.root
+				}
+				if s.logQuery.offset == 0 {
+					s.logReferences = page.references
+				}
+				for _, record := range page.commits {
+					if !slices.ContainsFunc(s.commits, func(existing gitCommitRecord) bool { return existing.hash == record.hash }) {
+						s.commits = append(s.commits, record)
+					}
+				}
+				if s.revision == "" && len(s.commits) > 0 {
+					s.selectCommit(s.commits[0])
+					invalidate()
 				}
 			}
 		}
@@ -94,10 +151,14 @@ func (m *editorApp) gitReviewDialog(c ui.C) {
 				s.problem = err.Error()
 			} else {
 				s.changes, s.parent = files.changes, files.parent
+				if s.logScope != "" {
+					s.changes = slices.DeleteFunc(s.changes, func(change gitChange) bool {
+						return !gitChangeInScope(s.root, s.logScope, s.logDirectory, change)
+					})
+				}
 				if len(s.changes) > 0 {
 					s.change = s.changes[0]
-					s.reload()
-					m.invalidator.Invalidate()
+					invalidate()
 				}
 			}
 		}
@@ -126,69 +187,55 @@ func (m *editorApp) gitReviewDialog(c ui.C) {
 			}
 		}
 	}
+}
+
+func (m *editorApp) gitReviewModal(c ui.C, s *gitReviewState) {
 	busy := s.apply != nil || m.tools.git.request != nil
-	title := "Git 差异"
-	if s.history {
-		title = "Git 提交历史 · 最近 100 次"
+	closeReview := func() {
+		if m.tools.git.review == s {
+			m.tools.git.review = nil
+			m.invalidator.Invalidate()
+		}
 	}
-	ui.ModalWith(c, &s.open, title, ui.ModalSpec{Width: min(1180, c.Bounds().Width-32), Height: min(780, c.Bounds().Height-40), NoClose: s.apply != nil}, func() {
-		ui.Row(c).FillWidth().Grow(1).MinHeight(0).Gap(8).Children(func() {
-			if s.history {
-				m.gitLogSidebar(c.Part("history"), s)
-			}
-			ui.Column(c.Part("body")).Grow(1).MinWidth(0).FillHeight().Gap(6).Children(func() {
-				if s.problem != "" {
-					ui.Wrap(c, s.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
-				}
-				if s.read != nil || s.log != nil || s.files != nil {
-					ui.Text(c, "正在读取 Git…").Muted()
-				}
-				if s.data != nil {
-					m.gitDiffBody(c.Part("diff-body"), s, busy)
-				}
-			})
-		})
+	title := uiText("Git 差异")
+	if s.history {
+		title = uiText("Git 提交记录") + " · " + filepath.Base(s.root)
+	}
+	ui.ModalWith(c, &s.open, title, ui.ModalSpec{Width: min(1560, c.Bounds().Width-24), Height: min(940, c.Bounds().Height-24), NoClose: s.apply != nil}, func() {
+		m.gitReviewBody(c, s, busy)
 	}, func() {
-		if !s.history && ui.Button(c, "刷新差异").Icon(refreshIcon).Ghost().Disabled(busy || s.read != nil).Clicked() {
+		if !s.history && ui.Button(c.Part("refresh-diff"), uiText("刷新差异")).Icon(refreshIcon).Ghost().Disabled(busy || s.read != nil).Clicked() {
 			c.After(s.reload)
 		}
-		if ui.Button(c, "关闭").Ghost().Disabled(s.apply != nil).Clicked() {
-			c.After(func() { s.open = false })
+		if ui.Button(c.Part("close-git-review"), uiText("关闭")).Ghost().Disabled(s.apply != nil).Clicked() {
+			c.After(closeReview)
 		}
 	})
 	if !s.open {
-		c.After(func() { m.tools.git.review = nil })
+		c.After(closeReview)
 	}
 }
 
-func (m *editorApp) gitLogSidebar(c ui.C, s *gitReviewState) {
-	ui.Column(c).Width(230).FillHeight().Gap(6).Children(func() {
-		ui.List(c.Part("commits"), &s.logList, len(s.commits), func(row ui.ListRow) {
-			record := s.commits[row.Index]
-			row.Element.Height(55).Children(func() {
-				button := ui.Button(row.C, record.subject).Ghost().FillWidth().Height(29).Tooltip(record.hash)
-				if s.revision == record.hash {
-					button.Secondary()
-				}
-				if button.Clicked() {
-					c.After(func() { s.selectCommit(record) })
-				}
-				ui.Text(row.C, record.author+" · "+record.at[:min(10, len(record.at))]).FontSize(11).Muted().Ellipsis()
-			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("提交列表")
-		ui.Text(c, "提交中的文件").Bold().FontSize(12)
-		ui.List(c.Part("files"), &s.fileList, len(s.changes), func(row ui.ListRow) {
-			change := s.changes[row.Index]
-			row.Element.Height(30).Children(func() {
-				b := ui.Button(row.C, change.status+"  "+change.path).Ghost().FillWidth().Height(28).Tooltip(change.path)
-				if s.change.path == change.path {
-					b.Secondary()
-				}
-				if b.Clicked() {
-					c.After(func() { s.change = change; s.reload() })
-				}
-			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("提交文件列表")
+func (m *editorApp) gitReviewBody(c ui.C, s *gitReviewState, busy bool) {
+	if s.history && !s.logDiff {
+		m.gitLogBrowser(c.Part("history"), s)
+		return
+	}
+	if s.history && ui.Button(c.Part("return-to-log"), uiText("返回提交记录")).Icon(chevronLeftIcon).Ghost().Height(30).Clicked() {
+		c.After(func() { s.logDiff, s.data, s.read = false, nil, nil })
+	}
+	ui.Row(c).FillWidth().Grow(1).MinHeight(0).Gap(8).Children(func() {
+		ui.Column(c.Part("body")).Grow(1).MinWidth(0).FillHeight().Gap(6).Children(func() {
+			if s.problem != "" {
+				ui.Wrap(c, s.problem).FillWidth().Color(m.theme.Danger).FontSize(12)
+			}
+			if s.read != nil || s.log != nil || s.files != nil {
+				ui.Text(c, uiText("正在读取 Git…")).Muted()
+			}
+			if s.data != nil {
+				m.gitDiffBody(c.Part("diff-body"), s, busy)
+			}
+		})
 	})
 }
 
@@ -205,7 +252,7 @@ func (m *editorApp) gitDiffBody(c ui.C, s *gitReviewState, busy bool) {
 			icon  gfx.Icon
 			delta int
 		}{{"上一个区别", historyUpIcon, -1}, {"下一个区别", historyDownIcon, 1}} {
-			if ui.Button(c.Key(step.label), step.label).Icon(step.icon).IconOnly().Ghost().Size(28, 28).Tooltip(step.label).Disabled(count == 0).Clicked() {
+			if ui.Button(c.Key(step.label), uiText(step.label)).Icon(step.icon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText(step.label)).Disabled(count == 0).Clicked() {
 				c.After(func() { s.selected = (s.selected + count + step.delta) % count; s.reveal = true })
 			}
 		}
@@ -215,7 +262,7 @@ func (m *editorApp) gitDiffBody(c ui.C, s *gitReviewState, busy bool) {
 		if s.onlyChanges {
 			label, icon = "展示全文件", expandIcon
 		}
-		if ui.Button(c.Part("context"), label).Icon(icon).IconOnly().Ghost().Size(28, 28).Tooltip(label).Clicked() {
+		if ui.Button(c.Part("context"), uiText(label)).Icon(icon).IconOnly().Ghost().Size(28, 28).Tooltip(uiText(label)).Clicked() {
 			c.After(func() { s.onlyChanges = !s.onlyChanges; s.reveal = true })
 		}
 		if len(data.hunks) > 0 {
@@ -223,7 +270,7 @@ func (m *editorApp) gitDiffBody(c ui.C, s *gitReviewState, busy bool) {
 			if data.staged {
 				action = "取消暂存此块"
 			}
-			if ui.Button(c.Part("hunk"), action).Height(28).Disabled(busy).Clicked() {
+			if ui.Button(c.Part("hunk"), uiText(action)).Height(28).Disabled(busy).Clicked() {
 				c.After(func() {
 					selected, snapshot := s.selected, *data
 					s.problem = ""
@@ -235,6 +282,12 @@ func (m *editorApp) gitDiffBody(c ui.C, s *gitReviewState, busy bool) {
 			}
 		}
 	})
+	if data.revision != "" {
+		ui.Row(c.Part("versions")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
+			ui.Text(c, uiText("提交前")+" · "+s.parent[:min(8, len(s.parent))]).Grow(1).MinWidth(0).Ellipsis().FontSize(12).Muted()
+			ui.Text(c, uiText("此提交")+" · "+data.revision[:min(8, len(data.revision))]).Grow(1).MinWidth(0).Ellipsis().FontSize(12).Muted()
+		})
+	}
 	result := data.comparison.diff.full
 	var separators map[int]string
 	if s.onlyChanges {
@@ -252,7 +305,7 @@ func (m *editorApp) gitDiffBody(c ui.C, s *gitReviewState, busy bool) {
 		CenterGutters: true, Language: documentFormat(filepath.Base(data.path)), Highlight: m.highlightHistoryLine,
 		RowSeparators: separators, ActiveRows: rows, FontSize: float32(m.editorPrefs.FontSize), TabWidth: m.editorPrefs.TabWidth,
 		MonoFace: gfx.MonoFamily(m.editorPrefs.FontFamily), VerticalScrollbarID: gfx.Item(1), HorizontalScrollbarID: gfx.Item(2)}
-	codeeditor.DiffView(c.Part("diff"), "Git 文件差异", &s.diff).FillWidth().Grow(1).MinHeight(0).DrawOver(func(d *ui.DrawContext) {
+	codeeditor.DiffView(c.Part("diff"), uiText("Git 文件差异"), &s.diff).FillWidth().Grow(1).MinHeight(0).DrawOver(func(d *ui.DrawContext) {
 		if s.reveal && count > 0 {
 			s.reveal = false
 			s.diff.Code.RevealRow(max(0, rows.Start-4))

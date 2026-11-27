@@ -14,6 +14,7 @@ terminal.loadAddon(fit);
 terminal.open(host);
 const send = (kind, details = {}) => window.viva?.postMessage(JSON.stringify({kind, ...details}));
 const sendSize = (kind) => send(kind, {cols: terminal.cols, rows: terminal.rows});
+let toggleShortcut = {};
 window.vivaTerminal = {
   write(base64) {
     const raw = atob(base64);
@@ -21,6 +22,7 @@ window.vivaTerminal = {
     terminal.write(bytes);
   },
   paste(text) { terminal.paste(text); },
+  setToggleShortcut(key, label, ctrl, alt, shift) { toggleShortcut = {key, label, ctrl, alt, shift}; },
 };
 new MutationObserver(() => {
   terminal.options.theme = document.documentElement.classList.contains("light") ? light : dark;
@@ -29,6 +31,11 @@ terminal.onData(text => send("input", {text}));
 terminal.attachCustomKeyEventHandler(event => {
   if (event.type !== "keydown") return true;
   const key = event.key.toLowerCase();
+  if (key === toggleShortcut.key && !event.metaKey && !event.isComposing && !event.getModifierState("AltGraph") &&
+      event.ctrlKey === toggleShortcut.ctrl && event.altKey === toggleShortcut.alt && event.shiftKey === toggleShortcut.shift) {
+    if (!event.repeat) send("toggle", {text:toggleShortcut.label});
+    return false;
+  }
   if (event.ctrlKey && event.shiftKey && key === "c") {
     send("copy", {text:terminal.getSelection()});
     return false;

@@ -88,7 +88,7 @@ func suggestOpenedFormat(name, source string) string {
 }
 
 func (m *editorApp) fileFormatPromptPending() bool {
-	return !m.appSettings.open && !m.vaultActive() && m.active != nil && m.active.formatPromptOpen
+	return !m.appSettings.open && m.active != nil && m.active.formatPromptOpen
 }
 
 func (m *editorApp) fileFormatDialog(c ui.C) {
@@ -101,12 +101,12 @@ func (m *editorApp) fileFormatDialog(c ui.C) {
 		tab.formatPromptOpen, tab.suggestedFormat = false, ""
 		m.focusActiveSource()
 	}
-	description := "「" + tab.title() + "」的内容看起来是 " + format + "。请选择显示格式。"
-	if ui.ModalWith(c, &tab.formatPromptOpen, "检测到文件格式", ui.ModalSpec{Description: description, Width: 470}, nil, func() {
-		if ui.Button(c, "保留原格式").Outline().Clicked() {
+	description := "「" + tab.title() + uiText("」的内容看起来是 ") + format + uiText("。请选择显示格式。")
+	if ui.ModalWith(c, &tab.formatPromptOpen, uiText("检测到文件格式"), ui.ModalSpec{Description: description, Width: 470}, nil, func() {
+		if ui.Button(c, uiText("保留原格式")).Outline().Clicked() {
 			c.After(closePrompt)
 		}
-		if ui.Button(c, "以 "+format+" 展示").Clicked() {
+		if ui.Button(c, uiText("以 ")+format+uiText(" 展示")).Clicked() {
 			c.After(func() {
 				tab.formatPromptOpen, tab.suggestedFormat = false, ""
 				m.selectLanguage(tab, format)

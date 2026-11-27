@@ -46,12 +46,12 @@ func readOfflineInstallation(directory string, component offlineComponent) (*off
 		return nil, err
 	}
 	if info.ID != component.ID || info.Bytes <= 0 {
-		return nil, errors.New("离线组件信息损坏，请移除后重新下载")
+		return nil, errors.New(uiText("离线组件信息损坏，请移除后重新下载"))
 	}
 	for _, name := range component.Required {
 		file, err := os.Stat(filepath.Join(path, name))
 		if err != nil || !file.Mode().IsRegular() || file.Size() == 0 {
-			return nil, errors.New("离线组件不完整，请移除后重新下载")
+			return nil, errors.New(uiText("离线组件不完整，请移除后重新下载"))
 		}
 	}
 	return &info, nil
@@ -111,7 +111,7 @@ func installOfflineComponent(ctx context.Context, client *http.Client, directory
 	}
 	for _, name := range component.Required {
 		if file, err := os.Stat(filepath.Join(temporary, name)); err != nil || !file.Mode().IsRegular() || file.Size() == 0 {
-			return nil, errors.New("下载包缺少运行文件")
+			return nil, errors.New(uiText("下载包缺少运行文件"))
 		}
 	}
 	data, err := json.Marshal(info)
@@ -157,10 +157,10 @@ func downloadOfflineArchive(ctx context.Context, client *http.Client, archive of
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("组件下载返回 HTTP %d", response.StatusCode)
+		return fmt.Errorf(uiText("组件下载返回 HTTP %d"), response.StatusCode)
 	}
 	if response.ContentLength > 0 && response.ContentLength != archive.Bytes {
-		return errors.New("下载大小与发布版本不符")
+		return errors.New(uiText("下载大小与发布版本不符"))
 	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -176,7 +176,7 @@ func downloadOfflineArchive(ctx context.Context, client *http.Client, archive of
 		return closeErr
 	}
 	if count != archive.Bytes || hex.EncodeToString(digest.Sum(nil)) != archive.SHA256 {
-		return errors.New("离线组件校验失败，请重试下载")
+		return errors.New(uiText("离线组件校验失败，请重试下载"))
 	}
 	return nil
 }
@@ -201,11 +201,11 @@ func unpackOfflineArchive(ctx context.Context, path, destination string, compone
 			continue
 		}
 		if !filepath.IsLocal(name) || strings.ContainsAny(name, "\\:") || entry.Mode()&os.ModeSymlink != 0 || name == "installed.json" || name == "download.zip" {
-			return 0, errors.New("离线组件包含无效路径")
+			return 0, errors.New(uiText("离线组件包含无效路径"))
 		}
 		total += int64(entry.UncompressedSize64)
 		if entry.UncompressedSize64 > 200<<20 || total > 400<<20 {
-			return 0, errors.New("离线组件解压超过大小限制")
+			return 0, errors.New(uiText("离线组件解压超过大小限制"))
 		}
 		target := filepath.Join(destination, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
@@ -245,7 +245,7 @@ func removeOfflineComponents(directory string) error {
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("离线组件路径不是普通目录")
+			return errors.New(uiText("离线组件路径不是普通目录"))
 		}
 		// Only these fixed, versioned component directories belong to this installer.
 		if err := os.RemoveAll(path); err != nil {

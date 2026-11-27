@@ -28,6 +28,7 @@ type editorPane struct {
 	focus               bool
 	readOnly            bool
 	focused             bool
+	placeholder         string
 	searchKey           func(gfx.KeyEvent) gfx.EventResult
 	foldSource          string
 	foldLanguage        string
@@ -41,6 +42,7 @@ type editorPane struct {
 	configHighlight     configHighlight
 	syntaxDisabled      bool
 	foldDisplaySource   string
+	foldDisplayLanguage menuLanguage
 	light               bool
 	restoreScroll       *gfx.Point
 }
@@ -61,7 +63,7 @@ func newEditorPane(value string, readOnly bool) *editorPane {
 	p.view.Snapshot.HorizontalScrollbarID = gfx.Item(2)
 	p.view.Snapshot.Highlight = p.highlightLine
 	if !readOnly {
-		p.view.Snapshot.Placeholder = "开始输入内容"
+		p.placeholder = "开始输入内容"
 	}
 	p.view.Text = func(window.TextInputContext) *window.TextInput {
 		if p.recording != nil {
@@ -220,6 +222,8 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		p.view.Snapshot.HighlightLine = nil
 	}
 	p.paintSelections()
+	label = uiText(label)
+	p.view.Snapshot.Placeholder = uiText(p.placeholder)
 	box := codeeditor.View(c, label, p.view)
 	box.DrawOver(func(d *ui.DrawContext) {
 		p.focused = d.Canvas.Focused() == d.Node.ID
@@ -243,20 +247,20 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		p.updateFolds()
 		scope := p.view.Parts()
 		// UI 移动、悬停和菜单重绘不重新生成整个文档的折叠标记。
-		if p.foldDisplaySource != p.foldSource || p.foldScope != scope || !maps.Equal(p.folded, p.collapsed) {
+		if p.foldDisplaySource != p.foldSource || p.foldDisplayLanguage != currentUILanguage() || p.foldScope != scope || !maps.Equal(p.folded, p.collapsed) {
 			p.view.Snapshot.FoldedLines = p.view.Snapshot.FoldedLines[:0]
 			p.view.Snapshot.FoldMarkers = p.view.Snapshot.FoldMarkers[:0]
 			last := -1
 			for i, f := range p.folds {
 				p.view.Snapshot.FoldMarkers = append(p.view.Snapshot.FoldMarkers, components.CodeEditorFoldMarker{
-					Line: f.Header, ID: scope.At(10 + i), Collapsed: p.collapsed[f.Header], Boxed: true, Label: "折叠或展开",
+					Line: f.Header, ID: scope.At(10 + i), Collapsed: p.collapsed[f.Header], Boxed: true, Label: uiText("折叠或展开"),
 				})
 				if p.collapsed[f.Header] && f.Header > last {
 					p.view.Snapshot.FoldedLines = append(p.view.Snapshot.FoldedLines, f)
 					last = f.LastLine
 				}
 			}
-			p.foldDisplaySource, p.foldScope = p.foldSource, scope
+			p.foldDisplaySource, p.foldDisplayLanguage, p.foldScope = p.foldSource, currentUILanguage(), scope
 			p.folded = maps.Clone(p.collapsed)
 		}
 	} else {

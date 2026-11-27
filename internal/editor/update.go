@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"debug/pe"
@@ -15,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +25,7 @@ import (
 const (
 	editorRepositoryURL = "https://github.com/Yuands9/editorx"
 	latestReleaseAPI    = "https://api.github.com/repos/Yuands9/editorx/releases/latest"
+	latestReleasePage   = editorRepositoryURL + "/releases/latest"
 	updateExecutable    = "EditorX.exe"
 	maxUpdateBytes      = 200 << 20
 )
@@ -50,6 +51,7 @@ type editorRelease struct {
 	Download   string            `json:"download,omitempty"`
 	Size       int64             `json:"size,omitempty"`
 	Checksum   [sha256.Size]byte `json:"checksum"`
+	PageOnly   bool              `json:"pageOnly,omitempty"`
 	comparison int
 }
 
@@ -79,16 +81,119 @@ func editorVersionParts(value string) ([3]int, error) {
 	var result [3]int
 	parts := strings.Split(strings.TrimPrefix(value, "v"), ".")
 	if len(parts) != len(result) {
-		return result, fmt.Errorf("版本号无效 %q", value)
+		return result, fmt.Errorf(uiText("版本号无效 %q"), value)
 	}
 	for index, part := range parts {
 		number, err := strconv.Atoi(part)
 		if err != nil || number < 0 || strconv.Itoa(number) != part {
-			return result, fmt.Errorf("版本号无效 %q", value)
+			return result, fmt.Errorf(uiText("版本号无效 %q"), value)
 		}
 		result[index] = number
 	}
 	return result, nil
+}
+
+func editorReleaseForTag(tag, current string) (editorRelease, error) {
+	latest, err := editorVersionParts(tag)
+	if err != nil {
+		return editorRelease{}, err
+	}
+	installed, err := editorVersionParts(current)
+	if err != nil {
+		return editorRelease{}, err
+	}
+	return editorRelease{Version: strings.TrimPrefix(tag, "v"), Page: editorRepositoryURL + "/releases/tag/" + tag,
+		comparison: slices.Compare(latest[:], installed[:])}, nil
+}
+
+type githubUpdateResponseError struct {
+	status     int
+	retryAfter time.Time
+}
+
+func (err *githubUpdateResponseError) Error() string {
+	return fmt.Sprintf(uiText("GitHub 返回 HTTP %d"), err.status)
+}
+
+func githubUpdateRetry(header http.Header, now time.Time) time.Time {
+	var deadline time.Time
+	if seconds, err := strconv.Atoi(header.Get("Retry-After")); err == nil && seconds >= 0 && seconds <= 86400 {
+		deadline = now.Add(time.Duration(seconds) * time.Second)
+	} else if date, err := http.ParseTime(header.Get("Retry-After")); err == nil {
+		deadline = date
+	}
+	if header.Get("X-RateLimit-Remaining") == "0" {
+		if epoch, err := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+			if reset := time.Unix(epoch, 0); reset.After(deadline) {
+				deadline = reset
+			}
+		}
+	}
+	if !deadline.After(now) {
+		return now.Add(time.Minute)
+	}
+	if maxRetry := now.Add(24 * time.Hour); deadline.After(maxRetry) {
+		return maxRetry
+	}
+	return deadline
+}
+
+func checkEditorRelease(ctx context.Context, client *http.Client, api, page, current string, cache *editorUpdateCache) (editorRelease, error) {
+	now := time.Now()
+	var apiError *githubUpdateResponseError
+	if !now.Before(cache.APIRetryAfter) {
+		release, err := fetchEditorRelease(ctx, client, api, current, cache)
+		if err == nil {
+			cache.APIRetryAfter = time.Time{}
+			return release, nil
+		}
+		if !errors.As(err, &apiError) || apiError.status != http.StatusForbidden && apiError.status != http.StatusTooManyRequests {
+			return editorRelease{}, err
+		}
+		cache.APIRetryAfter = apiError.retryAfter
+	}
+	release, err := fetchEditorReleasePage(ctx, client, page, current)
+	if err != nil {
+		if apiError != nil {
+			return editorRelease{}, fmt.Errorf(uiText("%v，公开发布页也无法访问：%w"), apiError, err)
+		}
+		return editorRelease{}, err
+	}
+	if release.Version == cache.Release.Version && !cache.Release.PageOnly {
+		return cache.Release, nil
+	}
+	cache.ETag = ""
+	return release, nil
+}
+
+func fetchEditorReleasePage(ctx context.Context, client *http.Client, endpoint, current string) (editorRelease, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return editorRelease{}, err
+	}
+	request.Header.Set("User-Agent", applicationName+"/"+current)
+	redirectClient := *client
+	redirectClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := redirectClient.Do(request)
+	if err != nil {
+		return editorRelease{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusFound && response.StatusCode != http.StatusMovedPermanently && response.StatusCode != http.StatusTemporaryRedirect && response.StatusCode != http.StatusPermanentRedirect {
+		return editorRelease{}, fmt.Errorf(uiText("公开发布页返回 HTTP %d"), response.StatusCode)
+	}
+	location, err := response.Location()
+	if err != nil || location.Scheme != request.URL.Scheme || !strings.EqualFold(location.Host, request.URL.Host) || location.User != nil {
+		return editorRelease{}, errors.New(uiText("公开发布页跳转无效"))
+	}
+	prefix := strings.TrimSuffix(request.URL.Path, "/latest") + "/tag/"
+	tag, ok := strings.CutPrefix(location.Path, prefix)
+	if !ok {
+		return editorRelease{}, errors.New(uiText("公开发布页没有返回稳定版标签"))
+	}
+	release, err := editorReleaseForTag(tag, current)
+	release.PageOnly = true
+	return release, err
 }
 
 func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, current string, cache *editorUpdateCache) (editorRelease, error) {
@@ -111,34 +216,21 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 		return cache.Release, nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return editorRelease{}, fmt.Errorf("GitHub 返回 HTTP %d", response.StatusCode)
+		return editorRelease{}, &githubUpdateResponseError{status: response.StatusCode, retryAfter: githubUpdateRetry(response.Header, time.Now())}
 	}
 
 	var record githubEditorRelease
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&record); err != nil {
-		return editorRelease{}, fmt.Errorf("无法读取发布信息：%w", err)
+		return editorRelease{}, fmt.Errorf(uiText("无法读取发布信息：%w"), err)
 	}
 	if record.Draft || record.Prerelease {
-		return editorRelease{}, errors.New("未找到公开稳定版本")
+		return editorRelease{}, errors.New(uiText("未找到公开稳定版本"))
 	}
-	latest, err := editorVersionParts(record.Tag)
+	release, err := editorReleaseForTag(record.Tag, current)
 	if err != nil {
 		return editorRelease{}, err
 	}
-	installed, err := editorVersionParts(current)
-	if err != nil {
-		return editorRelease{}, err
-	}
-	release := editorRelease{
-		Version: strings.TrimPrefix(record.Tag, "v"),
-		Page:    editorRepositoryURL + "/releases/tag/" + record.Tag,
-		Notes:   editorReleaseNotes(record.Body),
-	}
-	for index := range latest {
-		if release.comparison = cmp.Compare(latest[index], installed[index]); release.comparison != 0 {
-			break
-		}
-	}
+	release.Notes = editorReleaseNotes(record.Body)
 	if release.comparison <= 0 {
 		cache.ETag = response.Header.Get("ETag")
 		return release, nil
@@ -151,14 +243,14 @@ func fetchEditorRelease(ctx context.Context, client *http.Client, endpoint, curr
 		digest, valid := strings.CutPrefix(asset.Digest, "sha256:")
 		checksum, err := hex.DecodeString(digest)
 		if !valid || err != nil || len(checksum) != sha256.Size || asset.Size <= 0 || asset.Size > maxUpdateBytes {
-			return editorRelease{}, errors.New("更新文件的大小或 SHA-256 无效")
+			return editorRelease{}, errors.New(uiText("更新文件的大小或 SHA-256 无效"))
 		}
 		release.Download, release.Size = asset.URL, asset.Size
 		copy(release.Checksum[:], checksum)
 		cache.ETag = response.Header.Get("ETag")
 		return release, nil
 	}
-	return editorRelease{}, errors.New("发布页没有可下载的 EditorX.exe")
+	return editorRelease{}, errors.New(uiText("发布页没有可下载的 EditorX.exe"))
 }
 
 func editorReleaseNotes(body string) string {
@@ -186,7 +278,7 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载返回 HTTP %d", response.StatusCode)
+		return fmt.Errorf(uiText("下载返回 HTTP %d"), response.StatusCode)
 	}
 
 	file, err := os.OpenFile(target, os.O_WRONLY|os.O_TRUNC, 0)
@@ -200,7 +292,7 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 		return err
 	}
 	if size != release.Size || [sha256.Size]byte(digest.Sum(nil)) != release.Checksum {
-		return errors.New("更新文件的大小或 SHA-256 校验失败")
+		return errors.New(uiText("更新文件的大小或 SHA-256 校验失败"))
 	}
 	if err := file.Sync(); err != nil {
 		return err
@@ -210,11 +302,11 @@ func downloadEditorUpdate(ctx context.Context, client *http.Client, release edit
 	}
 	exe, err := pe.Open(target)
 	if err != nil {
-		return fmt.Errorf("更新文件不是有效的 Windows EXE：%w", err)
+		return fmt.Errorf(uiText("更新文件不是有效的 Windows EXE：%w"), err)
 	}
 	exe.Close()
 	if exe.Machine != pe.IMAGE_FILE_MACHINE_AMD64 {
-		return errors.New("更新文件与 Windows x64 不兼容")
+		return errors.New(uiText("更新文件与 Windows x64 不兼容"))
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -256,7 +348,7 @@ func replaceEditorExecutable(path, staged string) (installedEditorUpdate, error)
 func (update installedEditorUpdate) restart() error {
 	if err := startEditorExecutable(update.path); err != nil {
 		restoreErr := os.Rename(update.backup, update.path)
-		return fmt.Errorf("无法启动更新后的 EditorX：%w", errors.Join(err, restoreErr))
+		return fmt.Errorf(uiText("无法启动更新后的 EditorX：%w"), errors.Join(err, restoreErr))
 	}
 	return nil
 }

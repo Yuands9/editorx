@@ -22,10 +22,10 @@ func gitReviewFixture(t *testing.T) (string, func(...string) string) {
 		t.Skip("Git not installed")
 	}
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	t.Cleanup(cancel)
 	git := func(args ...string) string {
 		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		value, err := runGitCommand(ctx, exe, root, args...)
 		if err != nil {
 			t.Fatalf("git %v: %v", args, err)
@@ -178,8 +178,20 @@ func TestGitReviewUIAndConflictUndo(t *testing.T) {
 	}, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	if len(m.tools.git.review.changes) == 0 || m.tools.git.review.data != nil {
+		t.Fatal("history should load commit details without eagerly computing a diff")
+	}
+	if err := session.ClickLabel("button:查看提交文件 sample.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.WaitFor(func(app.Snapshot) bool { return m.tools.git.review.read == nil }, 10*time.Second); err != nil {
+		t.Fatal(err)
+	}
 	if m.tools.git.review.data == nil {
-		t.Fatal("history did not load")
+		t.Fatal("selected history file did not load its diff")
+	}
+	if err := session.ClickLabel("button:返回提交记录"); err != nil {
+		t.Fatal(err)
 	}
 	m.tools.git.review = nil
 	conflict := "before\n<<<<<<< HEAD\nours\n||||||| base\nbase\n=======\ntheirs\n>>>>>>> other\nafter\n"

@@ -38,7 +38,7 @@ func parseJSON(source string) (*jsonValue, error) {
 	}
 	if _, err = decoder.Token(); err != io.EOF {
 		if err == nil {
-			err = errors.New("JSON 根值后还有其他内容")
+			err = errors.New(uiText("JSON 根值后还有其他内容"))
 		}
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func parseJSON(source string) (*jsonValue, error) {
 
 func readJSONValue(decoder *json.Decoder, source string, depth int) (*jsonValue, error) {
 	if depth > 512 {
-		return nil, errors.New("JSON 嵌套超过 512 层")
+		return nil, errors.New(uiText("JSON 嵌套超过 512 层"))
 	}
 	start := jsonTokenStart(source, int(decoder.InputOffset()))
 	token, err := decoder.Token()
@@ -67,7 +67,7 @@ func readJSONValue(decoder *json.Decoder, source string, depth int) (*jsonValue,
 				}
 				name, ok := key.(string)
 				if !ok {
-					return nil, errors.New("JSON 对象键必须是字符串")
+					return nil, errors.New(uiText("JSON 对象键必须是字符串"))
 				}
 				child, err := readJSONValue(decoder, source, depth+1)
 				if err != nil {
@@ -85,7 +85,7 @@ func readJSONValue(decoder *json.Decoder, source string, depth int) (*jsonValue,
 				value.items = append(value.items, child)
 			}
 		} else {
-			return nil, errors.New("JSON 括号不匹配")
+			return nil, errors.New(uiText("JSON 括号不匹配"))
 		}
 		_, err = decoder.Token()
 		if err != nil {
@@ -100,7 +100,7 @@ func readJSONValue(decoder *json.Decoder, source string, depth int) (*jsonValue,
 	case nil:
 		value.kind = "null"
 	default:
-		return nil, errors.New("无法识别的 JSON 值")
+		return nil, errors.New(uiText("无法识别的 JSON 值"))
 	}
 	value.end = int(decoder.InputOffset())
 	return value, nil
@@ -165,7 +165,7 @@ func (v *jsonValue) writeXML(encoder *xml.Encoder, name string, key *string) err
 	for _, value := range values {
 		for _, r := range value {
 			if r != 9 && r != 10 && r != 13 && (r < 32 || r == 0xfffe || r == 0xffff) {
-				return fmt.Errorf("XML 1.0 无法表示字符 U+%04X", r)
+				return fmt.Errorf(uiText("XML 1.0 无法表示字符 U+%04X"), r)
 			}
 		}
 	}
@@ -261,16 +261,16 @@ func transformJSON(source, action string, indent int) (string, string, error) {
 	}
 	if action == "Form-Data" {
 		if value.kind != "object" {
-			return "", "", errors.New("Form-Data 需要 JSON 对象作为根值")
+			return "", "", errors.New(uiText("Form-Data 需要 JSON 对象作为根值"))
 		}
 		for _, member := range value.members {
 			if strings.ContainsAny(member.name, ":\r\n") {
-				return "", "", errors.New("Form-Data 批量文本的字段名不能包含冒号或换行")
+				return "", "", errors.New(uiText("Form-Data 批量文本的字段名不能包含冒号或换行"))
 			}
 			var field bytes.Buffer
 			if member.value.kind == "string" {
 				if strings.ContainsAny(member.value.scalar, "\r\n") {
-					return "", "", fmt.Errorf("字段 %q 含换行，不能直接转换为 Form-Data 批量文本", member.name)
+					return "", "", fmt.Errorf(uiText("字段 %q 含换行，不能直接转换为 Form-Data 批量文本"), member.name)
 				}
 				field.WriteString(member.value.scalar)
 			} else {
@@ -281,7 +281,7 @@ func transformJSON(source, action string, indent int) (string, string, error) {
 		return out.String(), "Form-Data", nil
 	}
 	if action != "键排序" && action != "Unicode 解码" {
-		return "", "", errors.New("未知 JSON 操作")
+		return "", "", errors.New(uiText("未知 JSON 操作"))
 	}
 	if action == "键排序" {
 		value.sortKeys()
@@ -304,7 +304,7 @@ func (m *editorApp) copyResult(t *editorTab) {
 		m.fail(err)
 		return
 	}
-	m.status = "已复制完整结果"
+	m.status = uiText("已复制完整结果")
 }
 
 func (t *editorTab) jsonResultApplyLabel(resultMatchesSource bool) string {
@@ -327,7 +327,7 @@ func (m *editorApp) applyResult(t *editorTab) {
 		return
 	}
 	if t.jsonComposing() {
-		m.fail(errors.New("请先完成中文选词"))
+		m.fail(errors.New(uiText("请先完成中文选词")))
 		return
 	}
 	if t.resultKind != "JSON" {
@@ -347,7 +347,7 @@ func (m *editorApp) applyResult(t *editorTab) {
 		}
 		t.source.focus = true
 	}
-	m.status = "结果已放入编辑区，Ctrl+S 保存"
+	m.status = uiText("结果已放入编辑区，Ctrl+S 保存")
 }
 
 func (m *editorApp) exportResult(t *editorTab) {
@@ -391,5 +391,5 @@ func jsonErrorMessage(source string, err error) (string, int) {
 	}
 	line := strings.Count(source[:offset], "\n") + 1
 	column := utf8.RuneCountInString(source[strings.LastIndex(source[:offset], "\n")+1:offset]) + 1
-	return fmt.Sprintf("第 %d 行，第 %d 列：%s", line, column, err.Error()), offset
+	return fmt.Sprintf(uiText("第 %d 行，第 %d 列：%s"), line, column, err.Error()), offset
 }

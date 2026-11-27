@@ -63,8 +63,18 @@ func (preferences sidebarPreferences) withChanges(before, after sidebarPreferenc
 func (m *editorApp) applySidebarPreferences(preferences sidebarPreferences) {
 	preferences = preferences.normalized()
 	if (m.sidebarPrefs.Position == "left") != (preferences.Position == "left") {
-		for _, split := range []*ui.SplitterState{&m.aiEditorSplit, m.activeAssetSplit()} {
-			if split != nil {
+		splits := []*ui.SplitterState{&m.aiEditorSplit, &m.tools.gitSplit}
+		if m.passwordVault != nil {
+			splits = append(splits, &m.passwordVault.split)
+		}
+		if m.translation != nil {
+			splits = append(splits, &m.translation.split)
+		}
+		if m.templatePanel != nil {
+			splits = append(splits, &m.templatePanel.split)
+		}
+		for _, split := range splits {
+			if split.Ratio != 0 {
 				split.Ratio = 1 - split.Ratio
 				split.Pos = 0
 			}
@@ -77,6 +87,12 @@ func (m *editorApp) applySidebarPreferences(preferences sidebarPreferences) {
 }
 
 func (m *editorApp) activeAssetSplit() *ui.SplitterState {
+	if m.vaultActive() {
+		return &m.passwordVault.split
+	}
+	if m.tools.gitOpen {
+		return &m.tools.gitSplit
+	}
 	if m.translation != nil {
 		return &m.translation.split
 	}
@@ -96,10 +112,10 @@ func (m *editorApp) newAssetSplit() ui.SplitterState {
 
 func (m *editorApp) sidebarSettings(c ui.C) {
 	draft := &m.appSettings.draft
-	m.applicationSetting(c.Part("position"), "侧栏位置", "工具按钮及其打开的面板显示在这一侧。", func() {
+	m.applicationSetting(c.Part("position"), uiText("侧栏位置"), uiText("工具按钮及其打开的面板显示在这一侧。"), func() {
 		ui.Row(c).Gap(5).Children(func() {
 			for _, option := range []struct{ value, label string }{{"left", "左侧"}, {"right", "右侧"}} {
-				button := ui.Button(c.Key(option.value), option.label).Ghost()
+				button := ui.Button(c.Key(option.value), uiText(option.label)).Ghost()
 				if draft.Sidebar.Position == option.value {
 					button.Secondary()
 				}
@@ -110,7 +126,7 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 			}
 		})
 	})
-	ui.Text(c, "显示的按钮").Bold().FontSize(14)
+	ui.Text(c, uiText("显示的按钮")).Bold().FontSize(14)
 	options := []struct {
 		label    string
 		value    *bool
@@ -141,5 +157,5 @@ func (m *editorApp) sidebarSettings(c ui.C) {
 			})
 		}
 	})
-	ui.Wrap(c, "模板库、翻译和密码本默认隐藏。隐藏设置按钮后，可从主菜单打开设置。").FillWidth().Muted().FontSize(12)
+	ui.Wrap(c, uiText("模板库、翻译和密码本默认隐藏。隐藏设置按钮后，可从主菜单打开设置。")).FillWidth().Muted().FontSize(12)
 }

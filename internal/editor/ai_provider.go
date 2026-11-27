@@ -66,11 +66,11 @@ func aiAuthLabel(auth aiAuth) string {
 func (settings aiSettings) apiBase() (string, error) {
 	address, err := url.Parse(settings.BaseURL)
 	if err != nil || address.Hostname() == "" || address.User != nil || address.RawQuery != "" || address.ForceQuery || address.Fragment != "" {
-		return "", errors.New("接口地址无效，需要填写完整 URL")
+		return "", errors.New(uiText("接口地址无效，需要填写完整 URL"))
 	}
 	local := aiLocalHost(address.Hostname())
 	if address.Scheme != "https" && !(address.Scheme == "http" && local) {
-		return "", errors.New("接口需使用 HTTPS，本机回环地址可使用 HTTP")
+		return "", errors.New(uiText("接口需使用 HTTPS，本机回环地址可使用 HTTP"))
 	}
 	path := strings.TrimRight(address.EscapedPath(), "/")
 	for _, suffix := range []string{"/chat/completions", "/responses", "/messages", "/models"} {
@@ -150,11 +150,11 @@ func (settings aiSettings) openResponse(ctx context.Context, method, operation s
 	}
 	request, err := http.NewRequestWithContext(ctx, method, base+"/"+operation, bytes.NewReader(body))
 	if err != nil {
-		return nil, errors.New("无法创建模型请求，请检查接口地址")
+		return nil, errors.New(uiText("无法创建模型请求，请检查接口地址"))
 	}
 	headerBytes, err := windowsAIKey(settings.Headers, false)
 	if err != nil {
-		return nil, errors.New("无法解锁自定义请求头，请在模型设置中重新输入")
+		return nil, errors.New(uiText("无法解锁自定义请求头，请在模型设置中重新输入"))
 	}
 	defer clear(headerBytes)
 	if len(headerBytes) != 0 {
@@ -195,9 +195,9 @@ func (settings aiSettings) openResponse(ctx context.Context, method, operation s
 	response, err := client.Do(request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, errors.New("模型请求超时，请检查地址、网络或代理")
+			return nil, errors.New(uiText("模型请求超时，请检查地址、网络或代理"))
 		}
-		return nil, errors.New("无法连接模型服务，请检查地址、网络或代理")
+		return nil, errors.New(uiText("无法连接模型服务，请检查地址、网络或代理"))
 	}
 	if response.StatusCode != http.StatusOK {
 		response.Body.Close()
@@ -209,10 +209,10 @@ func (settings aiSettings) openResponse(ctx context.Context, method, operation s
 func readAIResponse(reader io.Reader) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(reader, aiResponseLimit+1))
 	if err != nil {
-		return nil, errors.New("读取模型响应失败")
+		return nil, errors.New(uiText("读取模型响应失败"))
 	}
 	if len(data) > aiResponseLimit {
-		return nil, errors.New("模型响应超过 2 MB")
+		return nil, errors.New(uiText("模型响应超过 2 MB"))
 	}
 	return data, nil
 }
@@ -234,13 +234,13 @@ func (settings aiSettings) models(ctx context.Context) ([]string, error) {
 		if settings.canListModels() {
 			return settings.cliModelList(ctx)
 		}
-		return nil, errors.New("CLI 可使用默认模型或手动填写模型 ID")
+		return nil, errors.New(uiText("CLI 可使用默认模型或手动填写模型 ID"))
 	}
 	response, err := settings.openResponse(ctx, http.MethodGet, "models", nil, false)
 	if err != nil {
 		var responseErr aiHTTPError
 		if errors.As(err, &responseErr) && (responseErr.status == 404 || responseErr.status == 405 || responseErr.status == 501) {
-			return nil, errors.New("此服务未提供模型列表，可直接填写模型 ID")
+			return nil, errors.New(uiText("此服务未提供模型列表，可直接填写模型 ID"))
 		}
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (settings aiSettings) models(ctx context.Context) ([]string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil || result.Data == nil {
-		return nil, errors.New("模型列表格式不兼容，可直接填写模型 ID")
+		return nil, errors.New(uiText("模型列表格式不兼容，可直接填写模型 ID"))
 	}
 	models := make([]string, 0, len(result.Data))
 	for _, model := range result.Data {
@@ -273,10 +273,10 @@ func (settings aiSettings) complete(ctx context.Context, system string, messages
 		return "", err
 	}
 	if reply.Truncated {
-		return "", errors.New("模型输出未完成，请缩小修改范围")
+		return "", errors.New(uiText("模型输出未完成，请缩小修改范围"))
 	}
 	if strings.TrimSpace(reply.Text) == "" {
-		return "", errors.New("模型没有返回文本，请检查模型能力或修改指令")
+		return "", errors.New(uiText("模型没有返回文本，请检查模型能力或修改指令"))
 	}
 	return reply.Text, nil
 }
@@ -296,7 +296,7 @@ func (settings aiSettings) infer(ctx context.Context, system string, messages []
 		return settings.runCLI(ctx, system, messages, effort)
 	}
 	if settings.Model == "" {
-		return aiCompletion{}, errors.New("请输入模型 ID")
+		return aiCompletion{}, errors.New(uiText("请输入模型 ID"))
 	}
 	protocol := settings.Protocol
 	if protocol == "" {
@@ -358,12 +358,12 @@ func (settings aiSettings) infer(ctx context.Context, system string, messages []
 			Thinking     *aiThinkingConfig `json:"thinking,omitempty"`
 		}{Stream: streaming, Model: settings.Model, System: system, Messages: messages, MaxTokens: limit, OutputConfig: outputConfig, Thinking: thinking}
 	default:
-		return aiCompletion{}, errors.New("无法识别此配置的 API 协议")
+		return aiCompletion{}, errors.New(uiText("无法识别此配置的 API 协议"))
 	}
 	reply, err := settings.requestAICompletion(ctx, protocol, payload, onDelta)
 	var responseErr aiHTTPError
 	if effort != "" && errors.As(err, &responseErr) && (responseErr.status == 400 || responseErr.status == 422) {
-		return aiCompletion{}, fmt.Errorf("%w。可将思考水平切回「服务默认」后重试", err)
+		return aiCompletion{}, fmt.Errorf(uiText("%w。可将思考水平切回「服务默认」后重试"), err)
 	}
 	return reply, err
 }
@@ -405,7 +405,7 @@ func decodeAICompletion(protocol aiProtocol, data []byte) (aiCompletion, error) 
 			Content []aiTextBlock `json:"content"`
 		} `json:"output"`
 	}
-	badResponse := fmt.Errorf("模型响应与 %s 格式不兼容", aiProtocolLabel(protocol))
+	badResponse := fmt.Errorf(uiText("模型响应与 %s 格式不兼容"), aiProtocolLabel(protocol))
 	if err := json.Unmarshal(data, &result); err != nil {
 		return aiCompletion{}, badResponse
 	}
@@ -450,23 +450,23 @@ func decodeAICompletion(protocol aiProtocol, data []byte) (aiCompletion, error) 
 
 func parseAIHeaders(source string) (http.Header, error) {
 	if len(source) > 16*1024 {
-		return nil, errors.New("自定义请求头超过 16 KB")
+		return nil, errors.New(uiText("自定义请求头超过 16 KB"))
 	}
 	var values map[string]string
 	if err := json.Unmarshal([]byte(source), &values); err != nil || values == nil {
-		return nil, errors.New("请求头须为名称和值均为字符串的 JSON 对象")
+		return nil, errors.New(uiText("请求头须为名称和值均为字符串的 JSON 对象"))
 	}
 	headers := make(http.Header, len(values))
 	for name, value := range values {
 		if name == "" || strings.ContainsFunc(name, func(c rune) bool {
 			return !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("!#$%&'*+-.^_|~", c))
 		}) || strings.ContainsFunc(value, func(c rune) bool { return c < 32 && c != '\t' || c == 127 }) {
-			return nil, errors.New("请求头的名称或值含有无效字符")
+			return nil, errors.New(uiText("请求头的名称或值含有无效字符"))
 		}
 		switch strings.ToLower(name) {
 		case "authorization", "proxy-authorization", "x-api-key", "anthropic-version", "accept", "content-type",
 			"host", "content-length", "transfer-encoding", "connection", "upgrade", "trailer":
-			return nil, fmt.Errorf("请求头 %s 由认证或请求协议管理", name)
+			return nil, fmt.Errorf(uiText("请求头 %s 由认证或请求协议管理"), name)
 		}
 		headers.Set(name, value)
 	}

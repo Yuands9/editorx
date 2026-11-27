@@ -170,7 +170,7 @@ func (m *editorApp) tabStrip(c ui.C, scroll ui.Box, blocked bool) {
 			}
 			blank := ui.Slot(c).Grow(1).MinWidth(44).FillHeight()
 			m.tabEndHit = ui.ID(c)
-			blank.HitWith(m.tabEndHit, "双击新建", gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked})
+			blank.HitWith(m.tabEndHit, uiText("双击新建"), gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked})
 			blank.DrawOver(func(d *ui.DrawContext) {
 				if dropSlot >= 0 && drop.group == nil && drop.index == len(m.tabs) {
 					dropX, drawDropLine = d.Rect.X+2, true
@@ -229,7 +229,7 @@ func tabCardWidth(canvas *gfx.Canvas, title string, modified bool) float32 {
 }
 
 func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx float32, modified, blocked bool) {
-	active := tab == m.active && !m.vaultActive()
+	active := tab == m.active
 	card := ui.Column(c).Absolute().Left(tabStripInset+dx).Top(tabStripItemTop).Size(width-2*tabStripInset, tabStripItemSize)
 	if active || tab.group == nil {
 		background := m.theme.Background
@@ -276,7 +276,7 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 			ui.Icon(c, icon).Size(tabStripIconSize, tabStripIconSize).Shrink(0).Color(color)
 			name := ui.Text(c, title).FontSize(tabStripTitleSize).Grow(1).MinWidth(0).Ellipsis()
 			if tab.projectPreview {
-				ui.Text(c, "预览").FontSize(10).Muted().Shrink(0)
+				ui.Text(c, uiText("预览")).FontSize(10).Muted().Shrink(0)
 			}
 			if !active {
 				name.Muted()
@@ -296,8 +296,8 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 			if pin.Clicked() {
 				c.After(func() { m.togglePin(tab) })
 			}
-			closeHint := m.shortcutHint("关闭", shortcutCloseTab)
-			closeButton := ui.Button(c, "关闭 "+title).Icon(closeIcon).IconOnly().Ghost().
+			closeHint := m.shortcutHint(uiText("关闭"), shortcutCloseTab)
+			closeButton := ui.Button(c, uiText("关闭 ")+title).Icon(closeIcon).IconOnly().Ghost().
 				Size(tabStripButtonSize, tabStripButtonSize).Shrink(0).ButtonRecipe(buttonRecipe).
 				Tooltip(closeHint).Disabled(blocked)
 			showClose, hoveringControl := tabStripCloseVisible(c.Canvas(), tab.tabHit, pin.N().ID, closeButton.N().ID, blocked || m.tabDrag.Dragging())
@@ -350,10 +350,10 @@ func (m *editorApp) drawTabGroupHeader(c ui.C, group *tabGroup, members int, wid
 		header.Radius(tabStripRadius).Background(tint.Over(m.theme.Background)).
 			Border(1, group.accent())
 	}
-	description := fmt.Sprintf("%d 个标签", members)
+	description := fmt.Sprintf(uiText("%d 个标签"), members)
 	header.HitWith(ui.ID(c), group.label(), gfx.HitOptions{
 		Role: gfx.RoleButton, Expandable: true, Expanded: !group.Collapsed, Disabled: blocked, Description: description,
-	}).Tooltip(group.Name + " · " + description + " · 双击重命名")
+	}).Tooltip(group.Name + " · " + description + uiText(" · 双击重命名"))
 	if !joining {
 		header.DrawOver(func(d *ui.DrawContext) {
 			drawGroupUnderlineHighlight(d, group.accent())
@@ -382,9 +382,9 @@ func (m *editorApp) drawTabGroupHeader(c ui.C, group *tabGroup, members int, wid
 		if pin.Clicked() {
 			c.After(func() { m.toggleGroupPin(group) })
 		}
-		closeButton := ui.Button(c, "关闭分组 "+group.Name).Icon(closeIcon).IconOnly().Ghost().
+		closeButton := ui.Button(c, uiText("关闭分组 ")+group.Name).Icon(closeIcon).IconOnly().Ghost().
 			Size(tabStripButtonSize, tabStripButtonSize).Shrink(0).ButtonRecipe(groupedTabButtonRecipe).
-			Tooltip("关闭分组").Disabled(blocked)
+			Tooltip(uiText("关闭分组")).Disabled(blocked)
 		showClose, _ := tabStripCloseVisible(c.Canvas(), group.hit, pin.N().ID, closeButton.N().ID, blocked || m.tabDrag.Dragging())
 		if !showClose {
 			closeButton.Opacity(0)

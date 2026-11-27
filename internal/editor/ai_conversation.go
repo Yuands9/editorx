@@ -121,7 +121,7 @@ func (a *aiAssistant) stopRequest() {
 			turn.reply = turn.stream.text()
 		}
 		turn.stream, turn.partial = nil, ""
-		turn.request, turn.notice = nil, "请求已停止"
+		turn.request, turn.notice = nil, uiText("请求已停止")
 	}
 }
 

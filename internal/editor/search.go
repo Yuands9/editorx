@@ -295,7 +295,7 @@ func (s *documentSearch) refresh() {
 	query, err := s.options.compile(pattern)
 	s.compiled = query
 	if err != nil {
-		s.errorText = "正则表达式无效：" + err.Error()
+		s.errorText = uiText("正则表达式无效：") + err.Error()
 	} else {
 		s.matches, s.truncated = query.Matches(s.matches, source, find.DefaultLimit)
 		selection := s.target.text.Selection()
@@ -319,7 +319,7 @@ func (s *documentSearch) step(direction int) {
 	}
 	next := s.current + direction
 	if !s.wrap && (next < 0 || next >= len(s.matches)) {
-		s.message = "已到达文档边界"
+		s.message = uiText("已到达文档边界")
 		return
 	}
 	s.message = ""

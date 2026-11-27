@@ -161,7 +161,7 @@ func readLargeTextPage(path string, index, match int64, query string, requested 
 		return largeTextPage{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return largeTextPage{}, errors.New("请选择普通文本文件")
+		return largeTextPage{}, errors.New(uiText("请选择普通文本文件"))
 	}
 	size := info.Size()
 	enc, bom, err := inspectTextEncoding(file, size, requested)
@@ -187,7 +187,7 @@ func readLargeTextChunk(file io.ReaderAt, size, index, match int64, query string
 			return largeTextPage{}, err
 		}
 		if match+int64(len(needle)) > size {
-			return largeTextPage{}, errors.New("文件已变化，请重新查找")
+			return largeTextPage{}, errors.New(uiText("文件已变化，请重新查找"))
 		}
 		index = match / largeTextPageBytes
 	}
@@ -229,7 +229,7 @@ func readLargeTextChunk(file io.ReaderAt, size, index, match int64, query string
 		begin := int(match - start)
 		stop := begin + len(needle)
 		if !bytes.Equal(data[begin:stop], needle) {
-			return largeTextPage{}, errors.New("文件已变化，请重新查找")
+			return largeTextPage{}, errors.New(uiText("文件已变化，请重新查找"))
 		}
 		prefix, err := decodeTextEncoding(data[:begin], enc)
 		if err != nil {

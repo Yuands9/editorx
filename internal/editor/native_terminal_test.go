@@ -120,8 +120,10 @@ func TestNativeTerminalInput(t *testing.T) {
 						}
 						commandSent, waitingForHidden = false, true
 						deadline = time.Now().Add(8 * time.Second)
-						m.useTool("终端")
-						m.invalidator.Invalidate()
+						m.applyShortcutBindings(shortcutPreset(vsCodeShortcutPreset), vsCodeShortcutPreset)
+						shell.view.Eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
+							key: String.fromCharCode(96), ctrlKey: true, bubbles: true, cancelable: true
+						}))`)
 					})
 				}
 			}

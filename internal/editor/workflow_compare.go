@@ -48,7 +48,7 @@ func (source compareSource) snapshot() (document, error) {
 		return document{path: source.path}, nil
 	}
 	if !historyEditableTab(source.tab) || source.tab.source.text.CompositionActive() {
-		return document{}, errors.New("请先完成输入，并选择普通文本编辑区")
+		return document{}, errors.New(uiText("请先完成输入，并选择普通文本编辑区"))
 	}
 	doc := source.tab.doc
 	doc.saved = source.tab.source.text.CommittedString()
@@ -63,7 +63,7 @@ func (m *editorApp) startTextCompare() {
 	var docs [2]document
 	for i, source := range s.sources {
 		if source.tab == nil && source.path == "" {
-			s.problem = "请选择两份文本"
+			s.problem = uiText("请选择两份文本")
 			return
 		}
 		doc, err := source.snapshot()
@@ -104,7 +104,7 @@ func (m *editorApp) openTextComparison(comparison localHistoryComparison, tab *e
 		window, err := ui.OpenWindow(m.application, state.windowConfig(), state.pageConfig())
 		if err != nil {
 			m.historyCompare = nil
-			m.fail(fmt.Errorf("无法打开对比窗口：%w", err))
+			m.fail(fmt.Errorf(uiText("无法打开对比窗口：%w"), err))
 			return
 		}
 		state.window = window
@@ -131,7 +131,7 @@ func (m *editorApp) textCompareDialog(c ui.C) {
 					right = m.openLoadedFile(openedEditorFile{doc: comparison.current})
 				}
 				if !historyEditableTab(right) {
-					s.problem = "右侧文件当前不能编辑"
+					s.problem = uiText("右侧文件当前不能编辑")
 					return
 				}
 				label := filepath.Base(s.sources[0].path) + " · 磁盘快照"
@@ -152,7 +152,7 @@ func (m *editorApp) textCompareDialog(c ui.C) {
 			choices = append(choices, tab)
 		}
 	}
-	dismissed := ui.ModalWith(c, &s.open, "通用分屏对比", ui.ModalSpec{Width: min(620, c.Bounds().Width-32)}, func() {
+	dismissed := ui.ModalWith(c, &s.open, uiText("通用分屏对比"), ui.ModalSpec{Width: min(620, c.Bounds().Width-32)}, func() {
 		ui.Column(c).FillWidth().Gap(12).Children(func() {
 			for i, label := range []string{"左侧 · 参考文本", "右侧 · 当前编辑"} {
 				source := &s.sources[i]
@@ -166,7 +166,7 @@ func (m *editorApp) textCompareDialog(c ui.C) {
 				if source.tab == nil {
 					ui.Row(c.Part("file").KeyInt(i)).FillWidth().Items(ui.Center).Gap(8).Children(func() {
 						ui.Text(c, source.path).FontSize(12).Muted().Grow(1).MinWidth(0).Ellipsis()
-						if ui.Button(c, "选择"+label).Icon(folderIcon).Ghost().Disabled(busy).Clicked() {
+						if ui.Button(c, uiText("选择")+label).Icon(folderIcon).Ghost().Disabled(busy).Clicked() {
 							c.After(func() {
 								paths, err := app.OpenFiles(app.OpenFileOptions{Title: label})
 								if err == nil && len(paths) > 0 {
@@ -177,7 +177,7 @@ func (m *editorApp) textCompareDialog(c ui.C) {
 					})
 				}
 			}
-			ui.Wrap(c, "支持两份文本或打开标签（含未保存内容）。左侧保留快照；右侧可编辑、逐块合并并撤销。每份最多 32 MiB。").FontSize(12).Muted()
+			ui.Wrap(c, uiText("支持两份文本或打开标签（含未保存内容）。左侧保留快照；右侧可编辑、逐块合并并撤销。每份最多 32 MiB。")).FontSize(12).Muted()
 			if s.problem != "" {
 				ui.Wrap(c, s.problem).Color(m.theme.Danger)
 			}

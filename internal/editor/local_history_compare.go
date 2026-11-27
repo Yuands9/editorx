@@ -103,7 +103,7 @@ func (m *editorApp) openHistoryComparison(path string, version localHistoryVersi
 		window, err := ui.OpenWindow(m.application, state.windowConfig(), state.pageConfig())
 		if err != nil {
 			m.historyCompare = nil
-			m.fail(fmt.Errorf("无法打开历史比对窗口：%w", err))
+			m.fail(fmt.Errorf(uiText("无法打开历史比对窗口：%w"), err))
 			m.invalidator.Invalidate()
 			return
 		}
@@ -156,7 +156,7 @@ func (m *editorApp) updateHistoryComparison(c ui.C, state *historyCompareState) 
 		if versions, err, ready := state.catalog.Take(); ready {
 			state.catalog, state.versions = nil, versions
 			if err != nil {
-				state.problem = "无法读取历史版本：" + err.Error()
+				state.problem = uiText("无法读取历史版本：") + err.Error()
 			} else if len(versions) != 0 {
 				index := slices.IndexFunc(versions, func(v localHistoryVersion) bool { return v.name == state.preferred })
 				m.selectHistoryVersion(state, max(0, index))
@@ -168,7 +168,7 @@ func (m *editorApp) updateHistoryComparison(c ui.C, state *historyCompareState) 
 		if comparison, err, ready := state.read.Take(); ready {
 			state.read = nil
 			if err != nil {
-				state.problem = "无法读取历史比对：" + err.Error()
+				state.problem = uiText("无法读取历史比对：") + err.Error()
 			} else {
 				state.comparison = &comparison
 				state.selectBlock(max(0, state.block))
@@ -180,9 +180,9 @@ func (m *editorApp) updateHistoryComparison(c ui.C, state *historyCompareState) 
 		if path, err, ready := state.export.Take(); ready {
 			state.export = nil
 			if err != nil {
-				state.problem = "无法另存历史版本：" + err.Error()
+				state.problem = uiText("无法另存历史版本：") + err.Error()
 			} else {
-				state.notice = "已另存副本 · " + path
+				state.notice = uiText("已另存副本 · ") + path
 			}
 		}
 	}
@@ -224,9 +224,9 @@ func (state *historyCompareState) mergeActionsFor(result components.CodeDiffResu
 	state.actionRows, state.actionScope = &result.Rows[0], scope
 	state.mergeActions = state.mergeActions[:0]
 	for index, block := range state.comparison.diff.blocks {
-		label := fmt.Sprintf("合并第 %d 处历史改动", index+1)
+		label := fmt.Sprintf(uiText("合并第 %d 处历史改动"), index+1)
 		if state.generic {
-			label = fmt.Sprintf("合并第 %d 处改动", index+1)
+			label = fmt.Sprintf(uiText("合并第 %d 处改动"), index+1)
 		}
 		state.mergeActions = append(state.mergeActions, components.CodeDiffGutterAction{
 			Row: block.visibleRange(state.onlyChanges).Start, Left: true, ID: scope.At(historyMergePart + index),
@@ -264,17 +264,17 @@ func (m *editorApp) mergeHistoryChange(state *historyCompareState, whole bool) {
 	start, end, value = trimHistoryReplacement(current, start, end, value)
 	removed := current[start:end]
 	if len(removed)+len(value) > historyMergeUndoRunes && utf8.RuneCountInString(removed)+utf8.RuneCountInString(value) > historyMergeUndoRunes {
-		state.problem = "这次合并太大，无法保留撤销记录。可以另存历史副本。"
+		state.problem = uiText("这次合并太大，无法保留撤销记录。可以另存历史副本。")
 		if whole && len(comparison.diff.blocks) > 1 {
-			state.problem = "这次恢复太大，无法保留撤销记录。可以逐块合并，或另存历史副本。"
+			state.problem = uiText("这次恢复太大，无法保留撤销记录。可以逐块合并，或另存历史副本。")
 		}
 		return
 	}
 	editor.ReplaceRange(text.Range{Start: editor.RuneIndex(start), End: editor.RuneIndex(end)}, value)
 	state.syncCurrent()
 	state.revealCaret, state.mergeNeedsReview = true, false
-	state.problem, state.notice = "", "已合并到编辑区 · Ctrl+Z 撤回"
-	m.status = "已合并改动 · 可撤销"
+	state.problem, state.notice = "", uiText("已合并到编辑区 · Ctrl+Z 撤回")
+	m.status = uiText("已合并改动 · 可撤销")
 }
 
 func (m *editorApp) exportHistoryComparison(state *historyCompareState) {
@@ -284,7 +284,7 @@ func (m *editorApp) exportHistoryComparison(state *historyCompareState) {
 		return
 	}
 	if err != nil {
-		state.problem = "无法另存历史版本：" + err.Error()
+		state.problem = uiText("无法另存历史版本：") + err.Error()
 		return
 	}
 	state.problem, state.notice = "", ""
