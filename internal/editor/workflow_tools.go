@@ -109,9 +109,7 @@ func (m *editorApp) currentToolContext() toolContext {
 		selection := tab.source.text.Selection()
 		ctx.selection = tab.source.text.String()[tab.source.text.ByteOffset(selection.Start):tab.source.text.ByteOffset(selection.End)]
 	}
-	if m.workspace != nil && len(m.workspace.roots) > 0 {
-		ctx.project = m.workspace.roots[0].path
-	}
+	ctx.project = m.activeTextProject(m.active)
 	return ctx
 }
 

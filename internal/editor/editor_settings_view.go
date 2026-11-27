@@ -79,6 +79,8 @@ func (m *editorApp) editorSettings(c ui.C) {
 		ui.Select(c, &draft.JSONIndent, []int{2, 4}, func(indent int) string { return fmt.Sprintf("%d 个空格", indent) }).
 			Label("JSON 默认缩进").Width(144).Height(34)
 	})
+	m.applicationSettingSwitch(c.Part("completion"), "输入时自动补全",
+		"输入两个字符并短暂停顿后显示候选。按 Tab 接受。", &draft.AutomaticCompletion)
 	if previewBelow {
 		m.editorSettingsPreview(c.Part("preview"), *draft)
 	}

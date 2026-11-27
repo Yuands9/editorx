@@ -1,0 +1,14 @@
+diff --git a/vendor/github.com/vivaui/viva/base/widgets.go b/vendor/github.com/vivaui/viva/base/widgets.go
+index 5f9a2c3..02daf5e 100644
+--- a/vendor/github.com/vivaui/viva/base/widgets.go
++++ b/vendor/github.com/vivaui/viva/base/widgets.go
+@@ -59,6 +59,9 @@ type segmented struct {
+ }
+ 
+ func (w *Widgets) reset() {
++	// Splitters bind into the application's split state. A closed split must not
++	// retain its documents through an unused entry in the reused backing array.
++	clear(w.splits)
+ 	w.tables, w.tabs, w.selects, w.dialogs = w.tables[:0], w.tabs[:0], w.selects[:0], w.dialogs[:0]
+ 	w.alertDialogs = w.alertDialogs[:0]
+ 	w.inputs, w.groups, w.textareas, w.segmented, w.choices = w.inputs[:0], w.groups[:0], w.textareas[:0], w.segmented[:0], w.choices[:0]

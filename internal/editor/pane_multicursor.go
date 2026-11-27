@@ -12,6 +12,53 @@ import (
 
 const maxEditorSelections = 2000
 
+func (p *editorPane) columnKey(event gfx.KeyEvent) gfx.EventResult {
+	if p.readOnly || event.Modifiers != ui.Alt|ui.Shift || p.text.CompositionActive() {
+		return gfx.EventResult{}
+	}
+	var movement components.TextareaMovement
+	switch event.Key {
+	case gfx.KeyUp:
+		movement = components.TextareaMoveUp
+	case gfx.KeyDown:
+		movement = components.TextareaMoveDown
+	case gfx.KeyLeft:
+	case gfx.KeyRight:
+	default:
+		return gfx.EventResult{}
+	}
+	value := p.text.String()
+	if !p.keyboardColumn || p.columnSource != value || p.columnPrimary != p.text.Caret() {
+		p.columnAnchor = p.text.ByteOffset(p.text.Caret())
+		p.columnCaret = p.columnAnchor
+	}
+	to := p.columnCaret
+	if event.Key == gfx.KeyLeft {
+		if to > 0 {
+			_, size := utf8.DecodeLastRuneInString(value[:to])
+			to -= size
+		}
+	} else if event.Key == gfx.KeyRight {
+		if to < len(value) {
+			_, size := utf8.DecodeRuneInString(value[to:])
+			to += size
+		}
+	} else {
+		to = p.view.Code.Move(value, to, movement)
+	}
+	ranges := columnSelections(value, p.columnAnchor, to, p.view.Snapshot.TabWidth)
+	primary := len(ranges) - 1
+	if to < p.columnAnchor {
+		primary = 0
+	}
+	p.text.SetSelections(ranges, primary)
+	p.keyboardColumn = true
+	p.columnCaret = to
+	p.columnSource = value
+	p.columnPrimary = p.text.Caret()
+	return gfx.EventResult{Handled: true, Repaint: true}
+}
+
 func (p *editorPane) paintSelections() {
 	if p.input.Editor == nil {
 		return

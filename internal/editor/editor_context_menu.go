@@ -4,11 +4,13 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/ui"
 	"github.com/vivaui/viva/window"
 )
 
 func (m *editorApp) sourceEditor(c ui.C, tab *editorTab, blocked bool) ui.Box {
+	tab.source.onFocused = nil
 	box := tab.source.declare(c, "代码编辑区", !blocked)
 	if !blocked {
 		m.editorContextMenu(c, box, tab, tab.source)
@@ -17,6 +19,13 @@ func (m *editorApp) sourceEditor(c ui.C, tab *editorTab, blocked bool) ui.Box {
 }
 
 func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *editorPane) {
+	redoModifiers, redoKey := ui.Ctrl, "y"
+	if !pane.readOnly && m.keyBindings.chord(shortcutDeleteLine) == controlY {
+		redoModifiers, redoKey = ui.Ctrl|ui.Shift, "z"
+		if box.Shortcut(controlY.Modifiers, controlY.Name()) {
+			c.After(func() { m.runLineCommand(tab, pane, components.CodeEditorDeleteLines) })
+		}
+	}
 	ui.ContextMenu(c, box, func(menu *ui.MenuItems) {
 		editor := pane.text
 		source := pane == tab.source
@@ -48,7 +57,7 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextUndo})
 				})
 			}
-			if menu.Item("重做").Icon(blankMenuIcon).Keys(ui.Ctrl, "y").Disabled(composing || !canRedo).Clicked() {
+			if menu.Item("重做").Icon(blankMenuIcon).Keys(redoModifiers, redoKey).Disabled(composing || !canRedo).Clicked() {
 				c.After(func() {
 					m.applyEditorMenuEvent(tab, pane, window.TextEvent{Kind: window.TextCommandEvent, Command: window.TextRedo})
 				})
@@ -97,6 +106,17 @@ func (m *editorApp) editorContextMenu(c ui.C, box ui.Box, tab *editorTab, pane *
 			}
 		}
 		if !pane.readOnly && tab.largeText == nil {
+			if m.shortcutMenu(menu.Item("补全文档词 / 关键字").Icon(blankMenuIcon), shortcutComplete).Clicked() {
+				c.After(pane.openCompletion)
+			}
+			if foldableLanguage(tab.format()) {
+				if m.shortcutMenu(menu.Item("折叠全部").Icon(collapseIcon), shortcutFoldAll).Clicked() {
+					c.After(func() { pane.foldAll(true) })
+				}
+				if m.shortcutMenu(menu.Item("展开全部").Icon(expandIcon), shortcutUnfoldAll).Clicked() {
+					c.After(func() { pane.foldAll(false) })
+				}
+			}
 			menu.Sub("多光标与列编辑", func(items *ui.MenuItems) {
 				if m.shortcutMenu(items.Item("选择下一个相同内容").Icon(blankMenuIcon), shortcutSelectNext).Clicked() {
 					c.After(func() { pane.selectNextOccurrence(false); pane.focus = true })

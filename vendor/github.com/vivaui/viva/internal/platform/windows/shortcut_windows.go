@@ -74,7 +74,10 @@ func (state *windowState) offerShortcut(first, second uintptr, mods input.Modifi
 		if state.imeComposing {
 			return false
 		}
-		if _, editing := platform.TextEditingCommand(event); editing || platform.TextClipboardAction(event) != 0 {
+		// Placed editors may bind Ctrl+Y to a scoped command such as Delete Line.
+		// If unhandled, native text input still receives the redo command.
+		placedControlY := state.textInput.Placed && mods == input.ModifierControl && event.Text == "y"
+		if _, editing := platform.TextEditingCommand(event); editing && !placedControlY || platform.TextClipboardAction(event) != 0 {
 			return false
 		}
 	}

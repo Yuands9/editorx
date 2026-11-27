@@ -410,6 +410,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 		if item.GroupID != 0 {
 			tab.group = groups[item.GroupID]
 		}
+		tab.source.view.Snapshot.Language = tab.format()
 		restorePane(tab.source, item.Source)
 		tab.bookmarks.lines = item.Bookmarks
 		tab.syncBookmarks()
@@ -442,6 +443,7 @@ func (m *editorApp) restoreSessionWithProgress(ctx context.Context, state window
 			tab.outlineCollapsed = maps.Clone(item.OutlineCollapsed)
 		}
 		tab.scroll.enabled = item.SyncScroll
+		tab.comparison.view.Snapshot.Language = "JSON"
 		restorePane(tab.comparison, item.Comparison)
 		if item.JSONResultKind != "" {
 			tab.resultDraft, tab.resultKind = true, item.JSONResultKind
@@ -545,9 +547,12 @@ func (m *editorApp) restoreProjects(state windowSession) int {
 		}
 		root := tree.newProject(path)
 		tree.roots = append(tree.roots, root)
-		if err := tree.restoreExpanded(root, project.ExpandedFolders); err != nil {
-			issues++
+		for _, folder := range project.ExpandedFolders {
+			if strings.EqualFold(folder, root.path) {
+				root.expanded = true
+			}
 		}
+		tree.queueDirectory(root, project.ExpandedFolders, "")
 	}
 	if len(tree.roots) > 0 {
 		tree.flatten()

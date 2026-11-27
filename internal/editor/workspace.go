@@ -25,6 +25,7 @@ type fileNode struct {
 	children                    []*fileNode
 	menuOpen                    bool
 	loadError                   string
+	pendingExpanded             []string
 }
 
 type fileRow struct {
@@ -40,6 +41,7 @@ type folderTree struct {
 	state      ui.TreeState
 	activePath string
 	blocked    bool
+	loads      []*projectDirectoryJob
 }
 
 func newFolderTree() *folderTree {
@@ -110,7 +112,7 @@ func (tree *folderTree) newFileNode(parent *fileNode, entry os.DirEntry) *fileNo
 		directory: entry.IsDir(), compactable: entry.Type() == os.ModeDir}
 }
 
-func (tree *folderTree) compactChild(node *fileNode) *fileNode {
+func (tree *folderTree) discoverCompactChild(node *fileNode) *fileNode {
 	if !node.compactable {
 		return nil
 	}
@@ -127,6 +129,13 @@ func (tree *folderTree) compactChild(node *fileNode) *fileNode {
 		}
 	}
 	if len(node.children) == 1 && node.children[0].compactable {
+		return node.children[0]
+	}
+	return nil
+}
+
+func (tree *folderTree) compactChild(node *fileNode) *fileNode {
+	if node.compactable && len(node.children) == 1 && node.children[0].compactable {
 		return node.children[0]
 	}
 	return nil
@@ -191,6 +200,11 @@ func expandedProjectFolders(root *fileNode) []string {
 	var folders []string
 	var collect func(*fileNode)
 	collect = func(node *fileNode) {
+		for _, folder := range node.pendingExpanded {
+			if !strings.EqualFold(folder, node.path) {
+				folders = append(folders, folder)
+			}
+		}
 		if node.expanded {
 			folders = append(folders, node.path)
 		}
@@ -263,12 +277,9 @@ func (m *editorApp) addProjects(paths ...string) {
 		root := tree.project(path)
 		if root == nil {
 			root = tree.newProject(path)
-			if err := tree.readChildren(root); err != nil {
-				failures = append(failures, err)
-				continue
-			}
 			root.expanded = true
 			tree.roots = append(tree.roots, root)
+			tree.queueDirectory(root, []string{root.path}, "").newProject = true
 			added++
 			lastName = root.name
 			if firstAdded == nil {
@@ -277,7 +288,9 @@ func (m *editorApp) addProjects(paths ...string) {
 		} else if firstExisting == nil {
 			firstExisting = root
 		}
-		m.rememberPath(root.path, true)
+		if root.loaded {
+			m.rememberPath(root.path, true)
+		}
 	}
 	reveal := firstAdded
 	if reveal == nil {
@@ -311,13 +324,8 @@ func (m *editorApp) refreshProject(root *fileNode, reveal string) {
 	if tree == nil || !slices.Contains(tree.roots, root) {
 		return
 	}
-	refreshed := &fileNode{id: root.id, path: root.path, name: root.name, directory: true}
-	if err := tree.readChildren(refreshed); err != nil {
-		m.fail(err)
-		return
-	}
 	folders := expandedProjectFolders(root)
-	if reveal != "" {
+	if _, inside := aiRelativeTo(root.path, reveal); reveal != "" && inside {
 		for directory := filepath.Dir(reveal); ; directory = filepath.Dir(directory) {
 			folders = append(folders, directory)
 			if strings.EqualFold(directory, root.path) {
@@ -325,19 +333,9 @@ func (m *editorApp) refreshProject(root *fileNode, reveal string) {
 			}
 		}
 	}
-	err := tree.restoreExpanded(refreshed, folders)
-	*root = *refreshed
-	tree.flatten()
-	if reveal != "" {
-		row := slices.IndexFunc(tree.rows, func(row fileRow) bool { return strings.EqualFold(row.node.path, reveal) })
-		if row >= 0 {
-			tree.state.ScrollIntoView(row)
-		}
-	}
-	m.status = "已刷新项目 " + root.name
-	if err != nil {
-		m.fail(fmt.Errorf("项目已刷新，部分子目录暂时无法读取。\n%w", err))
-	}
+	tree.queueDirectory(root, folders, reveal).notice = "已刷新项目 " + root.name
+	m.invalidator.Invalidate()
+	m.status = "正在刷新项目 " + root.name
 }
 
 func (m *editorApp) removeProject(root *fileNode) {
@@ -364,6 +362,10 @@ var projectActionsIcon = gfx.Icon{ViewBox: 24, Stroke: 2.4, Cap: gfx.CapRound, C
 func (m *editorApp) filePanel(c ui.C, blocked bool) {
 	ui.Row(c).FillWidth().Height(30).PadX(18).Items(ui.Center).Children(func() {
 		ui.Text(c, "项目").FontSize(12).Bold().Muted()
+		ui.Slot(c).Grow(1)
+		if ui.Button(c, "定位当前文件").Icon(searchIcon).IconOnly().Ghost().Size(24, 24).Tooltip(m.shortcutHint("定位当前文件", shortcutRevealProjectFile)).Disabled(blocked || m.active == nil || m.active.doc.path == "" || m.projectRoot(m.active.doc.path) == "").Clicked() {
+			c.After(func() { m.revealProjectFile(m.active.doc.path) })
+		}
 	})
 	tree := m.workspace
 	if tree == nil {
@@ -399,6 +401,8 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 			}
 			if !blocked {
 				ui.ContextMenu(place, name, func(menu *ui.MenuItems) {
+					m.projectPathActions(place, menu, node.path)
+					menu.Separator()
 					if node.directory {
 						m.projectCreateActions(place, menu, node.path)
 						if node != row.start {
@@ -448,20 +452,16 @@ func (m *editorApp) filePanel(c ui.C, blocked bool) {
 	if index, ok := tree.state.Toggled(); ok {
 		node := tree.rows[index].node
 		c.After(func() {
-			if err := tree.toggle(node); err != nil {
-				m.fail(err)
-			}
+			m.toggleProjectFolder(node)
 		})
 	}
 	if index, ok := tree.state.Chosen(); ok {
 		node := tree.rows[index].node
 		c.After(func() {
 			if node.directory {
-				if err := tree.toggle(node); err != nil {
-					m.fail(err)
-				}
+				m.toggleProjectFolder(node)
 			} else {
-				m.load(node.path)
+				m.previewProjectFile(node.path)
 			}
 		})
 	}
@@ -493,6 +493,8 @@ func (m *editorApp) projectRow(c ui.C, rowID gfx.ID, root *fileNode, blocked boo
 }
 
 func (m *editorApp) projectActions(c ui.C, menu *ui.MenuItems, root *fileNode) {
+	m.projectPathActions(c, menu, root.path)
+	menu.Separator()
 	menu.WidthRange(180, 290)
 	menu.Label(root.name)
 	if m.shortcutMenu(menu.Item("在此目录中查找…").Icon(searchIcon), shortcutDirectorySearch).Clicked() {

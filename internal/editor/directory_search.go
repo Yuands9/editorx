@@ -32,6 +32,15 @@ type directorySearchResult struct {
 	partial        bool
 }
 type directorySearchState struct {
+	panelOpen                                                bool
+	replaceMode                                              bool
+	replacement                                              ui.Field
+	plan                                                     *directoryReplacementPlan
+	planRequest                                              *ui.EffectState[*directoryReplacementPlan, int]
+	replaceJob                                               *directoryReplacementJob
+	replacing                                                bool
+	replaceIndex, replacedFiles                              int
+	replaceProblems                                          []string
 	open, focus, caseSensitive, wholeWord, regularExpression bool
 	root, query, include, exclude                            ui.Field
 	list                                                     ui.ListState
@@ -48,9 +57,10 @@ func (m *editorApp) openDirectorySearch(root string) {
 		m.directorySearch.exclude.SetText(".git;.hg;.svn;node_modules;.dev")
 	}
 	s := m.directorySearch
-	s.open, s.focus = true, true
-	if root == "" && m.workspace != nil && len(m.workspace.roots) > 0 {
-		root = m.workspace.roots[0].path
+	s.open, s.focus, s.replaceMode = true, true, false
+	m.tools.active = ""
+	if root == "" {
+		root = m.activeTextProject(m.active)
 	}
 	if root == "" && m.active != nil && m.active.doc.path != "" {
 		root = filepath.Dir(m.active.doc.path)
@@ -93,6 +103,10 @@ func matchesDirectoryPattern(name string, patterns []string) bool {
 }
 
 func searchDirectory(ctx context.Context, root string, query *find.Query, include, exclude []string) (directorySearchResult, error) {
+	return searchDirectoryWithBuffers(ctx, root, query, include, exclude, nil)
+}
+
+func searchDirectoryWithBuffers(ctx context.Context, root string, query *find.Query, include, exclude []string, buffers map[string]string) (directorySearchResult, error) {
 	result := directorySearchResult{query: query}
 	info, err := os.Stat(root)
 	if err != nil {
@@ -143,6 +157,9 @@ func searchDirectory(ctx context.Context, root string, query *find.Query, includ
 			return nil
 		}
 		result.files++
+		if buffer, ok := buffers[strings.ToLower(path)]; ok {
+			doc.saved = buffer
+		}
 		spans, truncated := query.Matches(nil, doc.saved, directorySearchLimit-len(result.hits))
 		result.partial = result.partial || truncated
 		line, start := 1, 0
@@ -162,7 +179,7 @@ func searchDirectory(ctx context.Context, root string, query *find.Query, includ
 
 func (m *editorApp) startDirectorySearch() {
 	s := m.directorySearch
-	if s == nil || s.request != nil {
+	if s == nil || s.request != nil || s.planRequest != nil || s.replacing || s.replaceJob != nil {
 		return
 	}
 	options := searchOptions{CaseSensitive: s.caseSensitive, WholeWord: s.wholeWord}
@@ -189,7 +206,20 @@ func (m *editorApp) startDirectorySearch() {
 		return
 	}
 	root := strings.TrimSpace(s.root.Text())
+	buffers := map[string]string{}
+	for _, tab := range m.tabs {
+		if historyEditableTab(tab) && tab.doc.path != "" {
+			if _, inside := aiRelativeTo(root, tab.doc.path); inside {
+				if tab.format() == "JSON" {
+					tab.updateResult()
+				}
+				buffers[strings.ToLower(tab.doc.path)] = tab.source.text.CommittedString()
+			}
+		}
+	}
 	s.problem = ""
+	s.panelOpen, s.open = true, false
+	s.plan = nil
 	s.result = directorySearchResult{}
 	s.list.Select(0)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -198,7 +228,7 @@ func (m *editorApp) startDirectorySearch() {
 		stop := context.AfterFunc(effectContext, cancel)
 		defer stop()
 		defer cancel()
-		return searchDirectory(ctx, root, query, include, exclude)
+		return searchDirectoryWithBuffers(ctx, root, query, include, exclude, buffers)
 	})
 }
 
@@ -244,6 +274,7 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 	if s == nil {
 		return
 	}
+	m.updateDirectoryReplacement(c.Part("replacement"))
 	if s.request != nil {
 		ui.Effect(c.Part("search"), s.request, 0)
 		if result, err, done := s.request.Take(); done {
@@ -256,8 +287,12 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 	if !s.open {
 		return
 	}
-	busy := s.request != nil
-	dismissed := ui.ModalWith(c, &s.open, "在目录中查找", ui.ModalSpec{Width: min(850, c.Bounds().Width-32)}, func() {
+	busy := s.request != nil || s.planRequest != nil || s.replacing || s.replaceJob != nil
+	title := "在目录中查找"
+	if s.replaceMode {
+		title = "在目录中替换"
+	}
+	dismissed := ui.ModalWith(c, &s.open, title, ui.ModalSpec{Width: min(850, c.Bounds().Width-32)}, func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
 			ui.Row(c).FillWidth().Gap(6).Children(func() {
 				ui.TextField(c.Part("root"), &s.root, "搜索目录", "目录路径").Grow(1).Height(32).Disabled(busy)
@@ -271,6 +306,7 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 				}
 			})
 			field := ui.TextField(c.Part("query"), &s.query, "目录查找内容", "查找内容").FillWidth().Height(32).Disabled(busy)
+			ui.TextField(c.Part("replacement"), &s.replacement, "目录替换内容", "替换为（可留空；正则支持 $1）").FillWidth().Height(32).Disabled(busy)
 			if s.focus {
 				field.AutoFocus()
 				s.focus = false
@@ -327,7 +363,7 @@ func (m *editorApp) directorySearchDialog(c ui.C) {
 		}
 		message := fmt.Sprintf("%d 个匹配 · 已搜索 %d 个文件 · 跳过 %d 个不可读取、二进制或超过 64 MiB 的文件", len(s.result.hits), s.result.files, s.result.skipped)
 		if busy {
-			message = "正在搜索磁盘文件，可停止；不读取未保存的编辑内容。"
+			message = "正在搜索，可停止；已打开文件使用当前编辑内容。"
 		}
 		if s.result.partial {
 			message += " · 结果未全部列出，请缩小范围或继续搜索"

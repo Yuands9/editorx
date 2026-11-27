@@ -1,0 +1,35 @@
+diff --git a/vendor/github.com/vivaui/viva/app/driver.go b/vendor/github.com/vivaui/viva/app/driver.go
+index 3082758..7b39c8c 100644
+--- a/vendor/github.com/vivaui/viva/app/driver.go
++++ b/vendor/github.com/vivaui/viva/app/driver.go
+@@ -879,6 +879,14 @@ func (driver *Driver) ShortcutChord(modifiers gfx.Modifiers, character rune) (bo
+ 	if driver.editing() && !driver.terminal() {
+ 		event := platform.KeyEvent{Modifiers: input.Modifiers(modifiers), Text: shortcut}
+ 		if command, ok := platform.TextEditingCommand(event); ok {
++			// Match Windows, where a placed editor may claim Ctrl+Y before
++			// native redo. If no scoped shortcut matches, redo still runs.
++			if driver.painter.nativeText.Placed && modifiers == gfx.ModifierControl && strings.EqualFold(shortcut, "y") {
++				_, handled, err := driver.painter.shortcut(event)
++				if handled || err != nil {
++					return handled, err
++				}
++			}
+ 			return true, driver.textEvent(platform.TextEvent{Kind: platform.TextCommandEvent, Command: command})
+ 		}
+ 		if action := platform.TextClipboardAction(event); action != 0 {
+diff --git a/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go b/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
+index 04583ca..348f351 100644
+--- a/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
++++ b/vendor/github.com/vivaui/viva/internal/platform/windows/shortcut_windows.go
+@@ -74,7 +74,10 @@ func (state *windowState) offerShortcut(first, second uintptr, mods input.Modifi
+ 		if state.imeComposing {
+ 			return false
+ 		}
+-		if _, editing := platform.TextEditingCommand(event); editing || platform.TextClipboardAction(event) != 0 {
++		// Placed editors may bind Ctrl+Y to a scoped command such as Delete Line.
++		// If unhandled, native text input still receives the redo command.
++		placedControlY := state.textInput.Placed && mods == input.ModifierControl && event.Text == "y"
++		if _, editing := platform.TextEditingCommand(event); editing && !placedControlY || platform.TextClipboardAction(event) != 0 {
+ 			return false
+ 		}
+ 	}

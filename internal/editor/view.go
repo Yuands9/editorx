@@ -31,6 +31,9 @@ func (m *editorApp) workspacePanel(c ui.C) ui.Box {
 }
 
 func (m *editorApp) page(c ui.C) {
+	m.observeNavigation()
+	m.updateProjectWatches(c.Part("project-watches"))
+	m.updateProjectDirectories(c.Part("project-directories"))
 	m.updateTextIO(c.Part("document-io"))
 	m.updateFileWatches(c.Part("file-watch"))
 	m.checkMacroRecording()
@@ -48,6 +51,9 @@ func (m *editorApp) page(c ui.C) {
 	m.updateImageAI(c.Part("image-ai-job"))
 	var afterLargeSaves []func()
 	for _, tab := range m.tabs {
+		if tab.projectPreview && (tab.modified() || tab.pinned || tab.group != nil || tab.hasResultDraft()) {
+			tab.projectPreview = false
+		}
 		if tab == m.active && tab.format() == "JSON" {
 			tab.updateResult()
 		}
@@ -106,6 +112,7 @@ func (m *editorApp) page(c ui.C) {
 	m.showProjectRenameDialog(c.Part("project-rename-dialog"))
 	m.showProjectDeleteDialog(c.Part("project-delete-dialog"))
 	m.gitBranchDialog(c.Part("git-branch-dialog"))
+	m.gitReviewDialog(c.Part("git-review-dialog"))
 	m.passwordVaultModal(c.Part("password-vault-dialog"))
 	m.fileFormatDialog(c.Part("file-format-dialog"))
 	m.exitConfirmationDialog(c.Part("exit-confirmation"))
@@ -206,6 +213,9 @@ func (m *editorApp) editorPage(c ui.C, blocked bool) {
 			ui.Splitter(c.Part("tools-split"), &m.tools.split).Mins(150, 150).SplitterThickness(7).Label("调整底部面板高度")
 			m.projectToolsPanel(c.Part("tools"), blocked)
 		}
+		if m.tools.active == "" {
+			m.directoryResultsPanel(c.Part("directory-results"), blocked)
+		}
 		if t != nil {
 			m.statusBar(c, t, blocked)
 		}
@@ -252,7 +262,7 @@ func (m *editorApp) documentPanes(c ui.C, t *editorTab, blocked bool) {
 			} else {
 				body.Grow(1)
 			}
-			body.Children(func() { m.documentView(c, t, blocked) })
+			body.Children(func() { m.splitDocumentView(c, t, blocked) })
 			if m.results.open {
 				ui.Splitter(c, &m.results.split).Mins(120, 100).SplitterThickness(6)
 				m.searchResultsView(c)
@@ -496,6 +506,9 @@ func (m *editorApp) tabBar(c ui.C, blocked bool) {
 }
 
 func (m *editorApp) documentHeader(c ui.C, t *editorTab, blocked bool) {
+	if m.editorSplit != nil {
+		return
+	}
 	format := t.format()
 	showTranslation := t.showingDocumentTranslation()
 	if format != "Markdown" && format != "HTML" {

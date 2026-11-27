@@ -24,13 +24,14 @@ var editorWrapLanguages = func() []string {
 }()
 
 type editorPreferences struct {
-	FontFamily    string   `json:"fontFamily,omitempty"`
-	FontSize      int      `json:"fontSize"`
-	TabWidth      int      `json:"tabWidth"`
-	HardTabs      bool     `json:"hardTabs,omitempty"`
-	WrapFileTypes []string `json:"wrapFileTypes"`
-	LegacyWrap    string   `json:"wrap,omitempty"`
-	JSONIndent    int      `json:"jsonIndent"`
+	FontFamily          string   `json:"fontFamily,omitempty"`
+	FontSize            int      `json:"fontSize"`
+	TabWidth            int      `json:"tabWidth"`
+	HardTabs            bool     `json:"hardTabs,omitempty"`
+	WrapFileTypes       []string `json:"wrapFileTypes"`
+	LegacyWrap          string   `json:"wrap,omitempty"`
+	JSONIndent          int      `json:"jsonIndent"`
+	AutomaticCompletion bool     `json:"automaticCompletion,omitempty"`
 }
 
 func defaultEditorPreferences() editorPreferences {
@@ -86,6 +87,9 @@ func (p editorPreferences) withChanges(original, draft editorPreferences) editor
 	if draft.HardTabs != original.HardTabs {
 		p.HardTabs = draft.HardTabs
 	}
+	if draft.AutomaticCompletion != original.AutomaticCompletion {
+		p.AutomaticCompletion = draft.AutomaticCompletion
+	}
 	for _, language := range editorWrapLanguages {
 		if enabled := draft.wraps(language); enabled != original.wraps(language) {
 			p.setWrapFileType(language, enabled)
@@ -100,6 +104,7 @@ func (p editorPreferences) withChanges(original, draft editorPreferences) editor
 func (p editorPreferences) equal(other editorPreferences) bool {
 	return p.FontFamily == other.FontFamily && p.FontSize == other.FontSize &&
 		p.TabWidth == other.TabWidth && p.HardTabs == other.HardTabs &&
+		p.AutomaticCompletion == other.AutomaticCompletion &&
 		p.JSONIndent == other.JSONIndent && slices.Equal(p.WrapFileTypes, other.WrapFileTypes)
 }
 
@@ -141,6 +146,7 @@ func (t *editorTab) applyEditorPreferences(preferences editorPreferences) {
 }
 
 func (p *editorPane) applyEditorPreferences(preferences editorPreferences) {
+	p.automaticCompletion = preferences.AutomaticCompletion
 	face := gfx.MonoFamily(preferences.FontFamily)
 	p.input.MonoFace = face
 	p.view.Snapshot.MonoFace = face

@@ -23,11 +23,11 @@ var settingSections = []struct {
 	icon          gfx.Icon
 }{
 	{settingsAppearance, "颜色主题、跟随系统、深浅配色、托盘、关闭窗口、退出程序、询问保存、不再询问", themeIcon},
-	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON", codeIcon},
+	{settingsEditor, "字体、字号、Tab 缩进、自动折行、JSON、输入时自动补全", codeIcon},
 	{settingsSidebar, "左侧、右侧、显示按钮、设置按钮、模板库、本地词库、AI 翻译、密码本", leftPanelIcon},
 	{settingsBackup, "导出、恢复、会话草稿、压缩备份", folderIcon},
 	{settingsStorage, "应用数据、数据目录、存储位置、文件夹、迁移、本地历史、历史版本、保存天数、版本数、占用空间、缓存、清理", folderIcon},
-	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行", keyboardIcon},
+	{settingsShortcuts, "文件、切换标签、查找替换、Ctrl、F3、自动折行、IntelliJ IDEA、补全", keyboardIcon},
 	{settingsAI, "服务商、模型配置、对话字号、AI 助手", aiIcon},
 	{settingsAbout, "EditorX、版本、构建、运行平台、运行时、自动检查更新、GitHub", infoIcon},
 }

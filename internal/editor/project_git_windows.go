@@ -78,13 +78,18 @@ type gitResult struct {
 }
 
 func runGitCommand(ctx context.Context, git, directory string, args ...string) (string, error) {
+	return runGitCommandInput(ctx, git, directory, "", 4<<20, args...)
+}
+
+func runGitCommandInput(ctx context.Context, git, directory, input string, limit int, args ...string) (string, error) {
 	options := []string{"--no-pager", "--literal-pathspecs", "-c", "core.quotepath=false", "-C", directory}
 	cmd := exec.CommandContext(ctx, git, append(options, args...)...)
 	cmd.Dir = directory
 	cmd.Env = append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never", "LC_ALL=C")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	cmd.WaitDelay = 2 * time.Second
-	stdout, stderr := aiCLICapture{limit: 4 << 20}, aiCLICapture{limit: 16 << 10}
+	cmd.Stdin = strings.NewReader(input)
+	stdout, stderr := aiCLICapture{limit: limit}, aiCLICapture{limit: 16 << 10}
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	if ctx.Err() != nil {

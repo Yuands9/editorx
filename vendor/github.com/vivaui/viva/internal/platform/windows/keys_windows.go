@@ -204,6 +204,11 @@ func (state *windowState) textKey(first, second uintptr, mods input.Modifiers) b
 	}
 	repeat := second&(1<<30) != 0
 	editKey := platform.KeyEvent{Key: normalizedKey(first), Modifiers: mods, Repeat: repeat, Text: shortcutText(first)}
+	// Placed code editors use Alt arrows for column selection/navigation. Send
+	// these to their key handler before native selection consumes the chord.
+	if state.textInput.Placed && mods&input.ModifierAlt != 0 && (editKey.Key == input.KeyLeft || editKey.Key == input.KeyRight) {
+		return false
+	}
 	if action := platform.TextClipboardAction(editKey); action != 0 {
 		window, revision := state.window, state.textRevision
 		input := state.textInput

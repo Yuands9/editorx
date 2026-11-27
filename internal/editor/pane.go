@@ -13,27 +13,36 @@ import (
 )
 
 type editorPane struct {
-	recording         *macroRecording
-	foldJob           *jsonFoldJob
-	columnAnchor      int
-	columnDragging    bool
-	text              *text.Editor
-	view              *codeeditor.Editor
-	input             window.TextInput
-	focus             bool
-	readOnly          bool
-	focused           bool
-	searchKey         func(gfx.KeyEvent) gfx.EventResult
-	foldSource        string
-	folds             []components.CodeEditorFoldRange
-	collapsed         map[int]bool
-	folded            map[int]bool
-	foldScope         gfx.Scope
-	configHighlight   configHighlight
-	syntaxDisabled    bool
-	foldDisplaySource string
-	light             bool
-	restoreScroll     *gfx.Point
+	recording           *macroRecording
+	foldJob             *jsonFoldJob
+	columnAnchor        int
+	columnDragging      bool
+	keyboardColumn      bool
+	columnCaret         int
+	columnSource        string
+	columnPrimary       int
+	onFocused           func()
+	text                *text.Editor
+	view                *codeeditor.Editor
+	input               window.TextInput
+	focus               bool
+	readOnly            bool
+	focused             bool
+	searchKey           func(gfx.KeyEvent) gfx.EventResult
+	foldSource          string
+	foldLanguage        string
+	completion          *editorCompletion
+	automaticCompletion bool
+	completionTyping    completionTyping
+	folds               []components.CodeEditorFoldRange
+	collapsed           map[int]bool
+	folded              map[int]bool
+	foldScope           gfx.Scope
+	configHighlight     configHighlight
+	syntaxDisabled      bool
+	foldDisplaySource   string
+	light               bool
+	restoreScroll       *gfx.Point
 }
 
 func newEditorPane(value string, readOnly bool) *editorPane {
@@ -76,12 +85,19 @@ func (p *editorPane) key(event gfx.KeyEvent) gfx.EventResult {
 	if _, composing := p.text.Composition(); composing {
 		return gfx.EventResult{}
 	}
+	if result := p.completionKey(event); result.Handled {
+		return result
+	}
+	if result := p.columnKey(event); result.Handled {
+		return result
+	}
 	if p.searchKey != nil {
 		if result := p.searchKey(event); result.Handled {
 			return result
 		}
 	}
 	if !p.readOnly {
+		p.configureCodeLanguage()
 		if command, ok := components.CodeEditorCommandForKey(event); ok && command.Apply(p.text) {
 			if p.recording != nil {
 				p.recording.append(macroStep{Code: command})
@@ -157,14 +173,18 @@ func (p *editorPane) setResult(value string) {
 	p.input.Editor = p.text
 	p.view.Code = components.CodeEditor{}
 	p.collapsed = map[int]bool{}
+	p.completion, p.completionTyping = nil, completionTyping{}
 }
 func (p *editorPane) updateFolds() {
 	value := p.text.String()
-	if p.foldSource == value || len(value) >= backgroundTextBytes {
+	language := p.view.Snapshot.Language
+	if p.foldSource == value && p.foldLanguage == language || len(value) >= backgroundTextBytes {
 		return
 	}
 	p.foldSource = value
-	p.folds = jsonFolds(value)
+	p.foldLanguage = language
+	p.foldDisplaySource = ""
+	p.folds = editorFolds(value, language)
 	p.collapsed = map[int]bool{}
 }
 
@@ -179,6 +199,11 @@ func (p *editorPane) foldAll(fold bool) {
 }
 
 func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
+	if p.keyboardColumn && p.columnSource != p.text.String() {
+		p.keyboardColumn = false
+		p.columnSource = ""
+	}
+	p.configureCodeLanguage()
 	language := p.view.Snapshot.Language
 	stateful := codeSyntaxByName[language] != nil
 	switch language {
@@ -198,7 +223,11 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 	box := codeeditor.View(c, label, p.view)
 	box.DrawOver(func(d *ui.DrawContext) {
 		p.focused = d.Canvas.Focused() == d.Node.ID
-		if p.view.Snapshot.Language == "JSON" && len(p.text.String()) >= backgroundTextBytes && p.foldSource != p.text.String() && p.foldJob == nil {
+		if p.focused && p.onFocused != nil {
+			p.onFocused()
+		}
+		p.onFocused = nil
+		if foldableLanguage(p.view.Snapshot.Language) && len(p.text.String()) >= backgroundTextBytes && (p.foldSource != p.text.String() || p.foldLanguage != p.view.Snapshot.Language) && p.foldJob == nil {
 			d.Canvas.RequestFrame()
 		}
 		if p.restoreScroll != nil {
@@ -209,7 +238,7 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		}
 	})
 	p.view.Snapshot.ShowCaret = showCaret
-	if p.view.Snapshot.Language == "JSON" {
+	if foldableLanguage(p.view.Snapshot.Language) {
 		p.updateFoldJob(c.Part("fold-job"))
 		p.updateFolds()
 		scope := p.view.Parts()
@@ -236,7 +265,7 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		p.view.Snapshot.FoldMarkers = nil
 		p.foldScope = gfx.Scope(0)
 	}
-	p.view.Snapshot.FoldGutter = p.view.Snapshot.Language == "JSON"
+	p.view.Snapshot.FoldGutter = foldableLanguage(p.view.Snapshot.Language)
 	// 让原生多行输入和候选框使用代码编辑器的真实文字定位。
 	box.HitWith(box.N().ID, label, gfx.HitOptions{
 		Role: gfx.RoleTextField, Cursor: gfx.PointerCursorText, Value: p.text.String(),
@@ -247,6 +276,7 @@ func (p *editorPane) declare(c ui.C, label string, showCaret bool) ui.Box {
 		box.AutoFocus()
 		p.focus = false
 	}
+	p.completionView(c.Part("completion"), box.N().ID, showCaret)
 	return box
 }
 

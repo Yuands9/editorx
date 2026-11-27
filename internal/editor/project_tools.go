@@ -51,9 +51,14 @@ type gitPanelState struct {
 	snapshot                          gitStatus
 	request                           *ui.EffectState[gitResult, int]
 	commit, address                   ui.Field
+	focusCommit                       bool
 	list                              ui.ListState
 	branches                          gitBranchDialogs
 	fileHashes                        map[string][32]byte
+	indexList                         ui.ListState
+	review                            *gitReviewState
+	watch                             gitWatchState
+	conflict                          *editorTab
 }
 
 func (m *editorApp) toolDirectories() []string {
@@ -121,6 +126,7 @@ func (m *editorApp) openProjectGit(path string) {
 		return
 	}
 	if git.directory != path {
+		git.watch.close()
 		*git = gitPanelState{directory: path}
 	}
 	if path != "" {
@@ -130,7 +136,7 @@ func (m *editorApp) openProjectGit(path string) {
 
 func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 	git := &m.tools.git
-	if git.request != nil || git.directory == "" {
+	if git.request != nil || git.directory == "" || git.review != nil && git.review.apply != nil {
 		return
 	}
 	directory := git.directory
@@ -152,6 +158,7 @@ func (m *editorApp) startGit(action gitAction, input string, paths []string) {
 
 func (m *editorApp) updateProjectGit(c ui.C) {
 	git := &m.tools.git
+	m.updateGitWatch(c.Part("git-watch"))
 	if git.request == nil {
 		return
 	}
@@ -174,6 +181,7 @@ func (m *editorApp) updateProjectGit(c ui.C) {
 		return
 	}
 	git.snapshot = result.status
+	m.invalidator.Invalidate()
 	if !slices.Contains(git.snapshot.remotes, git.remote) {
 		git.remote = ""
 		if len(git.snapshot.remotes) > 0 {
@@ -310,6 +318,9 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			if ui.Button(c, "刷新 Git 状态").Icon(refreshIcon).IconOnly().Ghost().Size(28, 28).Disabled(busy).Clicked() {
 				c.After(func() { m.startGit(gitRefresh, "", nil) })
 			}
+			if ui.Button(c, "提交历史").Icon(historyCompareIcon).IconOnly().Ghost().Size(28, 28).Tooltip("提交历史").Disabled(busy || snapshot.root == "").Clicked() {
+				c.After(m.openGitLog)
+			}
 		})
 		if git.issue != "" {
 			ui.Wrap(c, git.issue).FillWidth().MaxHeight(52).Clip().Color(m.theme.Danger).FontSize(12)
@@ -317,6 +328,9 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			ui.Text(c, git.message).Muted().FontSize(11).Ellipsis()
 		}
 		if snapshot.root == "" {
+			if git.request == nil {
+				git.focusCommit = false
+			}
 			if git.request == nil && git.issue == "" {
 				ui.Row(c).Gap(8).Items(ui.Center).Children(func() {
 					ui.Text(c, "此项目尚未初始化 Git").Muted().FontSize(12)
@@ -328,35 +342,15 @@ func (m *editorApp) gitPanel(c ui.C, blocked bool) {
 			return
 		}
 		m.gitToolbar(c.Part("commands"), busy)
+		m.gitConflictToolbar(c.Part("conflicts"), busy)
 		if len(snapshot.changes) == 0 {
 			ui.Text(c, "工作区无变更").Muted().FontSize(12).PadY(7)
 			return
 		}
-		ui.List(c, &git.list, len(snapshot.changes), func(row ui.ListRow) {
-			change := snapshot.changes[row.Index]
-			place := row.C
-			row.Element.Height(29).PadX(4).Gap(8).Items(ui.Center).Children(func() {
-				code := change.status
-				if code == "??" {
-					code = "未跟踪"
-				}
-				ui.Text(place, code).Width(48).FontSize(12).Color(m.theme.Ring)
-				name := ui.Row(place.Part("open-file")).Grow(1).MinWidth(0).Height(25).Items(ui.Center).PadX(6).Radius(6)
-				name.HitWith(ui.ID(place.Part("open-file")), change.path, gfx.HitOptions{Role: gfx.RoleButton, Disabled: blocked}).
-					Hover(ui.Look{}.Background(m.theme.Hover)).Tooltip(change.path)
-				name.Children(func() { ui.Text(place, change.path).FontSize(12).Grow(1).MinWidth(0).Ellipsis() })
-				if name.Clicked() {
-					c.After(func() { m.load(filepath.Join(snapshot.root, change.path)) })
-				}
-				for _, action := range []gitAction{gitStage, gitUnstage} {
-					if action == gitStage && change.unstaged() || action == gitUnstage && change.staged() {
-						if ui.Button(place.Key(string(action)), string(action)).Ghost().Height(25).FontSize(11).Disabled(busy).Clicked() {
-							c.After(func() { m.startGit(action, "", change.paths()) })
-						}
-					}
-				}
-			})
-		}).FillWidth().Grow(1).MinHeight(0).Label("Git 文件变更")
+		ui.Row(c.Part("change-groups")).FillWidth().Grow(1).MinHeight(0).Gap(8).Children(func() {
+			m.gitChangeList(c.Part("working"), false, busy)
+			m.gitChangeList(c.Part("index"), true, busy)
+		})
 	})
 }
 
@@ -368,11 +362,15 @@ func (m *editorApp) gitToolbar(c ui.C, busy bool) {
 			Tooltip("全部暂存").Disabled(busy || len(status.changes) == 0).Clicked() {
 			c.After(func() { m.startGit(gitStageAll, "", nil) })
 		}
-		message := ui.TextField(c, &git.commit, "提交说明", "提交说明").Height(27).Grow(1).MinWidth(85).Disabled(busy)
+		message := ui.TextArea(c, &git.commit, "提交说明", "提交说明（可换行）").Height(48).Grow(1).MinWidth(85).Disabled(busy)
+		if git.focusCommit && !busy {
+			message.AutoFocus()
+			git.focusCommit = false
+		}
 		canCommit := !busy && status.hasStaged() && strings.TrimSpace(git.commit.Text()) != ""
 		submit := ui.Button(c, "提交").Icon(gitCommitIcon).IconOnly().Size(30, 29).Shrink(0).
 			Tooltip("提交已暂存的变更").Disabled(!canCommit)
-		if canCommit && (submit.Clicked() || message.Submitted()) {
+		if canCommit && submit.Clicked() {
 			c.After(func() { m.startGit(gitCommit, git.commit.Text(), nil) })
 		}
 		ui.Text(c, fmt.Sprintf("%d 个变更", len(status.changes))).Muted().FontSize(11)

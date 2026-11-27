@@ -716,7 +716,7 @@ func (driver *Driver) rowKey(key gfx.Key, modifiers gfx.Modifiers) bool {
 	case gfx.KeyUp, gfx.KeyDown, gfx.KeyHome, gfx.KeyEnd, gfx.KeyPageUp, gfx.KeyPageDown:
 		return true
 	case gfx.KeyLeft, gfx.KeyRight:
-		return modifiers&gfx.ModifierMeta != 0
+		return modifiers&(gfx.ModifierMeta|gfx.ModifierAlt) != 0
 	}
 	return false
 }
@@ -879,6 +879,14 @@ func (driver *Driver) ShortcutChord(modifiers gfx.Modifiers, character rune) (bo
 	if driver.editing() && !driver.terminal() {
 		event := platform.KeyEvent{Modifiers: input.Modifiers(modifiers), Text: shortcut}
 		if command, ok := platform.TextEditingCommand(event); ok {
+			// Match Windows, where a placed editor may claim Ctrl+Y before
+			// native redo. If no scoped shortcut matches, redo still runs.
+			if driver.painter.nativeText.Placed && modifiers == gfx.ModifierControl && strings.EqualFold(shortcut, "y") {
+				_, handled, err := driver.painter.shortcut(event)
+				if handled || err != nil {
+					return handled, err
+				}
+			}
 			return true, driver.textEvent(platform.TextEvent{Kind: platform.TextCommandEvent, Command: command})
 		}
 		if action := platform.TextClipboardAction(event); action != 0 {

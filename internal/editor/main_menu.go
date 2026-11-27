@@ -45,8 +45,8 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 			if m.shortcutMenu(items.Item("添加项目…").Icon(folderIcon), shortcutOpenProject).Clicked() {
 				c.After(m.openFolder)
 			}
-			if items.Item("最近打开…").Icon(blankMenuIcon).Disabled(m.store == nil || len(m.store.history) == 0).Clicked() {
-				m.showHistory = true
+			if m.shortcutMenu(items.Item("最近打开…").Icon(blankMenuIcon).Disabled(m.store == nil), shortcutRecentFiles).Clicked() {
+				c.After(func() { m.runEditorShortcut(shortcutRecentFiles) })
 			}
 			items.Separator()
 			if m.shortcutMenu(items.Item("另存为…").Icon(blankMenuIcon).Disabled(t == nil || t.readOnlyPreview() || m.vaultActive()), shortcutSaveAs).Clicked() {
@@ -61,7 +61,7 @@ func (m *editorApp) mainMenu(c ui.C, t *editorTab, blocked bool) {
 		}).Icon(folderIcon)
 		menu.Sub("编辑与查找", func(items *ui.MenuItems) {
 			items.RowHeight(28)
-			for _, action := range []editorShortcut{shortcutDirectorySearch, shortcutFind, shortcutReplace, shortcutSelectNext, shortcutSelectAllMatches, shortcutSplitSelection, shortcutCaretAbove, shortcutCaretBelow, shortcutGotoLine, shortcutDuplicateLine, shortcutDeleteLine, shortcutWrap} {
+			for _, action := range []editorShortcut{shortcutDirectorySearch, shortcutDirectoryReplace, shortcutFind, shortcutReplace, shortcutComplete, shortcutSelectNext, shortcutSelectAllMatches, shortcutSplitSelection, shortcutCaretAbove, shortcutCaretBelow, shortcutGotoLine, shortcutDuplicateLine, shortcutDeleteLine, shortcutWrap} {
 				if m.shortcutMenu(items.Item(editorShortcutSpecs[action].label).Icon(blankMenuIcon).Disabled(!m.navigationCommandEnabled(action)), action).Clicked() {
 					c.After(func() { m.runEditorShortcut(action) })
 				}

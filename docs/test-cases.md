@@ -4,9 +4,17 @@
 
 ## 效率入口验收
 
+新增回归：`TestLanguageCommentShortcut`、`TestActiveProjectContext`、`TestJSONPreviewEditPreservesSourceLayout`、`TestLargeJSONRightEditSaveUndoAndSession`、`TestProjectPreviewPreservesEditsAndReveal`、`TestProjectWatcherRefreshAndRelease`、`TestDirectoryReplacementPreservesDraftEncodingAndConflict`、`TestDirectorySearchUsesOpenBuffersAndRegexPreview`。
+
+- 大 JSON：右侧修改后立即保存、未完成语法、撤销重做及会话快照；中文、字符串空格和转义符映射；旧后台结果不覆盖新输入。
+- 项目：多根目录和嵌套根上下文、后台加载、展开恢复、定位文件、外部新增和修改刷新、稳定行 ID、移除后释放监听；预览切换保留草稿。
+- 目录搜索与替换：非模态结果面板、跳转后保留结果、未保存缓冲命中、正则分组预览、逐文件勾选、编辑区替换一步撤销、UTF-16/BOM/CRLF 保留、外部修改冲突跳过。
+
+2026-11-27 同机基准（Core Ultra 9 285H，3 次）：JSON 右侧单字符修改同步，3.8 MiB 从约 162 ms / 364 MB 分配降到约 27 ms / 13 MB；15.1 MiB 从约 640 ms / 1.46 GB 降到约 107 ms / 53 MB。这是同步函数耗时，不包含后续后台格式化和原生绘制，也不代表全部编辑位置。大文件首次同步仍有缓冲重建成本。
+
 | 场景 | 预期 |
 | --- | --- |
-| 设置中切换四种预设，再逐项改绑、恢复默认、重启并切换另一窗口 | 绑定持久化并同步，无重复触发；原有自定义键优先于新默认键；Sublime Ctrl+D 不复制行 |
+| 设置中切换五种预设，再逐项改绑、恢复默认、重启并切换另一窗口 | 绑定持久化并同步，无重复触发。原有自定义键优先于新默认键。Sublime Ctrl+D 选择匹配。IDEA Ctrl+S 全部保存 |
 | Ctrl+P 输入中文、文件名缩写、路径片段；打开同名不同路径文件 | 标题和路径能区分；已打开标签优先且不重复；↑↓ 循环、Enter 打开、Esc 返回后可以继续输入正文 |
 | 项目扫描中关闭面板、移除项目、重开面板；项目含被排除目录或不可读目录 | 工作可取消，重新打开重新扫描；不会创建索引；不完整时显示提示，文件选择仍可用 |
 | Ctrl+Shift+P 搜索中文命令或英文 ID；在零标签状态执行命令 | 搜索、当前快捷键、不可用状态一致；新建等全局命令正常，依赖文件的命令置灰 |
@@ -277,3 +285,25 @@ $env:VIVA_PREVIEW_DIR = Join-Path $PWD '.dev/workflow-qa'
 2026-11-27 公开版与本地版全量测试通过；公开版 Windows 原生检查覆盖 Excel 编辑保存、DOCX 预览、PDF 大纲、文件拖放和独立历史对比窗口移动缩放。资源循环测试已适配后台打开：通过完成回调记录实际标签，所有文件打开后才进入关闭阶段，避免把原活动标签当作尚未完成的新文件。
 
 七种混合文件连续打开关闭 6 轮，每轮关闭后标签数为 0、goroutine 回到 3；第 3～6 轮 GC 后 Go 堆约 13.9 MiB，窗口关闭后约 4.1 MiB、goroutine 为 2。恢复关闭标签的有限内存保留属于预期行为。这是有界资源回归结果，不替代长时间运行观测。发布日志和公开 EXE 保存在 `.dev/release-0.39.0`，不进入源码发布。
+
+## Git 审阅与编辑深度回归
+
+- `TestGitReviewPartialStageHistory`：两个远隔改动、逐块暂存与取消、拒绝旧补丁、工作区字节不变、根提交及普通提交历史、中文空格路径和重命名。
+- `TestGitReviewUIAndConflictUndo`：差异窗口按钮、历史按需读取、diff3 标记、保留双方与单次撤销。
+- `TestGitWatchAndConflictResolution`：真实临时仓库制造冲突、保存并暂存解决、外部提交与文件变化自动刷新、关闭面板释放监听。
+- `TestEditingDepthFoldsAndCompletion`、`TestEditingDepthSplitAndNavigation`、`TestEditingDepthKeyboardColumn` 覆盖通用折叠、Alt+/ 手动补全与撤销、左右编辑焦点、同文件共享撤销、位置前后导航、Alt+Shift 列选择与一次撤销。
+- `TestEditingDepthReleasesClosedBuffers`：关闭分屏／冲突编辑文件后回收编辑器对象；恢复关闭标签只保留原有有界文本快照。
+- 原生用例：`./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeEditingDepth`，隔离桌面直接发送 Windows Alt+Shift 方向键、文字和 Ctrl+Z，核对列选择及撤销。
+
+专项命令：初始化 `tools/dev-env.ps1` 后执行 `go test -mod=vendor -tags editorx_public -run 'TestGitReview|TestGitWatchAndConflict|TestEditingDepth|TestSessionRestart' ./internal/editor`。截图可用 `VIVA_PREVIEW_DIR` 指定目录。整体测试、原生历史窗口和内存复测仍执行本文原有命令。
+
+`TestDirectoryReplacementKeepsUndoBudget` 和 `TestGitConflictKeepsUndoBudget` 验证超出撤销容量时原文不变且显示错误。目录替换正常路径、未保存草稿、UTF-16/BOM/换行保留和磁盘变更拒绝由 `TestDirectoryReplacementPreservesDraftEncodingAndConflict` 覆盖。
+
+2026-11-27 四批优化已通过公开版、本地版全量测试及最终 Git／目录替换／编辑深度专项。Windows 原生 `TestNativeEditingDepth` 验证 Alt+Shift 方向键、输入和 Ctrl+Z；`TestNativeHistoryComparisonWindow` 验证独立窗口编辑及移动缩放；最终 EXE 通过 `TestNativeEditorBackground` 的启动、恢复、退出保存确认和会话保存。六轮混合文件开关后标签均为 0，goroutine 回到 3；第 3～6 轮 GC 后 Go 堆为 14.02～14.04 MiB，关闭窗口后为 4.09 MiB、goroutine 为 2，进程退出后无残留子进程。日志位于 `.dev/memory-four-batches-20261127-102042`；试用包和截图位于 `.dev/batch-four-qa`。以上为有界回归结果，不代表无限时长的内存稳定性证明。
+
+## IDEA 预设与输入时补全
+
+- `TestIdeaShortcutPreset` 验证通过界面切换并保存预设。实际组合键打开文件、命令和目录替换，切换标签及导航历史，验证补全与正文和搜索框的不同 Ctrl+Y 行为。
+- `TestAutomaticCompletionSettingsAndTyping` 验证开关默认关闭、修改后持久化、最后一键后延迟、Enter 换行、Tab 补全词中后缀、单次撤销及中文组词结束后点选候选。
+- `./tools/native-smoke.ps1 -PublicRelease -TestName TestNativeEditingDepth` 验证 Windows 的 Alt+/、Ctrl+Alt+Space、Ctrl+Y、无额外输入时自动弹出及 Tab 接受。
+- 在仓库目录初始化 `tools/dev-env.ps1` 后，运行 Go 测试的 `-run '^$' -bench '^BenchmarkAutomaticCompletionCandidates$' -benchmem ./internal/editor` 测量一次候选扫描。本机约 15.5 MiB 样本的单次扫描约 0.05 ms、分配 56 字节。此数值不含界面渲染和 150 ms 的输入停顿。

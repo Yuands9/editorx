@@ -19,6 +19,7 @@ import (
 const applicationName = "EditorX"
 
 type editorTab struct {
+	projectPreview    bool
 	diskChange        *diskChangeState
 	savingText        *textSaveJob
 	jsonPreview       *jsonPreviewJob
@@ -186,23 +187,29 @@ func (t *editorTab) modified() bool {
 	if t.office != nil {
 		return t.office.state.Dirty
 	}
-	return !t.readOnlyPreview() && (t.source.text.String() != t.doc.saved || t.doc.formatDirty)
+	return !t.readOnlyPreview() && (t.source.text.String() != t.doc.saved || t.doc.formatDirty ||
+		t.format() == "JSON" && !t.jsonCompare && t.jsonLiveResult() && !t.hasResultDraft() && t.result.text.CommittedString() != t.resultOutput)
 }
 
 type editorApp struct {
-	comparePicker *textComparePicker
-	fileWatches   map[string]*app.DirectoryWatch
-	watchFiles    bool
-	checkFiles    bool
-	macro         *macroRecording
-	lastMacro     *editorMacro
-	workflow      *workflowDialog
+	projectWatches  map[string]*projectWatchState
+	lastPreviewPath string
+	lastPreviewAt   time.Time
+	comparePicker   *textComparePicker
+	fileWatches     map[string]*app.DirectoryWatch
+	watchFiles      bool
+	checkFiles      bool
+	macro           *macroRecording
+	lastMacro       *editorMacro
+	workflow        *workflowDialog
 
 	directorySearch *directorySearchState
 	textOpens       []*textOpenJob
 	eolMenu         bool
 	palette         *navigationPalette
 	closedTabs      []closedEditorTab
+	editorSplit     *editorSplitState
+	navigation      editorNavigation
 	savingAll       bool
 	passwordVault   *passwordVaultView
 	linkedFile      linkedFileState
@@ -353,6 +360,18 @@ func nextUntitledName(usedNames map[string]bool) string {
 }
 
 func (m *editorApp) activate(t *editorTab) {
+	if s := m.editorSplit; s != nil && t != nil && t != s.left && t != s.right {
+		if historyEditableTab(t) {
+			if s.rightFocused {
+				s.right = t
+				s.mirror = nil
+			} else {
+				s.left = t
+			}
+		} else {
+			m.editorSplit = nil
+		}
+	}
 	m.leavePasswordVault()
 	m.languageMenu, m.encodingMenu, m.eolMenu = false, false, false
 	if m.active != t {
@@ -436,7 +455,7 @@ func (m *editorApp) saveBeforeClosing(tab *editorTab, complete func(bool)) {
 		return
 	}
 	if tab.format() == "JSON" && !tab.jsonCompare {
-		tab.updateResultNow()
+		tab.updateResult()
 	}
 	m.saveTextTabWithCallback(tab, false, complete)
 }
@@ -509,6 +528,12 @@ func (m *editorApp) closeTabs(tabs []*editorTab, keepPinned bool) {
 }
 
 func (m *editorApp) removeTab(t *editorTab) {
+	if m.tools.git.conflict == t {
+		m.tools.git.conflict = nil
+	}
+	if s := m.editorSplit; s != nil && (s.left == t || s.right == t) {
+		m.editorSplit = nil
+	}
 	index := slices.Index(m.tabs, t)
 	if index < 0 {
 		return
@@ -539,6 +564,10 @@ func (m *editorApp) removeTab(t *editorTab) {
 }
 
 func (m *editorApp) requestClose(allow func()) {
+	if s := m.directorySearch; s != nil && (s.replacing || s.replaceJob != nil) {
+		m.status = "请等待目录替换完成，或先停止替换"
+		return
+	}
 	if m.savingAll || m.largeEditOperationPending() {
 		return
 	}
@@ -696,6 +725,7 @@ func (m *editorApp) openLoadedFile(file openedEditorFile) *editorTab {
 }
 
 func (m *editorApp) saveTab(t *editorTab, saveAs bool) bool {
+	t.projectPreview = false
 	if t.largeText != nil && t.largeText.editing != nil {
 		m.startLargeEditSave(t, saveAs, nil)
 		return false
@@ -1036,7 +1066,7 @@ func (m *editorApp) interactionBlocked() bool {
 func (m *editorApp) otherInteractionsBlocked() bool {
 	return m.comparePicker != nil || m.workflow != nil || m.directorySearch != nil && m.directorySearch.open || m.palette != nil || m.savingAll || m.windowClosed || m.windowClosePending || m.linkedFile.open || m.imageOCR != nil || m.imageAI != nil || m.confirm || m.showError || m.showHistory || m.rename.open || m.gotoLine.open || m.update.open ||
 		m.templateDialog != nil || m.projectFolder != nil || m.projectRename != nil || m.projectDelete != nil || (m.passwordVault != nil && m.passwordVault.dialog != nil) ||
-		m.tools.git.branches.creating || m.tools.git.branches.switching ||
+		m.tools.git.review != nil || m.tools.git.branches.creating || m.tools.git.branches.switching ||
 		m.ai.reviewOpen || m.ai.conversationEdit.open || m.ai.settings.discardPending || m.backup.selecting ||
 		(m.desktop != nil && m.desktop.exiting)
 }
@@ -1093,12 +1123,16 @@ func (m *editorApp) releaseWindowState() {
 	m.closedSession = &state
 	m.windowClosed = true
 	m.closeFileWatches()
+	m.closeProjectWatches()
+	m.tools.git.watch.close()
+	m.tools.git = gitPanelState{}
 	m.stopMacroRecording()
 	if m.workflow != nil && m.workflow.cancel != nil {
 		m.workflow.cancel()
 	}
 	m.workflow, m.comparePicker, m.lastMacro = nil, nil, nil
 	m.closedTabs, m.palette = nil, nil
+	m.editorSplit, m.navigation = nil, editorNavigation{}
 	m.directorySearch, m.textOpens = nil, nil
 	m.closeHistoryComparison()
 	m.droppedPaths = nil

@@ -275,6 +275,9 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 			icon, color := m.fileAppearance(tab.title())
 			ui.Icon(c, icon).Size(tabStripIconSize, tabStripIconSize).Shrink(0).Color(color)
 			name := ui.Text(c, title).FontSize(tabStripTitleSize).Grow(1).MinWidth(0).Ellipsis()
+			if tab.projectPreview {
+				ui.Text(c, "预览").FontSize(10).Muted().Shrink(0)
+			}
 			if !active {
 				name.Muted()
 			}
@@ -310,7 +313,13 @@ func (m *editorApp) drawTabCard(c ui.C, tab *editorTab, index int, width, dx flo
 		})
 		if !blocked {
 			if target.DoubleClicked() {
-				c.After(func() { m.rename.begin(tab, nil) })
+				c.After(func() {
+					if tab.projectPreview {
+						tab.projectPreview = false
+					} else {
+						m.rename.begin(tab, nil)
+					}
+				})
 			} else if target.Clicked() {
 				c.After(func() { m.activate(tab) })
 			}

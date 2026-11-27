@@ -35,6 +35,7 @@ func openTestSession(t *testing.T, m *editorApp) *headless.Session {
 		t.Fatal(err)
 	}
 	t.Cleanup(session.Close)
+	waitProjectLoads(t, m, session)
 	return session
 }
 
@@ -329,12 +330,14 @@ func TestFolderNavigationAndMarkdownOutline(t *testing.T) {
 	if err := s.ClickLabel("添加项目…"); err != nil {
 		t.Fatal(err)
 	}
+	waitProjectLoads(t, m, s)
 	if m.workspace == nil || len(m.workspace.rows) != 2 || m.workspace.rows[1].node.loaded {
 		t.Fatal("tree should load children lazily")
 	}
 	if err := s.ClickLabel("子目录"); err != nil {
 		t.Fatal(err)
 	}
+	waitProjectLoads(t, m, s)
 	if len(m.workspace.rows) != 3 {
 		t.Fatal("folder did not expand")
 	}
@@ -865,6 +868,7 @@ func TestDirectOpenActionsExpandedAndCollapsed(t *testing.T) {
 			if m.workspace == nil || m.workspace.roots[0].path != directory || !m.showFiles || m.active != current || m.fileMenu {
 				t.Fatal("direct folder open did not reveal directory or changed current tab")
 			}
+			waitProjectLoads(t, m, s)
 			if len(m.workspace.rows) != 5 {
 				t.Fatal("folder contents missing")
 			}

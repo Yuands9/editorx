@@ -177,7 +177,7 @@ func TestEfficiencySaveAllStopsOnCancelAndConflict(t *testing.T) {
 }
 
 func TestEfficiencyShortcutPresets(t *testing.T) {
-	for _, name := range []string{"EditorX", "Notepad++", "Sublime Text", "EditPlus"} {
+	for _, name := range shortcutPresetNames {
 		bindings := shortcutPreset(name)
 		if shortcutPresetName(bindings) != name {
 			t.Fatalf("preset recognition: %s", name)
@@ -188,7 +188,7 @@ func TestEfficiencyShortcutPresets(t *testing.T) {
 			if !chord.Valid() {
 				continue
 			}
-			if seen[chord] || !assignableEditorShortcut(chord) {
+			if seen[chord] || !assignableEditorShortcut(action, chord) {
 				t.Fatalf("%s conflicting/invalid %s", name, chord.Label())
 			}
 			seen[chord] = true

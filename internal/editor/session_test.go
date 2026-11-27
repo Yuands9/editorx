@@ -253,6 +253,7 @@ func TestRecentHistoryOpenRemoveAndPersist(t *testing.T) {
 		t.Fatal("history not deduplicated or ordered")
 	}
 	m.addProjects(directory)
+	loadProjectFixture(t, m)
 	if !store.history[0].Directory {
 		t.Fatal("folder not remembered")
 	}
@@ -398,6 +399,7 @@ func TestSessionInactiveTabsAcrossRepeatedRestarts(t *testing.T) {
 	m := newTestEditorWithDocument()
 	store.attach(m)
 	m.addProjects(project)
+	loadProjectFixture(t, m)
 	if err := m.workspace.toggle(m.workspace.roots[0].children[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -435,6 +437,7 @@ func TestSessionInactiveTabsAcrossRepeatedRestarts(t *testing.T) {
 	if tab.source.restoreScroll == nil || tab.source.restoreScroll.Y != 210 || tab.markdown.Offset != 270 || !tab.outlineCollapsed[0] || !tab.search.open || tab.search.query.String() != "中文" || tab.search.bounds.X != 72 {
 		t.Fatal("inactive view state lost across restarts")
 	}
+	loadProjectFixture(t, again)
 	if again.workspace == nil || !again.workspace.roots[0].children[0].expanded || again.active.picture.zoom != 2 || again.active.picture.pan.X != 31 {
 		t.Fatal("folder or image view state not restored")
 	}

@@ -11,6 +11,13 @@ import (
 )
 
 func (m *editorApp) windowShortcut(event gfx.KeyEvent) gfx.EventResult {
+	if !m.interactionBlocked() && !m.appSettings.open && !event.Release {
+		if pane := m.splitEditingPane(); pane != nil && pane.focused && !pane.text.CompositionActive() {
+			if result := pane.completionKey(event); result.Handled {
+				return result
+			}
+		}
+	}
 	if result := m.recordShortcut(event); result.Handled {
 		return result
 	}

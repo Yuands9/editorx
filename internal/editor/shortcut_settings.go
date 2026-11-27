@@ -21,7 +21,7 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 	current := shortcutPresetName(m.keyBindings)
 	ui.Row(c.Part("presets")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
 		ui.Text(c, "快捷键预设").Bold().Grow(1)
-		choices := []string{"EditorX", "Notepad++", "Sublime Text", "EditPlus"}
+		choices := shortcutPresetNames[:]
 		if current == "自定义" {
 			choices = append(choices, current)
 		}
@@ -31,7 +31,7 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 			c.After(func() { m.applyShortcutPreset(selected) })
 		}
 	})
-	ui.Wrap(c, "切换预设会替换当前快捷键，之后仍可逐项修改。预设覆盖已支持的操作；支持多光标选词、目录查找和列编辑。").FillWidth().FontSize(12).Muted()
+	ui.Wrap(c, "切换预设会替换当前快捷键，之后仍可逐项修改。补全使用独立按键，避开输入法的 Ctrl+Space。").FillWidth().FontSize(12).Muted()
 	ui.Row(c.Part("help")).FillWidth().Gap(12).Items(ui.Center).Children(func() {
 		ui.Wrap(c, "点击快捷键后，按下新的组合键。").Grow(1).FontSize(12).Muted()
 		if ui.Button(c.Part("reset-all"), "恢复默认快捷键").Ghost().Height(30).
@@ -43,9 +43,10 @@ func (m *editorApp) shortcutSettings(c ui.C) {
 		title       string
 		first, last editorShortcut
 	}{
-		{"文件与标签", shortcutNewFile, shortcutSaveAll},
-		{"查找与编辑", shortcutDirectorySearch, shortcutDeleteLine},
+		{"文件与标签", shortcutNewFile, shortcutRecentFiles},
+		{"查找与编辑", shortcutDirectorySearch, shortcutDirectoryReplace},
 		{"工作区", shortcutFiles, shortcutOpenSettings},
+		{"分屏、补全与导航", shortcutComplete, shortcutOrdinarySplit},
 	} {
 		ui.Text(c, group.title).Bold().FontSize(14).Height(22)
 		ui.Column(c.Key(group.title)).FillWidth().Radius(11).Border(1, m.theme.Border).Clip().Children(func() {
@@ -115,7 +116,7 @@ func (m *editorApp) recordShortcut(event gfx.KeyEvent) gfx.EventResult {
 		return gfx.EventResult{Handled: true}
 	}
 	chord, ok := keymap.FromEvent(event)
-	if !ok || !assignableEditorShortcut(chord) {
+	if !ok || !assignableEditorShortcut(edit.action, chord) {
 		edit.problem = "请使用 Ctrl 或 Alt 组合键，或使用 F1–F12。系统和常用编辑键保留原用途。"
 	} else {
 		m.changeEditorShortcut(edit.action, chord)

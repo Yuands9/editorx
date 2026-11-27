@@ -36,13 +36,16 @@ func TestMultipleProjectsThroughUIAndSession(t *testing.T) {
 	check(s.Resize(1120, 690))
 	check(s.Driver().QueueOpenFiles([]string{server, web}, nil))
 	check(s.ClickLabel("添加项目"))
+	waitProjectLoads(t, m, s)
 	tree := m.workspace
 	if tree == nil || len(tree.roots) != 2 || tree.roots[0].path != server || tree.roots[1].path != web || m.active != nil {
 		t.Fatal("multi-select did not create two project roots in selection order")
 	}
 	first, second := tree.roots[0], tree.roots[1]
 	check(s.ClickLabel("环境配置"))
+	waitProjectLoads(t, m, s)
 	check(s.ClickLabel("模板"))
+	waitProjectLoads(t, m, s)
 	check(s.ClickLabel("应用.env"))
 	textX := make(map[string]float32)
 	for _, line := range s.Snapshot().Texts {
@@ -63,6 +66,7 @@ func TestMultipleProjectsThroughUIAndSession(t *testing.T) {
 	restored, err := openSessionStore(store.directory)
 	check(err)
 	again := restored.windows[0]
+	loadProjectFixture(t, again)
 	if len(again.workspace.roots) != 2 || again.workspace.roots[0].expanded || !again.workspace.roots[0].children[0].expanded ||
 		!again.workspace.roots[1].expanded || !again.workspace.roots[1].children[0].expanded || again.active.doc.path != file {
 		t.Fatal("project order, hidden branch state or the active file failed to restore")
@@ -78,6 +82,7 @@ func TestMultipleProjectsThroughUIAndSession(t *testing.T) {
 	webDirectory := second.children[0]
 	check(s.ClickLabel("项目操作 " + server))
 	check(s.ClickLabel("刷新项目"))
+	waitProjectLoads(t, m, s)
 	_, err = s.Locate("新增配置.txt")
 	check(err)
 	if second.children[0] != webDirectory || !second.children[0].expanded || !first.children[0].expanded || m.active != tab {
@@ -168,11 +173,13 @@ func TestLegacyFolderSessionMigrationAndPartialProjectAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := store.windows[0]
+	loadProjectFixture(t, m)
 	if m.workspace == nil || len(m.workspace.roots) != 1 || m.workspace.roots[0].path != legacyRoot ||
 		!m.workspace.roots[0].children[0].expanded || !m.showFiles {
 		t.Fatal("legacy workspace did not migrate with its expanded branches")
 	}
 	m.addProjects(legacyRoot, filepath.Join(directory, "不存在"), newRoot)
+	loadProjectFixture(t, m)
 	if !m.showError || len(m.workspace.roots) != 2 || m.workspace.roots[1].path != newRoot || len(m.tabs) != 0 {
 		t.Fatal("an invalid choice blocked the other folders or created a tab")
 	}
@@ -206,7 +213,7 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	m.addProjects(root)
 	s := openTestSession(t, m)
 	check(s.Resize(1080, 675))
-	click := func(label string) { t.Helper(); check(s.ClickLabel(label)) }
+	click := func(label string) { t.Helper(); check(s.ClickLabel(label)); waitProjectLoads(t, m, s) }
 	if len(m.workspace.rows) != 2 || m.workspace.rows[1].node.path != deep || m.workspace.rows[1].label != "src.main.java" {
 		t.Fatal("expected the whole single-directory chain to appear as one row under the project")
 	}
@@ -227,6 +234,7 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	click("textfield:文件名")
 	check(s.Keys("enter"))
 	config := filepath.Join(deep, "app.yaml")
+	waitProjectLoads(t, m, s)
 	data, err := os.ReadFile(config)
 	check(err)
 	if len(data) != 0 || m.active == nil || m.active.doc.path != config {
@@ -284,6 +292,7 @@ func TestProjectCreateOnCompactFolder(t *testing.T) {
 	if m.projectFolder != nil {
 		t.Fatal("Enter did not create the folder")
 	}
+	waitProjectLoads(t, m, s)
 	_, err = s.Locate("assets.png")
 	check(err)
 	info, err := os.Stat(filepath.Join(deep, "assets.png"))
@@ -356,6 +365,7 @@ func TestProjectRenameThroughContextMenu(t *testing.T) {
 	s := openTestSession(t, m)
 	check(s.Resize(1080, 675))
 	check(s.ClickLabel("src.main"))
+	waitProjectLoads(t, m, s)
 	check(s.ClickLabel("readme.txt"))
 	tab := m.active
 	tab.source.replace("unsaved draft")
@@ -375,6 +385,7 @@ func TestProjectRenameThroughContextMenu(t *testing.T) {
 		m.projectRename.name.SetText(name)
 		check(s.Frame())
 		check(s.Keys("enter"))
+		waitProjectLoads(t, m, s)
 		if m.projectRename != nil || m.showError {
 			t.Fatalf("rename did not finish: %#v %s", m.projectRename, m.errorText)
 		}
@@ -467,6 +478,7 @@ func TestProjectDeleteConfirmation(t *testing.T) {
 		if m.showError || !strings.HasPrefix(m.status, "已删除 ") {
 			t.Fatalf("delete did not finish: %s / %s", m.status, m.errorText)
 		}
+		waitProjectLoads(t, m, s)
 	}
 	notOnDisk := func(path string) {
 		t.Helper()

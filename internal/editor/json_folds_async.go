@@ -9,22 +9,24 @@ import (
 )
 
 type jsonFoldJob struct {
-	source  string
-	request *ui.EffectState[[]components.CodeEditorFoldRange, int]
+	source   string
+	language string
+	request  *ui.EffectState[[]components.CodeEditorFoldRange, int]
 }
 
 func (p *editorPane) updateFoldJob(c ui.C) {
 	value := p.text.String()
+	language := p.view.Snapshot.Language
 	if len(value) < backgroundTextBytes {
 		p.foldJob = nil
 		return
 	}
-	if p.foldSource != value {
+	if p.foldSource != value || p.foldLanguage != language {
 		p.folds = nil
 		p.foldDisplaySource = ""
 	}
-	if p.foldJob == nil && p.foldSource != value {
-		job := &jsonFoldJob{source: value}
+	if p.foldJob == nil && (p.foldSource != value || p.foldLanguage != language) {
+		job := &jsonFoldJob{source: value, language: language}
 		job.request = ui.NewEffect[[]components.CodeEditorFoldRange, int](func(ctx context.Context) ([]components.CodeEditorFoldRange, error) {
 			timer := time.NewTimer(150 * time.Millisecond)
 			defer timer.Stop()
@@ -33,7 +35,7 @@ func (p *editorPane) updateFoldJob(c ui.C) {
 				return nil, ctx.Err()
 			case <-timer.C:
 			}
-			return jsonFolds(job.source), nil
+			return editorFolds(job.source, job.language), ctx.Err()
 		})
 		p.foldJob = job
 	}
@@ -41,8 +43,9 @@ func (p *editorPane) updateFoldJob(c ui.C) {
 		ui.Effect(c, job.request, 0)
 		if folds, err, done := job.request.Take(); done {
 			p.foldJob = nil
-			if err == nil && value == job.source {
+			if err == nil && value == job.source && language == job.language {
 				p.foldSource, p.folds = value, folds
+				p.foldLanguage = language
 				clear(p.collapsed)
 			}
 		}

@@ -19,6 +19,9 @@ type closedEditorTab struct {
 }
 
 func (m *editorApp) rememberClosedTab(tab *editorTab) {
+	if tab.projectPreview {
+		return
+	}
 	if tab.isTemporaryLink() {
 		return
 	}

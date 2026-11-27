@@ -11,6 +11,19 @@ import (
 
 func (m *editorApp) tabContextMenu(c ui.C, target ui.Box, index int, tab *editorTab) {
 	ui.ContextMenu(c, target, func(menu *ui.MenuItems) {
+		if historyEditableTab(tab) && menu.Item("在普通分屏中打开").Icon(blankMenuIcon).Clicked() {
+			c.After(func() { m.openEditorSplit(tab) })
+		}
+		if tab.projectPreview && menu.Item("保留此标签").Icon(pinStateIcon(false)).Clicked() {
+			c.After(func() { tab.projectPreview = false })
+		}
+		if tab.doc.path != "" {
+			m.projectPathActions(c, menu, tab.doc.path)
+			if m.shortcutMenu(menu.Item("在项目中定位").Icon(searchIcon).Disabled(m.projectRoot(tab.doc.path) == ""), shortcutRevealProjectFile).Clicked() {
+				c.After(func() { m.revealProjectFile(tab.doc.path) })
+			}
+			menu.Separator()
+		}
 		if menu.Item("重命名标签…").Icon(modelEditIcon).Clicked() {
 			c.After(func() { m.rename.begin(tab, nil) })
 		}

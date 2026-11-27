@@ -93,8 +93,10 @@ func (m *editorApp) navigationCommandEnabled(action editorShortcut) bool {
 		return len(m.closedTabs) > 0
 	case shortcutSaveAll:
 		return slices.ContainsFunc(m.tabs, func(t *editorTab) bool { return t.modified() })
-	case shortcutDirectorySearch, shortcutNewFile, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutQuickOpen, shortcutCommandPalette,
-		shortcutFiles, shortcutGit, shortcutTerminal, shortcutOpenSettings:
+	case shortcutRecentFiles:
+		return m.store != nil
+	case shortcutDirectorySearch, shortcutDirectoryReplace, shortcutNewFile, shortcutOpenFile, shortcutOpenLink, shortcutOpenProject, shortcutQuickOpen, shortcutCommandPalette,
+		shortcutFiles, shortcutGit, shortcutGitCommit, shortcutTerminal, shortcutOpenSettings:
 		return true
 	}
 	if tab == nil || m.vaultActive() {
@@ -110,7 +112,11 @@ func (m *editorApp) navigationCommandEnabled(action editorShortcut) bool {
 	case shortcutSelectNext, shortcutSelectAllMatches, shortcutSplitSelection, shortcutCaretAbove, shortcutCaretBelow:
 		return editableTextSource(tab) && tab.largeText == nil
 	case shortcutDuplicateLine, shortcutDeleteLine:
-		return editableTextSource(tab) || tab.largeText != nil && tab.largeText.editing != nil
+		return m.editorSplit != nil || editableTextSource(tab) || tab.largeText != nil && tab.largeText.editing != nil
+	case shortcutComplete:
+		return m.editorSplit != nil || editableTextSource(tab)
+	case shortcutRevealProjectFile:
+		return tab.doc.path != "" && m.projectRoot(tab.doc.path) != ""
 	case shortcutOutline:
 		return tab.format() == "Markdown"
 	}

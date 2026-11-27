@@ -61,6 +61,101 @@ func TestEfficiencyPresetUIAndPersistence(t *testing.T) {
 	}
 }
 
+func TestIdeaShortcutPreset(t *testing.T) {
+	store, err := openSessionStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs, err := readApplicationPreferences(store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktop := &editorDesktop{store: store, preferences: prefs}
+	m := newEditorApp()
+	m.desktop = desktop
+	store.attach(m)
+	left := m.addTab(document{saved: "longerName\nlonger"}, "left.txt")
+	right := m.addTab(document{saved: "other file"}, "right.txt")
+	m.activate(left)
+	s := openTestSession(t, m)
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	chord := func(mods gfx.Modifiers, key rune) {
+		t.Helper()
+		_, err := s.Driver().ShortcutChord(mods, key)
+		check(err)
+	}
+	check(s.ClickLabel("button:设置"))
+	check(s.ClickLabel("button:快捷键"))
+	check(s.ClickLabel("快捷键预设"))
+	check(s.ClickLabel("option:" + ideaShortcutPreset))
+	saved, err := readApplicationPreferences(store.directory)
+	check(err)
+	if shortcutPresetName(saved.Shortcuts) != ideaShortcutPreset {
+		t.Fatal("IDEA preset did not persist")
+	}
+	if preview := os.Getenv("VIVA_PREVIEW_DIR"); preview != "" {
+		check(s.Screenshot(filepath.Join(preview, "idea-shortcuts.png")))
+	}
+	check(s.ClickLabel("button:关闭设置"))
+	check(s.ClickLabel("代码编辑区"))
+
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'n')
+	if m.palette == nil || m.palette.commands {
+		t.Fatal("Ctrl+Shift+N did not open quick file search")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'a')
+	if m.palette == nil || !m.palette.commands {
+		t.Fatal("Ctrl+Shift+A did not open the command palette")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'r')
+	if m.directorySearch == nil || !m.directorySearch.open || !m.directorySearch.replaceMode {
+		t.Fatal("Ctrl+Shift+R did not open directory replacement")
+	}
+	check(s.Driver().Key(gfx.KeyEscape, 0))
+
+	check(s.Driver().Key(gfx.KeyRight, gfx.ModifierAlt))
+	if m.active != right {
+		t.Fatal("Alt+Right did not switch tabs")
+	}
+	check(s.Driver().Key(gfx.KeyLeft, gfx.ModifierControl|gfx.ModifierAlt))
+	if m.active != left {
+		t.Fatal("Ctrl+Alt+Left did not return to the previous location")
+	}
+	left.source.text.MoveTo(left.source.text.RuneCount(), false)
+	check(s.Frame())
+	check(s.Driver().Key(gfx.KeySpace, gfx.ModifierControl|gfx.ModifierAlt))
+	if left.source.completion == nil || len(left.source.completion.items) == 0 {
+		t.Fatal("Ctrl+Alt+Space did not open completion")
+	}
+	check(s.Driver().Key(gfx.KeyEnter, 0))
+	if left.source.text.String() != "longerName\nlongerName" {
+		t.Fatal("IDEA completion did not change the editor")
+	}
+	chord(gfx.ModifierControl, 'y')
+	if left.source.text.String() != "longerName" {
+		t.Fatalf("Ctrl+Y did not delete exactly one line: %q", left.source.text.String())
+	}
+	chord(gfx.ModifierControl, 'z')
+	chord(gfx.ModifierControl|gfx.ModifierShift, 'z')
+	if left.source.text.String() != "longerName" {
+		t.Fatal("Ctrl+Shift+Z did not redo the line deletion")
+	}
+	chord(gfx.ModifierControl, 'f')
+	check(s.Type("query"))
+	chord(gfx.ModifierControl, 'z')
+	chord(gfx.ModifierControl, 'y')
+	if left.search.query.String() != "query" || left.source.text.String() != "longerName" {
+		t.Fatal("Ctrl+Y did not remain redo in the search field")
+	}
+}
+
 func TestEfficiencySaveAllRestoredLargeDraft(t *testing.T) {
 	m := newEditorApp()
 	m.dataDirectory = t.TempDir()

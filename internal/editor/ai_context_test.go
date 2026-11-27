@@ -175,6 +175,7 @@ func TestAIWorkspaceEntryAndMultiSelectAttachments(t *testing.T) {
 		check(s.Frame())
 	}
 	click("服务配置")
+	waitProjectLoads(t, m, s)
 	check(s.RightClickLabel("用法.md"))
 	click("menuitem:在 AI 助手中打开")
 	if len(m.ai.attachments) != 2 || m.ai.attachments[0].path != readme || m.ai.attachments[1].path != root || m.active != second {
